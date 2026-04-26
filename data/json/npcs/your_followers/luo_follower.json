@@ -40,6 +40,12 @@
         "effect": "request_fpv_launch"
       },
       {
+        "text": "Launch a military explosive FPV drone to my position.",
+        "condition": "is_by_radio",
+        "topic": "TALK_DONE",
+        "effect": "request_fpv_military_launch"
+      },
+      {
         "text": "Launch a scout drone to my position.",
         "condition": "is_by_radio",
         "topic": "TALK_DONE",

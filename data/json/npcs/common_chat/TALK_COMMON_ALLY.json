@@ -88,6 +88,12 @@
         "effect": "request_fpv_launch"
       },
       {
+        "text": "Launch a military explosive FPV drone to my position.",
+        "condition": "is_by_radio",
+        "topic": "TALK_DONE",
+        "effect": "request_fpv_military_launch"
+      },
+      {
         "text": "Launch a scout drone to my position.",
         "condition": "is_by_radio",
         "topic": "TALK_DONE",
@@ -198,6 +204,20 @@
         },
         "topic": "TALK_DONE",
         "effect": "request_fpv_launch"
+      },
+      {
+        "text": "Launch a military explosive FPV drone to my position.",
+        "condition": {
+          "and": [
+            "is_by_radio",
+            { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
+            { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } }
+          ]
+        },
+        "topic": "TALK_DONE",
+        "effect": "request_fpv_military_launch"
       },
       {
         "text": "Launch a scout drone to my position.",

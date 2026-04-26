@@ -54,5 +54,17 @@
     "flags": [ "WATER_BREAK", "ELECTRONIC", "BOMB", "DANGEROUS", "TRADER_AVOID" ],
     "faults": [ { "fault_group": "electronic_general" } ],
     "melee_damage": { "bash": 4 }
+  },
+  {
+    "id": "fpv_military_suicide_drone",
+    "copy-from": "fpv_suicide_drone",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "military explosive suicide FPV drone" },
+    "description": "A first-person-view quadcopter carrying a military high-energy explosive payload and high-gain control link.  It is built for terminal attack with a much higher blast than an improvised FPV charge.",
+    "weight": "5300 g",
+    "price": "615 USD",
+    "price_postapoc": "40 USD",
+    "explosion": { "power": 920, "shrapnel": { "casing_mass": 400, "fragment_mass": 0.4 } }
   }
 ]

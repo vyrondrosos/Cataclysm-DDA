@@ -188,6 +188,7 @@ static const itype_id fuel_type_animal( "animal" );
 static const itype_id itype_foodperson_mask( "foodperson_mask" );
 static const itype_id itype_foodperson_mask_on( "foodperson_mask_on" );
 static const itype_id itype_fpv_baba_yaga_drone( "fpv_baba_yaga_drone" );
+static const itype_id itype_fpv_military_suicide_drone( "fpv_military_suicide_drone" );
 static const itype_id itype_fpv_scout_drone( "fpv_scout_drone" );
 static const itype_id itype_fpv_suicide_drone( "fpv_suicide_drone" );
 static const itype_id itype_landmine( "landmine" );
@@ -6318,6 +6319,11 @@ static bool is_fpv_suicide_drone( const item &it )
     return it.typeId() == itype_fpv_suicide_drone;
 }
 
+static bool is_fpv_military_suicide_drone( const item &it )
+{
+    return it.typeId() == itype_fpv_military_suicide_drone;
+}
+
 static bool is_fpv_baba_yaga_drone( const item &it )
 {
     return it.typeId() == itype_fpv_baba_yaga_drone;
@@ -6332,6 +6338,9 @@ static std::string fpv_drone_count_key( const std::string &drone_type )
 {
     if( drone_type == "scout" ) {
         return "fpv_scout_drone_count";
+    }
+    if( drone_type == "military_suicide" ) {
+        return "fpv_military_drone_count";
     }
     if( drone_type == "baba_yaga" ) {
         return "fpv_baba_yaga_drone_count";
@@ -6361,6 +6370,10 @@ static void cache_physical_fpv_drones( npc &operator_npc )
 {
     std::list<item> suicide_drones = operator_npc.remove_items_with( is_fpv_suicide_drone );
     add_fpv_drones( operator_npc, "suicide", static_cast<int>( suicide_drones.size() ) );
+    std::list<item> military_suicide_drones = operator_npc.remove_items_with(
+                is_fpv_military_suicide_drone );
+    add_fpv_drones( operator_npc, "military_suicide",
+                    static_cast<int>( military_suicide_drones.size() ) );
     std::list<item> scout_drones = operator_npc.remove_items_with( is_fpv_scout_drone );
     add_fpv_drones( operator_npc, "scout", static_cast<int>( scout_drones.size() ) );
     std::list<item> baba_yaga_drones = operator_npc.remove_items_with( is_fpv_baba_yaga_drone );
@@ -6381,10 +6394,16 @@ static bool take_fpv_drone( npc &operator_npc, const std::string &drone_type )
 static std::string active_fpv_drone_type( const npc &operator_npc )
 {
     const std::string drone_type = operator_npc.get_value( "fpv_drone_type" ).str();
-    if( drone_type == "scout" || drone_type == "baba_yaga" ) {
+    if( drone_type == "scout" || drone_type == "baba_yaga" || drone_type == "military_suicide" ) {
         return drone_type;
     }
     return "suicide";
+}
+
+static bool active_fpv_drone_is_suicide( const npc &operator_npc )
+{
+    const std::string drone_type = active_fpv_drone_type( operator_npc );
+    return drone_type == "suicide" || drone_type == "military_suicide";
 }
 
 static bool active_fpv_drone_is_scout( const npc &operator_npc )
@@ -6964,6 +6983,9 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
 
         std::list<item> suicide_drones = you.remove_items_with( is_fpv_suicide_drone );
         add_fpv_drones( *operator_npc, "suicide", static_cast<int>( suicide_drones.size() ) );
+        std::list<item> military_suicide_drones = you.remove_items_with( is_fpv_military_suicide_drone );
+        add_fpv_drones( *operator_npc, "military_suicide",
+                        static_cast<int>( military_suicide_drones.size() ) );
         std::list<item> scout_drones = you.remove_items_with( is_fpv_scout_drone );
         add_fpv_drones( *operator_npc, "scout", static_cast<int>( scout_drones.size() ) );
         std::list<item> baba_yaga_drones = you.remove_items_with( is_fpv_baba_yaga_drone );
@@ -6973,8 +6995,8 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
         operator_npc->set_value( "fpv_assignment", "operator" );
         clear_fpv_mission( *operator_npc );
 
-        const int drone_count = static_cast<int>( suicide_drones.size() + scout_drones.size() +
-                                baba_yaga_drones.size() );
+        const int drone_count = static_cast<int>( suicide_drones.size() +
+                                military_suicide_drones.size() + scout_drones.size() + baba_yaga_drones.size() );
         if( drone_count == 0 ) {
             add_msg( _( "%s sets up as drone operator, but still needs drones." ),
                      operator_npc->disp_name() );
@@ -7018,6 +7040,9 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
             add_msg( _( "%s reports that they have no scout drones." ), operator_npc->disp_name() );
         } else if( drone_type == "baba_yaga" ) {
             add_msg( _( "%s reports that they have no bomber drones." ), operator_npc->disp_name() );
+        } else if( drone_type == "military_suicide" ) {
+            add_msg( _( "%s reports that they have no military explosive FPV attack drones." ),
+                     operator_npc->disp_name() );
         } else {
             add_msg( _( "%s reports that they have no FPV attack drones." ), operator_npc->disp_name() );
         }
@@ -7036,6 +7061,9 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
                      operator_npc->disp_name() );
         } else if( baba_yaga_drone ) {
             add_msg( _( "%s reports that you are outside the 20 km bomber drone control range." ),
+                     operator_npc->disp_name() );
+        } else if( drone_type == "military_suicide" ) {
+            add_msg( _( "%s reports that you are outside the 7 km military explosive FPV control range." ),
                      operator_npc->disp_name() );
         } else {
             add_msg( _( "%s reports that you are outside the 7 km FPV control range." ),
@@ -7101,6 +7129,9 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
             add_msg( _( "You authorize bomber drone launch.  %1$s reports ETA %2$d seconds, planned time on station %3$d seconds, and no payload aboard." ),
                      operator_npc->disp_name(), outbound_seconds, station_seconds );
         }
+    } else if( drone_type == "military_suicide" ) {
+        add_msg( _( "You authorize military explosive FPV launch.  %1$s reports ETA %2$d seconds, planned time on station %3$d seconds, and recovery %4$d seconds after return." ),
+                 operator_npc->disp_name(), outbound_seconds, station_seconds, return_seconds );
     } else {
         add_msg( _( "You authorize FPV launch.  %1$s reports ETA %2$d seconds, planned time on station %3$d seconds, and recovery %4$d seconds after return." ),
                  operator_npc->disp_name(), outbound_seconds, station_seconds, return_seconds );
@@ -7118,6 +7149,13 @@ talk_effect_fun_t::func f_request_fpv_scout_launch()
 {
     return []( dialogue const & d ) {
         request_fpv_launch( d, "scout" );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_military_launch()
+{
+    return []( dialogue const & d ) {
+        request_fpv_launch( d, "military_suicide" );
     };
 }
 
@@ -7233,7 +7271,7 @@ talk_effect_fun_t::func f_request_fpv_attack()
             clear_fpv_mission( *operator_npc );
             return;
         }
-        if( active_fpv_drone_type( *operator_npc ) != "suicide" ) {
+        if( !active_fpv_drone_is_suicide( *operator_npc ) ) {
             add_msg( _( "%s reports the active drone is not configured for terminal attack." ),
                      operator_npc->disp_name() );
             return;
@@ -7275,7 +7313,11 @@ talk_effect_fun_t::func f_request_fpv_attack()
         const double cep = std::max( 1.0, 15.0 - vehicle_skill ) *
                            ( fixed_point_attack ? 0.4 : 1.0 ) * light_multiplier;
         const tripoint_abs_ms impact_abs = apply_circular_cep( target_abs, cep );
-        explosion_data drone_explosion( 300.0f, 0.8f, false, shrapnel_data( 400 ) );
+        const bool military_explosive_drone =
+            active_fpv_drone_type( *operator_npc ) == "military_suicide";
+        const explosion_data drone_explosion = military_explosive_drone ?
+                                               explosion_data( 920.0f, 0.8f, false, shrapnel_data( 400, 0.4f ) ) :
+                                               explosion_data( 300.0f, 0.8f, false, shrapnel_data( 400 ) );
 
         get_timed_events().add( timed_event_type::EXPLOSION,
                                 calendar::turn + time_duration::from_seconds( time_to_target ),
@@ -10414,6 +10456,10 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     }
     if( effect_id == "request_fpv_scout_launch" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_scout_launch() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_military_launch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_military_launch() ) );
         return;
     }
     if( effect_id == "request_fpv_baba_yaga_launch" ) {
