@@ -333,6 +333,24 @@
         "name": { "str": "mortar container" },
         "weight": 0,
         "description": "A long, thick cylindrical container.  Dark, shabby surface has printed:\nCOMP B\nB643\nCARTRIDGE 60MM HE\nW/FUZE PD M783\nFOR M224 MORTAR"
+      },
+      {
+        "id": "ammunition_tube_mortar_m769",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical container.  Its olive-drab surface has printed:\nCARTRIDGE 60MM PRACTICE\nM769\nFULL RANGE\nFOR M224 MORTAR"
+      },
+      {
+        "id": "ammunition_tube_mortar_m722",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical container.  Its olive-drab surface has printed:\nCARTRIDGE 60MM WHITE SMOKE\nM722\nFOR M224 MORTAR"
+      },
+      {
+        "id": "ammunition_tube_mortar_m721",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical container.  Its olive-drab surface has printed:\nCARTRIDGE 60MM ILLUM\nM721\nFOR M224 MORTAR"
       }
     ]
   },
