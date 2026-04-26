@@ -1380,6 +1380,7 @@
     "components": [
       [ [ "ai_module", 1 ] ],
       [ [ "sensor_module", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
       [ [ "directed_floodlight", 3 ] ],
       [ [ "small_storage_battery", 1 ] ],
       [ [ "power_supply", 1 ] ],
@@ -1609,6 +1610,7 @@
       [ [ "plut_cell", 1 ] ],
       [ [ "broken_manhack", 4 ] ],
       [ [ "omnicamera", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
       [ [ "storage_battery", 1 ] ]
     ]
   },

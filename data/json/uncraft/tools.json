@@ -207,6 +207,23 @@
     "components": [ [ [ "plastic_chunk", 4 ] ], [ [ "lens", 1 ] ], [ [ "lens_small", 1 ] ] ]
   },
   {
+    "result": "goggles_ir",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "skill_used": "electronics",
+    "difficulty": 4,
+    "time": "20 m",
+    "using": [ [ "soldering_standard", 20 ] ],
+    "qualities": [ { "id": "SCREW", "level": 1 } ],
+    "components": [
+      [ [ "goggles_nv", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
+      [ [ "processor", 1 ] ],
+      [ [ "amplifier", 1 ] ],
+      [ [ "cable", 8 ] ]
+    ]
+  },
+  {
     "result": "fishing_rod_professional",
     "type": "uncraft",
     "activity_level": "LIGHT_EXERCISE",
