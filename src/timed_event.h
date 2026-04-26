@@ -38,6 +38,13 @@ enum class timed_event_type : int {
     MORTAR_FIRE_MESSAGE,
     MORTAR_IMPACT_MESSAGE,
     MORTAR_FIELD,
+    FPV_DRONE_ARRIVAL_MESSAGE,
+    FPV_DRONE_STATUS_MESSAGE,
+    FPV_DRONE_RETURN_MESSAGE,
+    FPV_DRONE_RECOVERED_MESSAGE,
+    FPV_DRONE_LOST_MESSAGE,
+    FPV_DRONE_IMPACT_MESSAGE,
+    FPV_DRONE_PAYLOAD_DROP,
     NUM_TIMED_EVENT_TYPES
 };
 
@@ -112,6 +119,7 @@ class timed_event_manager
         timed_event *get( timed_event_type type );
         timed_event *get( timed_event_type type, const std::string &key );
         std::list<timed_event> const &get_all() const;
+        void remove( timed_event_type type, const std::string &key );
         void set_all( const std::string &key, time_duration time_in_future );
         /// Process all queued events, potentially altering the game state and
         /// modifying the event queue.

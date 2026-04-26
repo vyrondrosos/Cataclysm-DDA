@@ -458,6 +458,12 @@
         "weight": 0,
         "description": "A big metal crate.  On one side it has label \"EXPLOSIVE\", and on another is written:\n<color_yellow>6 RDS 84MM HEDP</color>",
         "//": "found no docs for HEDP crates, hence copy the hedp"
+      },
+      {
+        "id": "ammunition_box_drone_hardcases",
+        "name": { "str": "drone hardcase crate" },
+        "weight": 0,
+        "description": "A big metal crate.  One side is marked:\n<color_yellow>UNMANNED AIRCRAFT SYSTEM\nFIELD HARDCASES</color>"
       }
     ]
   },
