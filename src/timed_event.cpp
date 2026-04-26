@@ -73,20 +73,38 @@ static const ter_str_id ter_t_water_sh( "t_water_sh" );
 
 static const trap_str_id tr_landmine( "tr_landmine" );
 
-static int round_to_nearest_10( const double value )
+static int round_to_nearest( const double value, const int quantum )
 {
-    return static_cast<int>( std::round( value / 10.0 ) ) * 10;
+    const int step = std::max( 1, quantum );
+    return std::max( 0, static_cast<int>( std::round( value / step ) ) * step );
 }
 
-static std::optional<tripoint_abs_ms> parse_mortar_target_key( const std::string &key )
+struct mortar_impact_key {
+    tripoint_abs_ms target = tripoint_abs_ms::invalid;
+    std::optional<int> drone_pilot_skill;
+};
+
+static std::optional<mortar_impact_key> parse_mortar_impact_key( const std::string &key )
 {
+    const size_t separator = key.find( '|' );
+    const std::string target_key = key.substr( 0, separator );
+
     int x = 0;
     int y = 0;
     int z = 0;
-    if( std::sscanf( key.c_str(), "%d,%d,%d", &x, &y, &z ) != 3 ) {
+    if( std::sscanf( target_key.c_str(), "%d,%d,%d", &x, &y, &z ) != 3 ) {
         return std::nullopt;
     }
-    return tripoint_abs_ms( x, y, z );
+
+    mortar_impact_key parsed;
+    parsed.target = tripoint_abs_ms( x, y, z );
+    if( separator != std::string::npos ) {
+        int pilot_skill = 0;
+        if( std::sscanf( key.c_str() + separator + 1, "%d", &pilot_skill ) == 1 ) {
+            parsed.drone_pilot_skill = std::clamp( pilot_skill, 0, 10 );
+        }
+    }
+    return parsed;
 }
 
 static void apply_mortar_field( map &target_map, const tripoint_abs_ms &center_abs,
@@ -398,15 +416,24 @@ void timed_event::actualize()
             break;
 
         case timed_event_type::MORTAR_IMPACT_MESSAGE: {
-            const std::optional<tripoint_abs_ms> target = parse_mortar_target_key( key );
-            if( !target ) {
+            const std::optional<mortar_impact_key> report = parse_mortar_impact_key( key );
+            if( !report ) {
                 debugmsg( "Mortar impact message missing target key: %s", key );
                 break;
             }
 
-            const int dx = map_square.x() - target->x();
-            const int dy = map_square.y() - target->y();
-            const int miss_distance = round_to_nearest_10( std::hypot( dx, dy ) );
+            const int dx = map_square.x() - report->target.x();
+            const int dy = map_square.y() - report->target.y();
+            const std::optional<int> drone_pilot_skill = report->drone_pilot_skill;
+            int miss_quantization = 10;
+            if( drone_pilot_skill ) {
+                if( *drone_pilot_skill >= 8 ) {
+                    miss_quantization = 5;
+                } else if( *drone_pilot_skill < 4 ) {
+                    miss_quantization = 20;
+                }
+            }
+            const int miss_distance = round_to_nearest( std::hypot( dx, dy ), miss_quantization );
             const bool in_bubble = here.inbounds( map_square );
             const int player_distance = rl_dist( player_character.pos_abs(), map_square );
             const std::string cue = !in_bubble ? _( "heard in the far distance" ) :
@@ -415,14 +442,37 @@ void timed_event::actualize()
             const std::string recipient = string_id.empty() ? _( "the mortar team" ) : string_id;
 
             if( miss_distance == 0 ) {
-                add_msg( m_info, _( "You radio back to %1$s: \"Splash %2$s, on target.\"" ),
-                         recipient, cue );
+                if( drone_pilot_skill ) {
+                    add_msg( m_info, _( "Over the radio, drone spotter relays to %1$s: \"Splash %2$s, on target.\"" ),
+                             recipient, cue );
+                } else {
+                    add_msg( m_info, _( "You radio back to %1$s: \"Splash %2$s, on target.\"" ),
+                             recipient, cue );
+                }
             } else {
                 const std::string miss_direction = direction_name( direction_from( point::zero,
                                                    point( dx, dy ) ) );
-                add_msg( m_info,
-                         _( "You radio back to %1$s: \"Splash %2$s, about %3$d meters %4$s of target.\"" ),
-                         recipient, cue, miss_distance, miss_direction );
+                if( drone_pilot_skill ) {
+                    if( *drone_pilot_skill >= 8 ) {
+                        const std::string correction_direction = direction_name( direction_from( point::zero,
+                                                               point( -dx, -dy ) ) );
+                        add_msg( m_info,
+                                 _( "Over the radio, drone spotter relays to %1$s: \"Splash %2$s, %3$d meters %4$s of target; correct %3$d meters %5$s.\"" ),
+                                 recipient, cue, miss_distance, miss_direction, correction_direction );
+                    } else if( *drone_pilot_skill >= 4 ) {
+                        add_msg( m_info,
+                                 _( "Over the radio, drone spotter relays to %1$s: \"Splash %2$s, about %3$d meters %4$s of target.\"" ),
+                                 recipient, cue, miss_distance, miss_direction );
+                    } else {
+                        add_msg( m_info,
+                                 _( "Over the radio, drone spotter relays to %1$s: \"Splash %2$s, target miss %3$s.\"" ),
+                                 recipient, cue, miss_direction );
+                    }
+                } else {
+                    add_msg( m_info,
+                             _( "You radio back to %1$s: \"Splash %2$s, about %3$d meters %4$s of target.\"" ),
+                             recipient, cue, miss_distance, miss_direction );
+                }
             }
         }
         break;

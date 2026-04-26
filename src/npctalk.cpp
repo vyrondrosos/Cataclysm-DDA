@@ -6009,11 +6009,22 @@ static std::string encode_mortar_target_key( const tripoint_abs_ms &target )
     return string_format( "%d,%d,%d", target.x(), target.y(), target.z() );
 }
 
+static std::string encode_mortar_impact_key( const tripoint_abs_ms &target,
+        const std::optional<int> &drone_pilot_skill )
+{
+    if( drone_pilot_skill ) {
+        return string_format( "%d,%d,%d|%d", target.x(), target.y(), target.z(), *drone_pilot_skill );
+    }
+    return encode_mortar_target_key( target );
+}
+
 static void practice_mortar_shot( npc &gunner )
 {
     SkillLevel &launcher = gunner.get_skill_level_object( skill_launcher );
     launcher.set_exercise( launcher.exercise() + 1 );
 }
+
+static std::optional<int> mortar_drone_spotter_skill();
 
 talk_effect_fun_t::func f_assign_mortar()
 {
@@ -6162,11 +6173,12 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
         return;
     }
 
-    const int max_range_ms = 2000;
+    const int max_range_ms = 3500;
     map &here = get_map();
     std::optional<tripoint_abs_ms> target_abs_ms;
     const std::optional<tripoint_abs_ms> previous_target = get_mortar_last_target( *gunner );
     const int launcher_skill = gunner->get_skill_level( skill_launcher );
+    const std::optional<int> drone_pilot_skill = mortar_drone_spotter_skill();
 
     if( repeat_target ) {
         if( !previous_target ) {
@@ -6210,7 +6222,7 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     }
 
     if( rl_dist( *mortar_abs, *target_abs_ms ) > max_range_ms ) {
-        add_msg( _( "Target is outside the 2 km fire mission range." ) );
+        add_msg( _( "Target is outside the 3.5 km fire mission range." ) );
         return;
     }
     if( rl_dist( *mortar_abs, *target_abs_ms ) <= MAX_VIEW_DISTANCE ) {
@@ -6219,9 +6231,17 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     }
 
     double cep = get_mortar_current_cep( *gunner );
-    const double minimum_cep = mortar_minimum_cep( launcher_skill );
+    double minimum_cep = mortar_minimum_cep( launcher_skill );
+    if( drone_pilot_skill ) {
+        minimum_cep *= 0.7;
+    }
     if( repeat_target ) {
-        cep = std::max( minimum_cep, cep * mortar_repeat_cep_multiplier( launcher_skill ) );
+        double repeat_multiplier = mortar_repeat_cep_multiplier( launcher_skill );
+        if( drone_pilot_skill ) {
+            const double spotter_bonus = std::max( 0.0, 1.0 - *drone_pilot_skill * 0.1 );
+            repeat_multiplier *= spotter_bonus;
+        }
+        cep = std::max( minimum_cep, cep * repeat_multiplier );
     } else if( previous_target ) {
         double retarget_factor = 3.0 - launcher_skill / 5.0;
         const int close_target_distance = 50 + 5 * launcher_skill;
@@ -6283,7 +6303,8 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     get_timed_events().add( timed_event_type::MORTAR_FIRE_MESSAGE, calendar::turn + 10_seconds, -1,
                             impact_abs_ms, -1, gunner->disp_name(), "" );
     get_timed_events().add( timed_event_type::MORTAR_IMPACT_MESSAGE, calendar::turn + 41_seconds, -1,
-                            impact_abs_ms, -1, gunner->disp_name(), encode_mortar_target_key( *target_abs_ms ) );
+                            impact_abs_ms, -1, gunner->disp_name(),
+                            encode_mortar_impact_key( *target_abs_ms, drone_pilot_skill ) );
     set_mortar_last_target( *gunner, *target_abs_ms );
     set_mortar_current_cep( *gunner, cep );
     practice_mortar_shot( *gunner );
@@ -6723,6 +6744,27 @@ static bool require_fpv_on_station( npc &operator_npc )
         return false;
     }
     return true;
+}
+
+static std::optional<int> mortar_drone_spotter_skill()
+{
+    int best_skill = -1;
+    for( npc *operator_npc : g->get_npcs_if( []( const npc & guy ) {
+        return guy.is_player_ally() && guy.get_value( "fpv_assignment" ).str() == "operator";
+    } ) ) {
+        reconcile_fpv_mission( *operator_npc );
+        if( operator_npc->get_value( "fpv_status" ).str() != "on_station" ) {
+            continue;
+        }
+        if( !active_fpv_drone_has_scout_package( *operator_npc ) ) {
+            continue;
+        }
+        best_skill = std::max( best_skill, static_cast<int>( operator_npc->get_skill_level( skill_driving ) ) );
+    }
+    if( best_skill < 0 ) {
+        return std::nullopt;
+    }
+    return best_skill;
 }
 
 static tripoint_abs_ms apply_circular_cep( const tripoint_abs_ms &target, const double cep )
