@@ -16,76 +16,14 @@
       { "text": "Please go to this location.", "topic": "TALK_GOTO_LOCATION", "effect": "goto_location" },
       { "text": "There's something I want you to do.", "topic": "TALK_Liam_ORDERS" },
       {
-        "text": "Fire one mortar round at a target I designate.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_mortar_fire"
+        "text": "Mortar fire support.",
+        "condition": { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] },
+        "topic": "TALK_NPC_MORTAR_SUPPORT"
       },
       {
-        "text": "Repeat the last mortar fire mission.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_mortar_repeat_fire"
-      },
-      {
-        "text": "Switch mortar ammunition.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "select_mortar_ammo"
-      },
-      {
-        "text": "Launch an FPV drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_launch"
-      },
-      {
-        "text": "Launch a military explosive FPV drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_military_launch"
-      },
-      {
-        "text": "Launch a scout drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_scout_launch"
-      },
-      {
-        "text": "Launch a bomber drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_baba_yaga_launch"
-      },
-      {
-        "text": "Commit the airborne FPV drone to one-way loiter.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_one_way"
-      },
-      {
-        "text": "Command the airborne FPV drone to attack.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_attack"
-      },
-      {
-        "text": "Drop the bomber drone payload.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_payload_drop"
-      },
-      {
-        "text": "Task the airborne drone to scout a point.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_scout"
-      },
-      {
-        "text": "Patch through the drone scout feed.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_scout_report"
+        "text": "Drone support.",
+        "condition": { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
+        "topic": "TALK_NPC_DRONE_SUPPORT"
       },
       { "text": "I'd like your opinion on a job we're doing.", "topic": "TALK_Liam_Opinions" },
       {

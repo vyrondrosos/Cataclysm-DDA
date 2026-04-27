@@ -79,9 +79,23 @@ static int round_to_nearest( const double value, const int quantum )
     return std::max( 0, static_cast<int>( std::round( value / step ) ) * step );
 }
 
+static std::string format_fpv_duration( int seconds )
+{
+    const int clamped = std::max( 0, seconds );
+    if( clamped > 60 ) {
+        return string_format( "%d:%02d", clamped / 60, clamped % 60 );
+    }
+    return string_format( n_gettext( "%d second", "%d seconds", clamped ), clamped );
+}
+
 struct mortar_impact_key {
     tripoint_abs_ms target = tripoint_abs_ms::invalid;
     std::optional<int> drone_pilot_skill;
+};
+
+struct fpv_payload_drop_data {
+    std::string payload_id;
+    std::string operator_name;
 };
 
 static std::optional<mortar_impact_key> parse_mortar_impact_key( const std::string &key )
@@ -103,6 +117,19 @@ static std::optional<mortar_impact_key> parse_mortar_impact_key( const std::stri
         if( std::sscanf( key.c_str() + separator + 1, "%d", &pilot_skill ) == 1 ) {
             parsed.drone_pilot_skill = std::clamp( pilot_skill, 0, 10 );
         }
+    }
+    return parsed;
+}
+
+static fpv_payload_drop_data parse_fpv_payload_drop_string_id( const std::string &string_id )
+{
+    fpv_payload_drop_data parsed;
+    const size_t separator = string_id.find( '\n' );
+    if( separator == std::string::npos ) {
+        parsed.payload_id = string_id;
+    } else {
+        parsed.payload_id = string_id.substr( 0, separator );
+        parsed.operator_name = string_id.substr( separator + 1 );
     }
     return parsed;
 }
@@ -164,6 +191,16 @@ static void place_live_fpv_payload( map &target_map, const itype_id &payload_id,
     }
 
     item payload( payload_id, calendar::turn, 1 );
+    if( payload.ammo_data() && !payload.ammo_data()->ammo->drop.is_null() ) {
+        const bool drop_active = payload.ammo_data()->ammo->drop_active;
+        payload = item( payload.ammo_data()->ammo->drop, calendar::turn, 1 );
+        if( drop_active ) {
+            payload.activate();
+        }
+        target_map.add_item_or_charges( impact, payload, true );
+        return;
+    }
+
     if( payload_id.obj().transform_into ) {
         payload_id.obj().transform_into.value().transform( nullptr, payload, true );
     } else {
@@ -503,35 +540,35 @@ void timed_event::actualize()
 
         case timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE:
             if( string_id.empty() ) {
-                add_msg( m_info, _( "Over the radio, you hear, \"Drone is on station.  Time on station: %d seconds.\"" ),
-                         strength );
+                add_msg( m_info, _( "Over the radio, you hear, \"Drone is on station.  Time on station: %s.\"" ),
+                         format_fpv_duration( strength ) );
             } else {
                 add_msg( m_info,
-                         _( "Over the radio, %1$s reports, \"Drone is on station.  Time on station: %2$d seconds.\"" ),
-                         string_id, strength );
+                         _( "Over the radio, %1$s reports, \"Drone is on station.  Time on station: %2$s.\"" ),
+                         string_id, format_fpv_duration( strength ) );
             }
             break;
 
         case timed_event_type::FPV_DRONE_STATUS_MESSAGE:
             if( string_id.empty() ) {
-                add_msg( m_info, _( "Over the radio, you hear, \"Drone station time remaining: %d seconds.\"" ),
-                         strength );
+                add_msg( m_info, _( "Over the radio, you hear, \"Drone station time remaining: %s.\"" ),
+                         format_fpv_duration( strength ) );
             } else {
                 add_msg( m_info,
-                         _( "Over the radio, %1$s reports, \"Drone station time remaining: %2$d seconds.\"" ),
-                         string_id, strength );
+                         _( "Over the radio, %1$s reports, \"Drone station time remaining: %2$s.\"" ),
+                         string_id, format_fpv_duration( strength ) );
             }
             break;
 
         case timed_event_type::FPV_DRONE_RETURN_MESSAGE:
             if( string_id.empty() ) {
                 add_msg( m_info,
-                         _( "Over the radio, you hear, \"Drone is bingo battery and returning.  Recovery ETA: %d seconds.\"" ),
-                         strength );
+                         _( "Over the radio, you hear, \"Drone is bingo battery and returning.  Recovery ETA: %s.\"" ),
+                         format_fpv_duration( strength ) );
             } else {
                 add_msg( m_info,
-                         _( "Over the radio, %1$s reports, \"Drone is bingo battery and returning.  Recovery ETA: %2$d seconds.\"" ),
-                         string_id, strength );
+                         _( "Over the radio, %1$s reports, \"Drone is bingo battery and returning.  Recovery ETA: %2$s.\"" ),
+                         string_id, format_fpv_duration( strength ) );
             }
             break;
 
@@ -575,9 +612,10 @@ void timed_event::actualize()
             const std::string cue = !in_bubble ? _( "in the far distance" ) :
                                     player_distance > MAX_VIEW_DISTANCE ? _( "in the distance" ) :
                                     _( "nearby" );
-            const itype_id payload_id( string_id );
+            const fpv_payload_drop_data payload_data = parse_fpv_payload_drop_string_id( string_id );
+            const itype_id payload_id( payload_data.payload_id );
             if( !payload_id.is_valid() ) {
-                debugmsg( "FPV payload drop event has invalid payload: %s", string_id );
+                debugmsg( "FPV payload drop event has invalid payload: %s", payload_data.payload_id );
                 break;
             }
 
@@ -594,11 +632,13 @@ void timed_event::actualize()
                 }
             }
 
-            if( key.empty() ) {
+            const std::string &speaker = payload_data.operator_name.empty() ? key :
+                                         payload_data.operator_name;
+            if( speaker.empty() ) {
                 add_msg( m_info, _( "A drone payload drops %s." ), cue );
             } else {
                 add_msg( m_info, _( "%1$s radios, \"Payload away.\"  A drone payload drops %2$s." ),
-                         key, cue );
+                         speaker, cue );
             }
         }
         break;

@@ -52,88 +52,14 @@
       },
       { "text": "Please go to this location.", "topic": "TALK_GOTO_LOCATION", "effect": "goto_location" },
       {
-        "text": "Man the nearby mortar and take these rounds.",
-        "condition": { "and": [ { "not": "is_by_radio" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
-        "topic": "TALK_DONE",
-        "effect": "assign_mortar"
+        "text": "Mortar fire support.",
+        "condition": { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] },
+        "topic": "TALK_NPC_MORTAR_SUPPORT"
       },
       {
-        "text": "Set up as a drone operator and take these drones.",
-        "condition": { "and": [ { "not": "is_by_radio" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
-        "topic": "TALK_DONE",
-        "effect": "assign_fpv_drone_operator"
-      },
-      {
-        "text": "Fire one mortar round at a target I designate.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_mortar_fire"
-      },
-      {
-        "text": "Repeat the last mortar fire mission.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_mortar_repeat_fire"
-      },
-      {
-        "text": "Switch mortar ammunition.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "select_mortar_ammo"
-      },
-      {
-        "text": "Launch an FPV drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_launch"
-      },
-      {
-        "text": "Launch a military explosive FPV drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_military_launch"
-      },
-      {
-        "text": "Launch a scout drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_scout_launch"
-      },
-      {
-        "text": "Launch a bomber drone to my position.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_baba_yaga_launch"
-      },
-      {
-        "text": "Commit the airborne FPV drone to one-way loiter.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_one_way"
-      },
-      {
-        "text": "Command the airborne FPV drone to attack.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_attack"
-      },
-      {
-        "text": "Drop the bomber drone payload.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_payload_drop"
-      },
-      {
-        "text": "Task the airborne drone to scout a point.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_scout"
-      },
-      {
-        "text": "Patch through the drone scout feed.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_fpv_scout_report"
+        "text": "Drone support.",
+        "condition": { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
+        "topic": "TALK_NPC_DRONE_SUPPORT"
       },
       { "text": "There's something I want you to do.", "topic": "TALK_ALLY_ORDERS" },
       { "text": "I just wanted to talk for a bit.", "topic": "TALK_ALLY_SOCIAL" },
@@ -160,7 +86,7 @@
     "responses": [
       {
         "text": "Fire one mortar round at a target I designate.",
-        "condition": { "and": [ "is_by_radio", { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
+        "condition": { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] },
         "topic": "TALK_DONE",
         "effect": "request_mortar_fire"
       },
@@ -168,7 +94,6 @@
         "text": "Repeat the last mortar fire mission.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] },
             { "compare_string": [ "yes", { "npc_val": "mortar_has_target" } ] }
           ]
@@ -178,11 +103,23 @@
       },
       {
         "text": "Switch mortar ammunition.",
-        "condition": { "and": [ "is_by_radio", { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
+        "condition": { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] },
         "topic": "TALK_DONE",
         "effect": "select_mortar_ammo"
       },
-      { "text": "Back to the radio menu.", "topic": "TALK_NONE" },
+      {
+        "text": "Manage mortar support equipment.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
+        "topic": "TALK_DONE",
+        "effect": "manage_mortar_support_inventory"
+      },
+      {
+        "text": "Stand down from mortar duty and follow me.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
+        "topic": "TALK_DONE",
+        "effect": "unassign_mortar"
+      },
+      { "text": "Back to main menu.", "topic": "TALK_NONE" },
       { "text": "<lets_go>", "topic": "TALK_DONE" }
     ]
   },
@@ -195,7 +132,6 @@
         "text": "Launch a suicide FPV drone to my position.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
             { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
             { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
@@ -209,7 +145,6 @@
         "text": "Launch a military explosive FPV drone to my position.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
             { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
             { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
@@ -223,7 +158,6 @@
         "text": "Launch a scout drone to my position.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
             { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
             { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
@@ -237,7 +171,6 @@
         "text": "Launch a bomber drone to my position.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
             { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
             { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
@@ -248,10 +181,9 @@
         "effect": "request_fpv_baba_yaga_launch"
       },
       {
-        "text": "Commit the airborne FPV drone to one-way loiter.",
+        "text": "Ignore bingo fuel, stay on station. (warning: this will cause the drone to be lost when battery runs out)",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
             { "not": { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] } }
           ]
@@ -260,10 +192,31 @@
         "effect": "request_fpv_one_way"
       },
       {
+        "text": "Abort and return on bingo fuel.",
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] }
+          ]
+        },
+        "topic": "TALK_DONE",
+        "effect": "request_fpv_abort_one_way"
+      },
+      {
+        "text": "Recover the drone now.",
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            { "not": { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] } }
+          ]
+        },
+        "topic": "TALK_DONE",
+        "effect": "request_fpv_recover"
+      },
+      {
         "text": "Command the airborne FPV drone to attack.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
             { "compare_string": [ "suicide", { "npc_val": "fpv_drone_type" } ] }
           ]
@@ -275,10 +228,8 @@
         "text": "Drop the bomber drone payload.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
-            { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] },
-            { "math": [ "n_val('fpv_payload_loaded_count') > 0" ] }
+            { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] }
           ]
         },
         "topic": "TALK_DONE",
@@ -288,7 +239,6 @@
         "text": "Task the airborne drone to scout a point.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
             {
               "or": [
@@ -303,7 +253,7 @@
       },
       {
         "text": "Give me the drone scout report.",
-        "condition": { "and": [ "is_by_radio", { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] } ] },
+        "condition": { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
         "topic": "TALK_DONE",
         "effect": "request_fpv_scout_report"
       },
@@ -311,7 +261,6 @@
         "text": "Give me the thermal drone scout report.",
         "condition": {
           "and": [
-            "is_by_radio",
             { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
             {
               "or": [
@@ -324,7 +273,19 @@
         "topic": "TALK_DONE",
         "effect": "request_fpv_thermal_scout_report"
       },
-      { "text": "Back to the radio menu.", "topic": "TALK_NONE" },
+      {
+        "text": "Manage drone support equipment.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] } ] },
+        "topic": "TALK_DONE",
+        "effect": "manage_fpv_support_inventory"
+      },
+      {
+        "text": "Stand down from drone duty and follow me.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] } ] },
+        "topic": "TALK_DONE",
+        "effect": "unassign_fpv_drone_operator"
+      },
+      { "text": "Back to main menu.", "topic": "TALK_NONE" },
       { "text": "<lets_go>", "topic": "TALK_DONE" }
     ]
   },

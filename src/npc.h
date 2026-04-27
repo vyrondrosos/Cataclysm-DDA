@@ -1613,6 +1613,8 @@ class npc : public Character
         time_duration companion_mission_travel_time = 0_hours;
         //Inventory that is added and dropped on mission
         inventory companion_mission_inv;
+        // Equipment reserved for active support duties; not carried for weight/encumbrance.
+        inventory support_inv;
         npc_mission mission = NPC_MISSION_NULL;
         npc_mission previous_mission = NPC_MISSION_NULL;
         // Personality & other defining characteristics
