@@ -4137,6 +4137,15 @@ int npc::get_thirst() const
 
 std::string npc::describe_mission() const
 {
+    if( get_value( "mortar_assignment" ).str() == "m224" ) {
+        return string_format( _( "Currently, I'm manning a mortar.  Overall, %s" ),
+                              myclass.obj().get_job_description() );
+    }
+    if( get_value( "fpv_assignment" ).str() == "operator" ) {
+        return string_format( _( "Currently, I'm assigned to drone control.  Overall, %s" ),
+                              myclass.obj().get_job_description() );
+    }
+
     switch( mission ) {
         case NPC_MISSION_SHELTER:
             return string_format( _( "I'm holing up here for safety.  Long term, %s" ),
@@ -4246,5 +4255,4 @@ std::unique_ptr<talker> get_talker_for( npc *guy )
 {
     return std::make_unique<talker_npc>( guy );
 }
-
 

@@ -831,7 +831,7 @@
         "fire_protection": true,
         "max_contains_volume": "16 L",
         "max_contains_weight": "30 kg",
-        "max_item_length": "48 cm",
+        "max_item_length": "50 cm",
         "moves": 200
       }
     ],

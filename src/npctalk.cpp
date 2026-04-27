@@ -79,6 +79,7 @@
 #include "input_popup.h"
 #include "inventory.h"
 #include "inventory_ui.h"
+#include "iuse_actor.h"
 #include "item.h"
 #include "item_category.h"
 #include "item_group.h"
@@ -6051,8 +6052,21 @@ static void assign_support_station( npc &operator_npc, const std::string &statio
     if( operator_npc.has_player_activity() ) {
         operator_npc.revert_after_activity();
     }
+    if( operator_npc.get_value( station_key ).str() != "yes" ) {
+        std::string previous_topic = operator_npc.chatbin.first_topic;
+        if( operator_npc.is_player_ally() &&
+            previous_topic.rfind( "TALK_STRANGER_", 0 ) == 0 ) {
+            previous_topic = operator_npc.chatbin.talk_friend;
+        }
+        operator_npc.set_value( station_key + "_previous_attitude",
+                                static_cast<int>( operator_npc.get_attitude() ) );
+        operator_npc.set_value( station_key + "_previous_mission",
+                                static_cast<int>( operator_npc.mission ) );
+        operator_npc.set_value( station_key + "_previous_topic", previous_topic );
+    }
     operator_npc.set_attitude( NPCATT_NULL );
     operator_npc.set_mission( NPC_MISSION_GUARD_ALLY );
+    operator_npc.chatbin.first_topic = operator_npc.chatbin.talk_friend_guard;
     operator_npc.guard_pos = operator_npc.pos_abs();
     operator_npc.set_ai_guard_pos( operator_npc.pos_abs() );
     operator_npc.goal = npc::no_goal_point;
@@ -6071,8 +6085,32 @@ static void clear_support_station( npc &operator_npc, const std::string &station
         return;
     }
     operator_npc.set_value( station_key, "" );
+    const int previous_attitude = diag_value_to_int(
+                                      operator_npc.get_value( station_key + "_previous_attitude" ),
+                                      static_cast<int>( NPCATT_FOLLOW ) );
+    const int previous_mission = diag_value_to_int(
+                                     operator_npc.get_value( station_key + "_previous_mission" ),
+                                     static_cast<int>( NPC_MISSION_NULL ) );
+    const std::string previous_topic = operator_npc.get_value(
+                                           station_key + "_previous_topic" ).str();
+    operator_npc.set_value( station_key + "_previous_attitude", "" );
+    operator_npc.set_value( station_key + "_previous_mission", "" );
+    operator_npc.set_value( station_key + "_previous_topic", "" );
     if( operator_npc.mission == NPC_MISSION_GUARD_ALLY ) {
-        operator_npc.set_mission( NPC_MISSION_NULL );
+        if( previous_attitude >= static_cast<int>( NPCATT_NULL ) &&
+            previous_attitude < static_cast<int>( NPCATT_END ) ) {
+            operator_npc.set_attitude( static_cast<npc_attitude>( previous_attitude ) );
+        } else {
+            operator_npc.set_attitude( NPCATT_FOLLOW );
+        }
+        if( previous_mission >= static_cast<int>( NPC_MISSION_NULL ) &&
+            previous_mission <= static_cast<int>( NPC_MISSION_CAMP_RESIDENT ) ) {
+            operator_npc.set_mission( static_cast<npc_mission>( previous_mission ) );
+        } else {
+            operator_npc.set_mission( NPC_MISSION_NULL );
+        }
+        operator_npc.chatbin.first_topic = previous_topic.empty() ? operator_npc.chatbin.talk_friend :
+                                           previous_topic;
         operator_npc.guard_pos = std::nullopt;
         operator_npc.clear_ai_guard_pos();
         operator_npc.goal = npc::no_goal_point;
@@ -6610,7 +6648,7 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
                  gunner->disp_name(), heading_text, static_cast<int>( std::round( cep ) ),
                  static_cast<int>( std::round( minor_cep ) ) );
     } else {
-        add_msg( _( "You transmit the fire mission.  %1$s reports expected heading %2$s degrees and CEP about %3$d meters.  Shot expected in 10 seconds; impact in 40 seconds." ),
+        add_msg( _( "You transmit the fire mission.  %1$s reports expected heading %2$s degrees and probable hit area about %3$d meters.  Shot expected in 10 seconds; impact in 40 seconds." ),
                  gunner->disp_name(), heading_text, static_cast<int>( std::round( cep ) ) );
     }
 }
@@ -6739,6 +6777,13 @@ static double fpv_drone_cruise_speed_meters_per_hour( const std::string &drone_t
     return 150000.0;
 }
 
+static int fpv_drone_launch_delay_seconds( const npc &operator_npc, const std::string &drone_type )
+{
+    const int base_delay = std::max( 0, 30 - 2 * static_cast<int>( operator_npc.get_skill_level(
+                                         skill_driving ) ) );
+    return drone_type == "baba_yaga" ? base_delay * 2 : base_delay;
+}
+
 static int current_turn_number()
 {
     return to_turn<int>( calendar::turn );
@@ -6777,12 +6822,26 @@ static bool fpv_payload_drops_active_item( const item &payload )
            !payload.ammo_data()->ammo->drop.is_null();
 }
 
+static const item_transformation *fpv_payload_arming_transform( const itype &payload_type )
+{
+    if( payload_type.transform_into ) {
+        return &payload_type.transform_into.value();
+    }
+    const use_function *transform_use = payload_type.get_use( "transform" );
+    if( transform_use == nullptr ) {
+        return nullptr;
+    }
+    const iuse_transform *transform_actor = dynamic_cast<const iuse_transform *>
+                                            ( transform_use->get_actor_ptr() );
+    return transform_actor != nullptr ? &transform_actor->transform : nullptr;
+}
+
 static bool is_fpv_baba_yaga_payload( const item &it )
 {
     if( it.typeId() == itype_landmine ) {
         return true;
     }
-    if( it.has_flag( json_flag_GRENADE ) && it.typeId().obj().transform_into ) {
+    if( it.has_flag( json_flag_GRENADE ) && fpv_payload_arming_transform( *it.type ) != nullptr ) {
         return true;
     }
     if( it.ammo_type() == ammotype_40x46mm &&
@@ -6901,6 +6960,27 @@ static void clear_fpv_scout( npc &operator_npc )
     operator_npc.set_value( "fpv_scout_x", 0 );
     operator_npc.set_value( "fpv_scout_y", 0 );
     operator_npc.set_value( "fpv_scout_z", 0 );
+    operator_npc.set_value( "fpv_scout_report_active", "no" );
+    operator_npc.set_value( "fpv_scout_report_x", 0 );
+    operator_npc.set_value( "fpv_scout_report_y", 0 );
+    operator_npc.set_value( "fpv_scout_report_z", 0 );
+}
+
+static bool fpv_scout_task_ready( const npc &operator_npc )
+{
+    return operator_npc.get_value( "fpv_scout_active" ).str() == "yes" &&
+           current_turn_number() >= get_fpv_turn_value( operator_npc, "fpv_scout_ready_turn" );
+}
+
+static void preserve_ready_fpv_scout_report( npc &operator_npc )
+{
+    if( !fpv_scout_task_ready( operator_npc ) ) {
+        return;
+    }
+    operator_npc.set_value( "fpv_scout_report_active", "yes" );
+    operator_npc.set_value( "fpv_scout_report_x", get_fpv_turn_value( operator_npc, "fpv_scout_x" ) );
+    operator_npc.set_value( "fpv_scout_report_y", get_fpv_turn_value( operator_npc, "fpv_scout_y" ) );
+    operator_npc.set_value( "fpv_scout_report_z", get_fpv_turn_value( operator_npc, "fpv_scout_z" ) );
 }
 
 static void clear_fpv_status_events( const std::string &mission_key )
@@ -7028,6 +7108,19 @@ static bool fpv_has_active_mission( npc &operator_npc )
     return status == "enroute" || status == "on_station" || status == "returning";
 }
 
+talk_effect_fun_t::func f_reconcile_fpv_mission()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to reconcile drone mission, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        reconcile_fpv_mission( *operator_npc );
+    };
+}
+
 static void schedule_fpv_status_messages( const npc &operator_npc, const tripoint_abs_ms &player_pos,
         const std::string &mission_key, const int first_offset_seconds, const int station_seconds_remaining,
         const int total_battery_seconds )
@@ -7146,6 +7239,23 @@ static double fpv_light_cep_multiplier( map &here, const tripoint_bub_ms &target
         return 2.0;
     }
     return 1.0;
+}
+
+static std::optional<tripoint_bub_ms> select_visible_fpv_target( const std::string &prompt )
+{
+    add_msg( m_info, prompt );
+    target_handler::trajectory trajectory = target_handler::mode_select_only( get_avatar(),
+                                            MAX_VIEW_DISTANCE );
+    if( trajectory.empty() ) {
+        return std::nullopt;
+    }
+    return trajectory.back();
+}
+
+static std::optional<tripoint_bub_ms> select_fixed_fpv_target( const std::string &prompt )
+{
+    add_msg( m_info, prompt );
+    return g->look_around();
 }
 
 static tripoint_bub_ms fpv_scout_top_position( map &here, const tripoint_bub_ms &target )
@@ -7524,9 +7634,11 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
         return;
     }
 
-    const int outbound_seconds = std::max( 1, static_cast<int>( std::ceil( distance * 3600.0 /
-                                    fpv_drone_cruise_speed_meters_per_hour( drone_type ) ) ) );
-    const int return_seconds = outbound_seconds;
+    const int cruise_seconds = std::max( 1, static_cast<int>( std::ceil( distance * 3600.0 /
+                                      fpv_drone_cruise_speed_meters_per_hour( drone_type ) ) ) );
+    const int outbound_seconds = cruise_seconds + fpv_drone_launch_delay_seconds( *operator_npc,
+                                 drone_type );
+    const int return_seconds = cruise_seconds;
     const int battery_seconds = fpv_drone_battery_seconds( drone_type );
     const int reserve_seconds = 20;
     const int cruise_budget = battery_seconds - outbound_seconds - return_seconds - reserve_seconds;
@@ -7895,12 +8007,13 @@ talk_effect_fun_t::func f_request_fpv_attack()
             return;
         }
 
-        add_msg( m_info, _( "Designate a visible FPV attack target." ) );
-        const std::optional<tripoint_bub_ms> target_bub = g->look_around();
+        const std::optional<tripoint_bub_ms> target_bub = target_mode == 0 ?
+                select_fixed_fpv_target( _( "Designate a fixed FPV attack point." ) ) :
+                select_visible_fpv_target( _( "Designate a visible FPV attack target." ) );
         if( !target_bub ) {
             return;
         }
-        if( !you.sees( here, *target_bub ) ) {
+        if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
             add_msg( _( "You need line of sight to designate that target." ) );
             return;
         }
@@ -7908,9 +8021,13 @@ talk_effect_fun_t::func f_request_fpv_attack()
         const bool fixed_point_attack = target_mode == 0;
         tripoint_abs_ms target_abs = here.get_abs( *target_bub );
         if( target_mode == 1 ) {
-            Creature *const target = get_creature_tracker().creature_at<Creature>( target_abs, true );
+            Creature *const target = get_creature_tracker().creature_at<Creature>( *target_bub, true );
             if( target == nullptr || target == &you ) {
                 add_msg( _( "There is no visible creature at that location." ) );
+                return;
+            }
+            if( !you.sees( here, target->pos_bub( here ) ) ) {
+                add_msg( _( "You need line of sight to designate that target." ) );
                 return;
             }
             target_abs = target->pos_abs();
@@ -7938,11 +8055,11 @@ talk_effect_fun_t::func f_request_fpv_attack()
         practice_fpv_expenditure( *operator_npc );
         clear_fpv_mission( *operator_npc );
         if( light_multiplier > 1.0 ) {
-            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s, estimated CEP %3$d meters after low-light correction." ),
+            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s, probable hit area %3$d meters, and notes the camera package is not built for this light." ),
                      operator_npc->disp_name(), format_fpv_duration( time_to_target ),
                      static_cast<int>( std::round( cep ) ) );
         } else {
-            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s, estimated CEP %3$d meters." ),
+            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s and probable hit area %3$d meters." ),
                      operator_npc->disp_name(), format_fpv_duration( time_to_target ),
                      static_cast<int>( std::round( cep ) ) );
         }
@@ -7971,6 +8088,7 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
             add_msg( _( "%s reports the bomber drone has no payload aboard." ), operator_npc->disp_name() );
             return;
         }
+        preserve_ready_fpv_scout_report( *operator_npc );
 
         map &here = get_map();
         avatar &you = get_avatar();
@@ -7981,21 +8099,26 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
             return;
         }
 
-        add_msg( m_info, _( "Designate a local bomber drone payload drop target." ) );
-        const std::optional<tripoint_bub_ms> target_bub = g->look_around();
+        const std::optional<tripoint_bub_ms> target_bub = target_mode == 0 ?
+                select_fixed_fpv_target( _( "Designate a fixed bomber drone payload drop point." ) ) :
+                select_visible_fpv_target( _( "Designate a local bomber drone payload drop target." ) );
         if( !target_bub ) {
             return;
         }
-        if( !you.sees( here, *target_bub ) ) {
+        if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
             add_msg( _( "You need line of sight to designate that drop target." ) );
             return;
         }
 
         tripoint_abs_ms target_abs = here.get_abs( *target_bub );
         if( target_mode == 1 ) {
-            Creature *const target = get_creature_tracker().creature_at<Creature>( target_abs, true );
+            Creature *const target = get_creature_tracker().creature_at<Creature>( *target_bub, true );
             if( target == nullptr || target == &you ) {
                 add_msg( _( "There is no visible creature at that location." ) );
+                return;
+            }
+            if( !you.sees( here, target->pos_bub( here ) ) ) {
+                add_msg( _( "You need line of sight to designate that drop target." ) );
                 return;
             }
             target_abs = target->pos_abs();
@@ -8019,7 +8142,7 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
                                 -1, impact_abs, -1, make_fpv_payload_drop_string_id( payload_id->str(),
                                         operator_npc->disp_name() ),
                                 operator_npc->get_value( "fpv_mission_key" ).str() );
-        add_msg( _( "You command bomber drone payload release.  %1$s reports drop in %2$s, estimated CEP %3$d meters, %4$d payload remaining." ),
+        add_msg( _( "You command bomber drone payload release.  %1$s reports drop in %2$s, probable hit area %3$d meters, %4$d payload remaining." ),
                  operator_npc->disp_name(), format_fpv_duration( delay_seconds ),
                  static_cast<int>( std::round( cep ) ), loaded_fpv_payload_count( *operator_npc ) );
     };
@@ -8038,6 +8161,7 @@ talk_effect_fun_t::func f_request_fpv_scout()
             !require_fpv_on_station( *operator_npc ) ) {
             return;
         }
+        preserve_ready_fpv_scout_report( *operator_npc );
 
         map &here = get_map();
         avatar &you = get_avatar();
@@ -8082,7 +8206,10 @@ talk_effect_fun_t::func f_request_fpv_scout_report( const bool thermal )
             !require_fpv_on_station( *operator_npc ) ) {
             return;
         }
-        if( operator_npc->get_value( "fpv_scout_active" ).str() != "yes" ) {
+        preserve_ready_fpv_scout_report( *operator_npc );
+        const bool has_pending_scout = operator_npc->get_value( "fpv_scout_active" ).str() == "yes";
+        const bool has_saved_report = operator_npc->get_value( "fpv_scout_report_active" ).str() == "yes";
+        if( !has_pending_scout && !has_saved_report ) {
             add_msg( _( "%s reports no drone scout feed has been tasked." ),
                      operator_npc->disp_name() );
             return;
@@ -8090,15 +8217,17 @@ talk_effect_fun_t::func f_request_fpv_scout_report( const bool thermal )
 
         const int now = current_turn_number();
         const int ready_turn = get_fpv_turn_value( *operator_npc, "fpv_scout_ready_turn" );
-        if( now < ready_turn ) {
+        if( has_pending_scout && now < ready_turn && !has_saved_report ) {
             add_msg( _( "%1$s reports the drone scout feed is still stabilizing, ETA %2$s." ),
                      operator_npc->disp_name(), format_fpv_duration( ready_turn - now ) );
             return;
         }
 
-        const tripoint_abs_ms scout_abs( get_fpv_turn_value( *operator_npc, "fpv_scout_x" ),
-                                         get_fpv_turn_value( *operator_npc, "fpv_scout_y" ),
-                                         get_fpv_turn_value( *operator_npc, "fpv_scout_z" ) );
+        const bool use_current_scout = has_pending_scout && now >= ready_turn;
+        const tripoint_abs_ms scout_abs(
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_x" : "fpv_scout_report_x" ),
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_y" : "fpv_scout_report_y" ),
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_z" : "fpv_scout_report_z" ) );
         const bool scout_drone = active_fpv_drone_has_scout_package( *operator_npc );
         if( thermal ) {
             add_msg( _( "%s feeds a thermal drone scout observation over the radio." ),
@@ -11116,6 +11245,10 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     }
     if( effect_id == "manage_fpv_support_inventory" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_manage_fpv_support_inventory() ) );
+        return;
+    }
+    if( effect_id == "reconcile_fpv_mission" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_reconcile_fpv_mission() ) );
         return;
     }
     if( effect_id == "request_fpv_launch" ) {

@@ -59,7 +59,8 @@
       {
         "text": "Drone support.",
         "condition": { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
-        "topic": "TALK_NPC_DRONE_SUPPORT"
+        "topic": "TALK_NPC_DRONE_SUPPORT",
+        "effect": "reconcile_fpv_mission"
       },
       { "text": "There's something I want you to do.", "topic": "TALK_ALLY_ORDERS" },
       { "text": "I just wanted to talk for a bit.", "topic": "TALK_ALLY_SOCIAL" },
@@ -218,7 +219,12 @@
         "condition": {
           "and": [
             { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
-            { "compare_string": [ "suicide", { "npc_val": "fpv_drone_type" } ] }
+            {
+              "or": [
+                { "compare_string": [ "suicide", { "npc_val": "fpv_drone_type" } ] },
+                { "compare_string": [ "military_suicide", { "npc_val": "fpv_drone_type" } ] }
+              ]
+            }
           ]
         },
         "topic": "TALK_DONE",
@@ -253,7 +259,12 @@
       },
       {
         "text": "Give me the drone scout report.",
-        "condition": { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
+        "condition": {
+          "or": [
+            { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
+            { "compare_string": [ "yes", { "npc_val": "fpv_scout_report_active" } ] }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_scout_report"
       },
@@ -261,7 +272,12 @@
         "text": "Give me the thermal drone scout report.",
         "condition": {
           "and": [
-            { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
+            {
+              "or": [
+                { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
+                { "compare_string": [ "yes", { "npc_val": "fpv_scout_report_active" } ] }
+              ]
+            },
             {
               "or": [
                 { "compare_string": [ "scout", { "npc_val": "fpv_drone_type" } ] },

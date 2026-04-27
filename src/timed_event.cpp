@@ -22,6 +22,7 @@
 #include "event_bus.h"
 #include "explosion.h"
 #include "game.h"
+#include "iuse_actor.h"
 #include "item.h"
 #include "itype.h"
 #include "line.h"
@@ -181,6 +182,20 @@ static bool detonate_fpv_payload_if_explosive( Creature *source, map &here, cons
     return detonated;
 }
 
+static const item_transformation *fpv_payload_arming_transform( const itype &payload_type )
+{
+    if( payload_type.transform_into ) {
+        return &payload_type.transform_into.value();
+    }
+    const use_function *transform_use = payload_type.get_use( "transform" );
+    if( transform_use == nullptr ) {
+        return nullptr;
+    }
+    const iuse_transform *transform_actor = dynamic_cast<const iuse_transform *>
+                                            ( transform_use->get_actor_ptr() );
+    return transform_actor != nullptr ? &transform_actor->transform : nullptr;
+}
+
 static void place_live_fpv_payload( map &target_map, const itype_id &payload_id,
                                     const tripoint_abs_ms &impact_abs )
 {
@@ -201,8 +216,8 @@ static void place_live_fpv_payload( map &target_map, const itype_id &payload_id,
         return;
     }
 
-    if( payload_id.obj().transform_into ) {
-        payload_id.obj().transform_into.value().transform( nullptr, payload, true );
+    if( const item_transformation *transform = fpv_payload_arming_transform( payload_id.obj() ) ) {
+        transform->transform( nullptr, payload, true );
     } else {
         payload.activate();
     }
