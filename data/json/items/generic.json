@@ -1866,6 +1866,22 @@
   },
   {
     "type": "ITEM",
+    "id": "flir_camera",
+    "symbol": ",",
+    "color": "dark_gray",
+    "name": { "str": "high-resolution infrared camera" },
+    "category": "spare_parts",
+    "description": "A rugged uncooled thermal-imaging camera module with long-focus optics and onboard image processing.  It is valuable for robotics, remote surveillance, and other applications where ordinary visible-light cameras are not enough.",
+    "price": "12000 USD",
+    "price_postapoc": "35 USD",
+    "material": [ "aluminum", "plastic", "glass" ],
+    "weight": "850 g",
+    "volume": "750 ml",
+    "flags": [ "ELECTRONIC" ],
+    "faults": [ { "fault_group": "electronic_general" } ]
+  },
+  {
+    "type": "ITEM",
     "id": "large_lcd_screen",
     "symbol": ",",
     "color": "dark_gray",
