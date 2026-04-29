@@ -16,22 +16,14 @@
       { "text": "Please go to this location.", "topic": "TALK_GOTO_LOCATION", "effect": "goto_location" },
       { "text": "There's something I want you to do.", "topic": "TALK_Liam_ORDERS" },
       {
-        "text": "Fire one mortar round at a target I designate.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_mortar_fire"
+        "text": "Mortar fire support.",
+        "condition": { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] },
+        "topic": "TALK_NPC_MORTAR_SUPPORT"
       },
       {
-        "text": "Repeat the last mortar fire mission.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "request_mortar_repeat_fire"
-      },
-      {
-        "text": "Switch mortar ammunition.",
-        "condition": "is_by_radio",
-        "topic": "TALK_DONE",
-        "effect": "select_mortar_ammo"
+        "text": "Drone support.",
+        "condition": { "compare_string": [ "operator", { "npc_val": "fpv_assignment" } ] },
+        "topic": "TALK_NPC_DRONE_SUPPORT"
       },
       { "text": "I'd like your opinion on a job we're doing.", "topic": "TALK_Liam_Opinions" },
       {
@@ -150,6 +142,12 @@
         "condition": { "and": [ { "not": "is_by_radio" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
         "topic": "TALK_DONE",
         "effect": "assign_mortar"
+      },
+      {
+        "text": "Set up as a drone operator and take these drones.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
+        "topic": "TALK_DONE",
+        "effect": "assign_fpv_drone_operator"
       },
       {
         "text": "Guard this position.",

@@ -462,6 +462,16 @@
     ]
   },
   {
+    "id": "ammunition_box_drone_hardcases",
+    "type": "ITEM",
+    "copy-from": "ammunition_box_carlgustav",
+    "category": "container",
+    "name": { "str": "drone hardcase crate" },
+    "description": "A big metal crate.  One side is marked:\n<color_yellow>UNMANNED AIRCRAFT SYSTEM\nFIELD HARDCASES</color>",
+    "variant_type": "generic",
+    "variants": [ { "id": "ammunition_box_drone_hardcases", "name": { "str": "drone hardcase crate" } } ]
+  },
+  {
     "id": "ammunition_crate_40x46_72",
     "type": "ITEM",
     "copy-from": "box_medium_wood",

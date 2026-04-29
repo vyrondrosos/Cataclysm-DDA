@@ -51,6 +51,7 @@
 #include "dialogue_chatbin.h"
 #include "dialogue_helpers.h"
 #include "dialogue_win.h"
+#include "effect.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enum_traits.h"
@@ -78,6 +79,7 @@
 #include "input_popup.h"
 #include "inventory.h"
 #include "inventory_ui.h"
+#include "iuse_actor.h"
 #include "item.h"
 #include "item_category.h"
 #include "item_group.h"
@@ -86,6 +88,7 @@
 #include "kill_tracker.h"
 #include "localized_comparator.h"
 #include "line.h"
+#include "lightmap.h"
 #include "magic.h"
 #include "magic_teleporter_list.h"
 #include "map.h"
@@ -166,29 +169,45 @@ static const activity_id ACT_TRAIN( "ACT_TRAIN" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
 static const efftype_id effect_asked_to_train( "asked_to_train" );
+static const efftype_id effect_blind( "blind" );
+static const efftype_id effect_boomered( "boomered" );
+static const efftype_id effect_darkness( "darkness" );
 static const efftype_id effect_narcosis( "narcosis" );
+static const efftype_id effect_no_sight( "no_sight" );
 static const efftype_id effect_riding( "riding" );
 static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_under_operation( "under_operation" );
 
 static const flag_id json_flag_NO_UNLOAD( "NO_UNLOAD" );
+static const flag_id json_flag_GRENADE( "GRENADE" );
 static const flag_id json_flag_TWO_WAY_RADIO( "TWO_WAY_RADIO" );
 
+static const ammotype ammotype_40x46mm( "40x46mm" );
+static const ammotype ammotype_40x53mm( "40x53mm" );
 static const ammotype ammotype_mortar_60mm( "mortar_60mm" );
 static const furn_str_id furn_f_m224_mortar( "f_m224_mortar" );
 static const itype_id fuel_type_animal( "animal" );
 static const itype_id itype_foodperson_mask( "foodperson_mask" );
 static const itype_id itype_foodperson_mask_on( "foodperson_mask_on" );
+static const itype_id itype_fpv_baba_yaga_drone( "fpv_baba_yaga_drone" );
+static const itype_id itype_fpv_military_suicide_drone( "fpv_military_suicide_drone" );
+static const itype_id itype_fpv_scout_drone( "fpv_scout_drone" );
+static const itype_id itype_fpv_suicide_drone( "fpv_suicide_drone" );
+static const itype_id itype_landmine( "landmine" );
+static const itype_id itype_remotevehcontrol( "remotevehcontrol" );
 static const itype_id itype_two_way_radio( "two_way_radio" );
 static const itype_id itype_60mm_shell_m721( "60mm_shell_m721" );
 
+static const skill_id skill_driving( "driving" );
 static const skill_id skill_firstaid( "firstaid" );
 static const skill_id skill_launcher( "launcher" );
 
 static const skill_id skill_speech( "speech" );
 
 static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
+static const trait_id trait_DEBUG_NIGHTVISION( "DEBUG_NIGHTVISION" );
 static const trait_id trait_HALLUCINATION( "HALLUCINATION" );
+static const trait_id trait_INFRARED( "INFRARED" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
 static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
 
@@ -5734,6 +5753,11 @@ static bool is_60mm_mortar_round( const item &it )
     return it.ammo_type() == ammotype_mortar_60mm;
 }
 
+static int count_support_items( const npc &operator_npc,
+                                const std::function<bool( const item & )> &filter );
+static std::optional<item> take_one_support_item( npc &operator_npc,
+        const std::function<bool( const item & )> &filter );
+
 static int diag_value_to_int( const diag_value &value, const int fallback = 0 )
 {
     if( value.is_dbl() ) {
@@ -5749,16 +5773,6 @@ static int diag_value_to_int( const diag_value &value, const int fallback = 0 )
     return fallback;
 }
 
-static std::string mortar_ammo_count_key( const itype_id &ammo_id )
-{
-    return "mortar_ammo_" + ammo_id.str();
-}
-
-static int mortar_ammo_count( const npc &gunner, const itype_id &ammo_id )
-{
-    return std::max( 0, diag_value_to_int( gunner.get_value( mortar_ammo_count_key( ammo_id ) ) ) );
-}
-
 static std::optional<itype_id> selected_mortar_ammo( const npc &gunner )
 {
     const diag_value selected = gunner.get_value( "mortar_selected_ammo" );
@@ -5766,7 +5780,10 @@ static std::optional<itype_id> selected_mortar_ammo( const npc &gunner )
         return std::nullopt;
     }
     const itype_id ammo_id( selected.str() );
-    if( !ammo_id.is_valid() || mortar_ammo_count( gunner, ammo_id ) <= 0 ) {
+    if( !ammo_id.is_valid() ||
+        count_support_items( gunner, [&ammo_id]( const item & it ) {
+            return it.typeId() == ammo_id && is_60mm_mortar_round( it );
+        } ) <= 0 ) {
         return std::nullopt;
     }
     return ammo_id;
@@ -5777,81 +5794,19 @@ static void set_selected_mortar_ammo( npc &gunner, const itype_id &ammo_id )
     gunner.set_value( "mortar_selected_ammo", ammo_id.str() );
 }
 
-static std::vector<std::string> mortar_ammo_types( const npc &gunner )
-{
-    std::vector<std::string> result;
-    const diag_value stored_types = gunner.get_value( "mortar_ammo_types" );
-    if( stored_types.is_str() && !stored_types.str().empty() ) {
-        result = string_split( stored_types.str(), ',' );
-    }
-    return result;
-}
-
-static void add_mortar_ammo_type( npc &gunner, const itype_id &ammo_id )
-{
-    std::vector<std::string> ammo_types = mortar_ammo_types( gunner );
-    const std::string ammo_type = ammo_id.str();
-    if( std::find( ammo_types.begin(), ammo_types.end(), ammo_type ) == ammo_types.end() ) {
-        ammo_types.emplace_back( ammo_type );
-        gunner.set_value( "mortar_ammo_types", string_join( ammo_types, "," ) );
-    }
-}
-
-static void set_mortar_ammo_count( npc &gunner, const itype_id &ammo_id, const int count )
-{
-    gunner.set_value( mortar_ammo_count_key( ammo_id ), std::max( 0, count ) );
-}
-
-static void add_mortar_ammo( npc &gunner, const item &round, const int count )
-{
-    if( count <= 0 ) {
-        return;
-    }
-    const itype_id ammo_id = round.typeId();
-    add_mortar_ammo_type( gunner, ammo_id );
-    set_mortar_ammo_count( gunner, ammo_id, mortar_ammo_count( gunner, ammo_id ) + count );
-    if( !selected_mortar_ammo( gunner ) ) {
-        set_selected_mortar_ammo( gunner, ammo_id );
-    }
-}
-
-static std::optional<item> take_cached_mortar_round( npc &gunner )
-{
-    if( const std::optional<itype_id> selected = selected_mortar_ammo( gunner ) ) {
-        set_mortar_ammo_count( gunner, *selected, mortar_ammo_count( gunner, *selected ) - 1 );
-        return item( *selected, calendar::turn );
-    }
-
-    for( const std::string &ammo_type : mortar_ammo_types( gunner ) ) {
-        const itype_id ammo_id( ammo_type );
-        const int count = mortar_ammo_count( gunner, ammo_id );
-        if( count <= 0 ) {
-            continue;
-        }
-        item round( ammo_id, calendar::turn );
-        if( !is_60mm_mortar_round( round ) ) {
-            set_mortar_ammo_count( gunner, ammo_id, 0 );
-            continue;
-        }
-        set_mortar_ammo_count( gunner, ammo_id, count - 1 );
-        set_selected_mortar_ammo( gunner, ammo_id );
-        return round;
-    }
-    return std::nullopt;
-}
-
-static void cache_physical_mortar_rounds( npc &gunner )
-{
-    std::list<item> ammo = gunner.remove_items_with( is_60mm_mortar_round );
-    for( item &round : ammo ) {
-        add_mortar_ammo( gunner, round, round.count_by_charges() ? round.charges : 1 );
-    }
-}
-
 static std::optional<item> take_mortar_round( npc &gunner )
 {
-    cache_physical_mortar_rounds( gunner );
-    if( std::optional<item> round = take_cached_mortar_round( gunner ) ) {
+    if( const std::optional<itype_id> selected = selected_mortar_ammo( gunner ) ) {
+        std::optional<item> round = take_one_support_item( gunner, [&selected]( const item & it ) {
+            return it.typeId() == *selected && is_60mm_mortar_round( it );
+        } );
+        if( round ) {
+            return round;
+        }
+    }
+    std::optional<item> round = take_one_support_item( gunner, is_60mm_mortar_round );
+    if( round ) {
+        set_selected_mortar_ammo( gunner, round->typeId() );
         return round;
     }
     return std::nullopt;
@@ -5860,10 +5815,12 @@ static std::optional<item> take_mortar_round( npc &gunner )
 static std::vector<itype_id> available_mortar_ammo_types( const npc &gunner )
 {
     std::vector<itype_id> result;
-    for( const std::string &ammo_type : mortar_ammo_types( gunner ) ) {
-        const itype_id ammo_id( ammo_type );
-        if( ammo_id.is_valid() && mortar_ammo_count( gunner, ammo_id ) > 0 ) {
-            result.emplace_back( ammo_id );
+    for( size_t pos = 0; pos < gunner.support_inv.size(); ++pos ) {
+        for( const item &it : gunner.support_inv.const_stack( pos ) ) {
+            if( is_60mm_mortar_round( it ) &&
+                std::find( result.begin(), result.end(), it.typeId() ) == result.end() ) {
+                result.emplace_back( it.typeId() );
+            }
         }
     }
     return result;
@@ -5992,10 +5949,398 @@ static std::string encode_mortar_target_key( const tripoint_abs_ms &target )
     return string_format( "%d,%d,%d", target.x(), target.y(), target.z() );
 }
 
+static std::string encode_mortar_impact_key( const tripoint_abs_ms &target,
+        const std::optional<int> &drone_pilot_skill )
+{
+    if( drone_pilot_skill ) {
+        return string_format( "%d,%d,%d|%d", target.x(), target.y(), target.z(), *drone_pilot_skill );
+    }
+    return encode_mortar_target_key( target );
+}
+
 static void practice_mortar_shot( npc &gunner )
 {
     SkillLevel &launcher = gunner.get_skill_level_object( skill_launcher );
     launcher.set_exercise( launcher.exercise() + 1 );
+}
+
+static std::optional<int> mortar_drone_spotter_skill();
+static void cancel_fpv_assignment_for_new_duty( npc &operator_npc );
+static void cancel_mortar_assignment_for_new_duty( npc &gunner );
+
+static int count_support_items( const npc &operator_npc,
+                                const std::function<bool( const item & )> &filter )
+{
+    int count = 0;
+    for( size_t pos = 0; pos < operator_npc.support_inv.size(); ++pos ) {
+        for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
+            if( filter( it ) ) {
+                count += it.count();
+            }
+        }
+    }
+    return count;
+}
+
+static bool support_has_item_with_flag( const npc &operator_npc, const flag_id &flag )
+{
+    return count_support_items( operator_npc, [&flag]( const item & it ) {
+        return it.has_flag( flag );
+    } ) > 0;
+}
+
+static std::optional<item> take_one_support_item( npc &operator_npc,
+        const std::function<bool( const item & )> &filter )
+{
+    for( int pos = 0; pos < static_cast<int>( operator_npc.support_inv.size() ); ++pos ) {
+        item &candidate = operator_npc.support_inv.find_item( pos );
+        if( candidate.is_null() || !filter( candidate ) ) {
+            continue;
+        }
+
+        item taken = candidate;
+        if( candidate.count_by_charges() ) {
+            taken.charges = 1;
+            if( candidate.charges > 1 ) {
+                candidate.mod_charges( -1 );
+                operator_npc.support_inv.unsort();
+            } else {
+                operator_npc.support_inv.remove_item( pos );
+            }
+        } else {
+            taken = operator_npc.support_inv.remove_item( pos );
+        }
+        return taken;
+    }
+    return std::nullopt;
+}
+
+static void add_support_items( npc &operator_npc, const itype_id &item_id, const int count )
+{
+    if( count <= 0 ) {
+        return;
+    }
+    item sample( item_id, calendar::turn, count );
+    if( sample.count_by_charges() ) {
+        operator_npc.support_inv.add_item( std::move( sample ) );
+        return;
+    }
+    for( int i = 0; i < count; ++i ) {
+        operator_npc.support_inv.add_item( item( item_id, calendar::turn ) );
+    }
+}
+
+static void drop_support_inventory( npc &operator_npc )
+{
+    if( operator_npc.support_inv.size() == 0 ) {
+        return;
+    }
+    map &here = get_map();
+    const tripoint_bub_ms drop_pos = operator_npc.pos_bub( here );
+    for( size_t pos = 0; pos < operator_npc.support_inv.size(); ++pos ) {
+        for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
+            if( !it.count_by_charges() || it.charges > 0 ) {
+                here.add_item_or_charges( drop_pos, it );
+            }
+        }
+    }
+    operator_npc.support_inv.clear();
+}
+
+static void assign_support_station( npc &operator_npc, const std::string &station_key )
+{
+    if( operator_npc.has_player_activity() ) {
+        operator_npc.revert_after_activity();
+    }
+    if( operator_npc.get_value( station_key ).str() != "yes" ) {
+        std::string previous_topic = operator_npc.chatbin.first_topic;
+        if( operator_npc.is_player_ally() &&
+            previous_topic.rfind( "TALK_STRANGER_", 0 ) == 0 ) {
+            previous_topic = operator_npc.chatbin.talk_friend;
+        }
+        operator_npc.set_value( station_key + "_previous_attitude",
+                                static_cast<int>( operator_npc.get_attitude() ) );
+        operator_npc.set_value( station_key + "_previous_mission",
+                                static_cast<int>( operator_npc.mission ) );
+        operator_npc.set_value( station_key + "_previous_topic", previous_topic );
+    }
+    operator_npc.set_attitude( NPCATT_NULL );
+    operator_npc.set_mission( NPC_MISSION_GUARD_ALLY );
+    operator_npc.chatbin.first_topic = operator_npc.chatbin.talk_friend_guard;
+    operator_npc.guard_pos = operator_npc.pos_abs();
+    operator_npc.set_ai_guard_pos( operator_npc.pos_abs() );
+    operator_npc.goal = npc::no_goal_point;
+    operator_npc.omt_path.clear();
+    operator_npc.path.clear();
+    operator_npc.chair_pos = std::nullopt;
+    operator_npc.wander_pos = std::nullopt;
+    operator_npc.clear_destination();
+    operator_npc.clear_committed_goal();
+    operator_npc.set_value( station_key, "yes" );
+}
+
+static void clear_support_station( npc &operator_npc, const std::string &station_key )
+{
+    if( operator_npc.get_value( station_key ).str() != "yes" ) {
+        return;
+    }
+    operator_npc.set_value( station_key, "" );
+    const int previous_attitude = diag_value_to_int(
+                                      operator_npc.get_value( station_key + "_previous_attitude" ),
+                                      static_cast<int>( NPCATT_FOLLOW ) );
+    const int previous_mission = diag_value_to_int(
+                                     operator_npc.get_value( station_key + "_previous_mission" ),
+                                     static_cast<int>( NPC_MISSION_NULL ) );
+    const std::string previous_topic = operator_npc.get_value(
+                                           station_key + "_previous_topic" ).str();
+    operator_npc.set_value( station_key + "_previous_attitude", "" );
+    operator_npc.set_value( station_key + "_previous_mission", "" );
+    operator_npc.set_value( station_key + "_previous_topic", "" );
+    if( operator_npc.mission == NPC_MISSION_GUARD_ALLY ) {
+        if( previous_attitude >= static_cast<int>( NPCATT_NULL ) &&
+            previous_attitude < static_cast<int>( NPCATT_END ) ) {
+            operator_npc.set_attitude( static_cast<npc_attitude>( previous_attitude ) );
+        } else {
+            operator_npc.set_attitude( NPCATT_FOLLOW );
+        }
+        if( previous_mission >= static_cast<int>( NPC_MISSION_NULL ) &&
+            previous_mission <= static_cast<int>( NPC_MISSION_CAMP_RESIDENT ) ) {
+            operator_npc.set_mission( static_cast<npc_mission>( previous_mission ) );
+        } else {
+            operator_npc.set_mission( NPC_MISSION_NULL );
+        }
+        operator_npc.chatbin.first_topic = previous_topic.empty() ? operator_npc.chatbin.talk_friend :
+                                           previous_topic;
+        operator_npc.guard_pos = std::nullopt;
+        operator_npc.clear_ai_guard_pos();
+        operator_npc.goal = npc::no_goal_point;
+        operator_npc.omt_path.clear();
+        operator_npc.path.clear();
+        operator_npc.clear_destination();
+        operator_npc.clear_committed_goal();
+    }
+}
+
+static void clear_mortar_assignment( npc &gunner )
+{
+    gunner.set_value( "mortar_assignment", "" );
+    gunner.set_value( "mortar_assignment_x", 0 );
+    gunner.set_value( "mortar_assignment_y", 0 );
+    gunner.set_value( "mortar_assignment_z", 0 );
+    gunner.set_value( "mortar_has_target", "no" );
+    clear_support_station( gunner, "mortar_stationary_guard" );
+}
+
+static void cancel_mortar_assignment_for_new_duty( npc &gunner )
+{
+    if( gunner.get_value( "mortar_assignment" ).str() != "m224" ) {
+        return;
+    }
+    clear_mortar_assignment( gunner );
+    drop_support_inventory( gunner );
+}
+
+static drop_locations select_nearby_handover_items( const std::function<bool( const item & )> &filter,
+        const std::string &title )
+{
+    avatar &you = get_avatar();
+    inventory_filter_preset preset( [&filter]( const item_location & loc ) {
+        return loc && filter( *loc );
+    } );
+    inventory_multiselector inv_s( you, preset, title, {}, true );
+    inv_s.set_title( title );
+    inv_s.set_display_stats( false );
+    inv_s.clear_items();
+    inv_s.add_character_items( you );
+    inv_s.add_nearby_items( 1 );
+    if( inv_s.empty() ) {
+        popup( _( "You don't have any matching items at hand." ), PF_GET_KEY );
+        return drop_locations();
+    }
+    return inv_s.execute( true );
+}
+
+static item_location select_nearby_handover_item( const std::function<bool( const item & )> &filter,
+        const std::string &title )
+{
+    avatar &you = get_avatar();
+    inventory_filter_preset preset( [&filter]( const item_location & loc ) {
+        return loc && filter( *loc );
+    } );
+    inventory_pick_selector inv_s( you, preset );
+    inv_s.set_display_stats( false );
+    inv_s.clear_items();
+    inv_s.add_character_items( you );
+    inv_s.add_nearby_items( 1 );
+    inv_s.set_title( title );
+    if( inv_s.empty() ) {
+        popup( _( "You don't have any matching items at hand." ), PF_GET_KEY );
+        return item_location();
+    }
+    return inv_s.execute();
+}
+
+static std::optional<item> take_handover_item( item_location &loc, const int requested_count )
+{
+    if( !loc ) {
+        return std::nullopt;
+    }
+    item &selected = *loc;
+    item taken = selected;
+    if( selected.count_by_charges() ) {
+        const int count = std::max( 1, std::min( requested_count, selected.charges ) );
+        taken.charges = count;
+        if( selected.charges > count ) {
+            selected.mod_charges( -count );
+        } else {
+            loc.remove_item();
+        }
+    } else {
+        loc.remove_item();
+    }
+    return taken;
+}
+
+static int support_stack_count( const npc &operator_npc, const int pos )
+{
+    int count = 0;
+    for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
+        count += it.count();
+    }
+    return count;
+}
+
+static bool support_stack_matches( const npc &operator_npc, const int pos,
+                                   const std::function<bool( const item & )> &filter )
+{
+    for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
+        if( filter( it ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static std::string support_inventory_summary( const npc &operator_npc,
+        const std::function<bool( const item & )> &filter )
+{
+    std::map<std::string, int> counts;
+    for( size_t pos = 0; pos < operator_npc.support_inv.size(); ++pos ) {
+        for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
+            if( filter( it ) ) {
+                counts[it.tname()] += it.count();
+            }
+        }
+    }
+    if( counts.empty() ) {
+        return _( "nothing" );
+    }
+    std::vector<std::string> lines;
+    for( const std::pair<const std::string, int> &entry : counts ) {
+        lines.emplace_back( string_format( "%s x%d", entry.first, entry.second ) );
+    }
+    return string_join( lines, ", " );
+}
+
+static int give_support_items( npc &operator_npc, const std::function<bool( const item & )> &filter,
+                               const std::string &title )
+{
+    int transferred = 0;
+    drop_locations selected_items = select_nearby_handover_items( filter, title );
+    for( drop_location &selected : selected_items ) {
+        std::optional<item> transferred_item = take_handover_item( selected.first, selected.second );
+        if( !transferred_item || !filter( *transferred_item ) ) {
+            continue;
+        }
+        transferred += transferred_item->count();
+        operator_npc.support_inv.add_item( std::move( *transferred_item ) );
+    }
+    return transferred;
+}
+
+static int take_back_support_items( npc &operator_npc,
+                                    const std::function<bool( const item & )> &filter, const std::string &title )
+{
+    std::vector<int> positions;
+    uilist menu;
+    menu.text = title;
+    for( int pos = 0; pos < static_cast<int>( operator_npc.support_inv.size() ); ++pos ) {
+        if( !support_stack_matches( operator_npc, pos, filter ) ) {
+            continue;
+        }
+        const item &it = operator_npc.support_inv.find_item( pos );
+        positions.emplace_back( pos );
+        menu.addentry( static_cast<int>( positions.size() ) - 1, true, MENU_AUTOASSIGN, "%s x%d",
+                       it.tname(), support_stack_count( operator_npc, pos ) );
+    }
+    if( positions.empty() ) {
+        popup( _( "There is no matching support equipment to take back." ), PF_GET_KEY );
+        return 0;
+    }
+    menu.query();
+    if( menu.ret < 0 || menu.ret >= static_cast<int>( positions.size() ) ) {
+        return 0;
+    }
+
+    avatar &you = get_avatar();
+    int returned = 0;
+    std::list<item> items = operator_npc.support_inv.reduce_stack( positions[menu.ret], -1 );
+    for( item &it : items ) {
+        returned += it.count();
+        you.i_add_or_drop( it );
+    }
+    return returned;
+}
+
+static void manage_support_inventory( npc &operator_npc,
+                                      const std::function<bool( const item & )> &filter, const std::string &menu_title,
+                                      const std::string &give_title, const std::string &take_title )
+{
+    while( true ) {
+        const int action = uilist( menu_title, {
+            _( "Provide equipment or ammunition." ),
+            _( "Take equipment or ammunition back." ),
+            _( "Ask what equipment and ammunition are available." )
+        } );
+        if( action < 0 ) {
+            return;
+        }
+        if( action == 0 ) {
+            const int transferred = give_support_items( operator_npc, filter, give_title );
+            if( transferred > 0 ) {
+                add_msg( _( "You hand %1$d item to %2$s for support duty." ), transferred,
+                         operator_npc.disp_name() );
+            }
+        } else if( action == 1 ) {
+            const int returned = take_back_support_items( operator_npc, filter, take_title );
+            if( returned > 0 ) {
+                add_msg( _( "%1$s returns %2$d support item." ), operator_npc.disp_name(), returned );
+            }
+        } else {
+            add_msg( _( "%1$s reports available support equipment: %2$s." ),
+                     operator_npc.disp_name(), support_inventory_summary( operator_npc, filter ) );
+        }
+    }
+}
+
+talk_effect_fun_t::func f_manage_mortar_support_inventory()
+{
+    return []( dialogue const & d ) {
+        npc *gunner = d.actor( true )->get_npc();
+        if( gunner == nullptr ) {
+            debugmsg( "Trying to manage mortar support inventory, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( d.by_radio ) {
+            add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        manage_support_inventory( *gunner, []( const item & it ) {
+            return is_60mm_mortar_round( it ) || it.has_flag( json_flag_TWO_WAY_RADIO );
+        }, _( "Mortar support equipment" ), _( "Select mortar equipment to hand over" ),
+        _( "Take back which mortar support equipment?" ) );
+    };
 }
 
 talk_effect_fun_t::func f_assign_mortar()
@@ -6019,6 +6364,7 @@ talk_effect_fun_t::func f_assign_mortar()
                      gunner->disp_name() );
             return;
         }
+        cancel_fpv_assignment_for_new_duty( *gunner );
 
         std::optional<tripoint_bub_ms> mortar_pos = find_nearby_m224_mortar( *gunner );
         if( !mortar_pos ) {
@@ -6027,30 +6373,21 @@ talk_effect_fun_t::func f_assign_mortar()
             return;
         }
 
-        avatar &you = get_avatar();
-        if( !gunner->cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ) {
-            if( you.amount_of( itype_two_way_radio, false ) < 2 ) {
-                add_msg( _( "%s needs a two-way radio, and you need a spare one to hand over." ),
-                         gunner->disp_name() );
-                return;
-            }
-            std::list<item> radios = you.remove_items_with( []( const item & it ) {
-                return it.typeId() == itype_two_way_radio;
-            }, 1 );
-            if( radios.empty() ) {
-                add_msg( _( "%s needs a two-way radio, and you do not have one to hand over." ),
-                         gunner->disp_name() );
-                return;
-            }
-            gunner->i_add( std::move( radios.front() ) );
-        }
-
         int ammo_transferred = 0;
-        std::list<item> mortar_rounds = you.remove_items_with( is_60mm_mortar_round );
-        for( item &round : mortar_rounds ) {
-            const int round_count = round.count_by_charges() ? round.charges : 1;
+        drop_locations mortar_rounds = select_nearby_handover_items( is_60mm_mortar_round,
+                                      _( "Select mortar rounds to hand over" ) );
+        for( drop_location &selected : mortar_rounds ) {
+            std::optional<item> round = take_handover_item( selected.first, selected.second );
+            if( !round || !is_60mm_mortar_round( *round ) ) {
+                continue;
+            }
+            const int round_count = round->count_by_charges() ? round->charges : 1;
+            const itype_id round_id = round->typeId();
             ammo_transferred += round_count;
-            add_mortar_ammo( *gunner, round, round_count );
+            gunner->support_inv.add_item( std::move( *round ) );
+            if( !selected_mortar_ammo( *gunner ) ) {
+                set_selected_mortar_ammo( *gunner, round_id );
+            }
         }
 
         map &here = get_map();
@@ -6060,6 +6397,7 @@ talk_effect_fun_t::func f_assign_mortar()
         gunner->set_value( "mortar_assignment_y", mortar_abs.y() );
         gunner->set_value( "mortar_assignment_z", mortar_abs.z() );
         gunner->set_value( "mortar_has_target", "no" );
+        assign_support_station( *gunner, "mortar_stationary_guard" );
         set_mortar_current_cep( *gunner, 100.0 );
 
         if( ammo_transferred > 0 ) {
@@ -6069,6 +6407,24 @@ talk_effect_fun_t::func f_assign_mortar()
             add_msg( _( "%s mans the mortar, but still needs 60mm ammunition." ),
                      gunner->disp_name() );
         }
+    };
+}
+
+talk_effect_fun_t::func f_unassign_mortar()
+{
+    return []( dialogue const & d ) {
+        npc *gunner = d.actor( true )->get_npc();
+        if( gunner == nullptr ) {
+            debugmsg( "Trying to unassign mortar, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( d.by_radio ) {
+            add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        cancel_mortar_assignment_for_new_duty( *gunner );
+        talk_function::stop_guard( *gunner );
     };
 }
 
@@ -6082,8 +6438,9 @@ talk_effect_fun_t::func f_select_mortar_ammo()
             return;
         }
         avatar &you = get_avatar();
-        if( !you.cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ||
-            !gunner->cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ) {
+        if( d.by_radio && ( !you.cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ||
+                            ( !gunner->cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) &&
+                              !support_has_item_with_flag( *gunner, json_flag_TWO_WAY_RADIO ) ) ) ) {
             add_msg( _( "Both you and %s need a two-way radio." ), gunner->disp_name() );
             return;
         }
@@ -6092,7 +6449,6 @@ talk_effect_fun_t::func f_select_mortar_ammo()
             return;
         }
 
-        cache_physical_mortar_rounds( *gunner );
         const std::vector<itype_id> ammo_types = available_mortar_ammo_types( *gunner );
         if( ammo_types.empty() ) {
             add_msg( _( "%s reports that they have no 60mm mortar rounds." ), gunner->disp_name() );
@@ -6105,8 +6461,11 @@ talk_effect_fun_t::func f_select_mortar_ammo()
         for( size_t i = 0; i < ammo_types.size(); ++i ) {
             const item round( ammo_types[i], calendar::turn );
             const bool is_selected = selected && *selected == ammo_types[i];
+            const int ammo_count = count_support_items( *gunner, [&ammo_types, i]( const item & it ) {
+                return it.typeId() == ammo_types[i] && is_60mm_mortar_round( it );
+            } );
             menu.addentry( i, true, MENU_AUTOASSIGN, "%s%s (%d)",
-                           is_selected ? "* " : "", round.tname(), mortar_ammo_count( *gunner, ammo_types[i] ) );
+                           is_selected ? "* " : "", round.tname(), ammo_count );
         }
         menu.query();
         if( menu.ret < 0 || static_cast<size_t>( menu.ret ) >= ammo_types.size() ) {
@@ -6129,8 +6488,9 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
         return;
     }
     avatar &you = get_avatar();
-    if( !you.cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ||
-        !gunner->cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ) {
+    if( d.by_radio && ( !you.cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ||
+                        ( !gunner->cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) &&
+                          !support_has_item_with_flag( *gunner, json_flag_TWO_WAY_RADIO ) ) ) ) {
         add_msg( _( "Both you and %s need a two-way radio." ), gunner->disp_name() );
         return;
     }
@@ -6150,6 +6510,7 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     std::optional<tripoint_abs_ms> target_abs_ms;
     const std::optional<tripoint_abs_ms> previous_target = get_mortar_last_target( *gunner );
     const int launcher_skill = gunner->get_skill_level( skill_launcher );
+    const std::optional<int> drone_pilot_skill = mortar_drone_spotter_skill();
 
     if( repeat_target ) {
         if( !previous_target ) {
@@ -6202,9 +6563,17 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     }
 
     double cep = get_mortar_current_cep( *gunner );
-    const double minimum_cep = mortar_minimum_cep( launcher_skill );
+    double minimum_cep = mortar_minimum_cep( launcher_skill );
+    if( drone_pilot_skill ) {
+        minimum_cep *= 0.7;
+    }
     if( repeat_target ) {
-        cep = std::max( minimum_cep, cep * mortar_repeat_cep_multiplier( launcher_skill ) );
+        double repeat_multiplier = mortar_repeat_cep_multiplier( launcher_skill );
+        if( drone_pilot_skill ) {
+            const double spotter_bonus = std::max( 0.0, 1.0 - *drone_pilot_skill * 0.1 );
+            repeat_multiplier *= spotter_bonus;
+        }
+        cep = std::max( minimum_cep, cep * repeat_multiplier );
     } else if( previous_target ) {
         double retarget_factor = 3.0 - launcher_skill / 5.0;
         const int close_target_distance = 50 + 5 * launcher_skill;
@@ -6223,7 +6592,7 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     }
     if( !round->ammo_data() ) {
         add_msg( _( "%s cannot identify that mortar round." ), gunner->disp_name() );
-        add_mortar_ammo( *gunner, *round, 1 );
+        gunner->support_inv.add_item( std::move( *round ) );
         return;
     }
 
@@ -6259,14 +6628,15 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     }
     if( !scheduled ) {
         add_msg( _( "That round has no mortar impact payload." ) );
-        add_mortar_ammo( *gunner, *round, 1 );
+        gunner->support_inv.add_item( std::move( *round ) );
         return;
     }
 
     get_timed_events().add( timed_event_type::MORTAR_FIRE_MESSAGE, calendar::turn + 10_seconds, -1,
                             impact_abs_ms, -1, gunner->disp_name(), "" );
     get_timed_events().add( timed_event_type::MORTAR_IMPACT_MESSAGE, calendar::turn + 41_seconds, -1,
-                            impact_abs_ms, -1, gunner->disp_name(), encode_mortar_target_key( *target_abs_ms ) );
+                            impact_abs_ms, -1, gunner->disp_name(),
+                            encode_mortar_impact_key( *target_abs_ms, drone_pilot_skill ) );
     set_mortar_last_target( *gunner, *target_abs_ms );
     set_mortar_current_cep( *gunner, cep );
     practice_mortar_shot( *gunner );
@@ -6278,7 +6648,7 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
                  gunner->disp_name(), heading_text, static_cast<int>( std::round( cep ) ),
                  static_cast<int>( std::round( minor_cep ) ) );
     } else {
-        add_msg( _( "You transmit the fire mission.  %1$s reports expected heading %2$s degrees and CEP about %3$d meters.  Shot expected in 10 seconds; impact in 40 seconds." ),
+        add_msg( _( "You transmit the fire mission.  %1$s reports expected heading %2$s degrees and probable hit area about %3$d meters.  Shot expected in 10 seconds; impact in 40 seconds." ),
                  gunner->disp_name(), heading_text, static_cast<int>( std::round( cep ) ) );
     }
 }
@@ -6294,6 +6664,1582 @@ talk_effect_fun_t::func f_request_mortar_repeat_fire()
 {
     return []( dialogue const & d ) {
         request_mortar_fire( d, true );
+    };
+}
+
+static bool is_fpv_suicide_drone( const item &it )
+{
+    return it.typeId() == itype_fpv_suicide_drone;
+}
+
+static bool is_fpv_military_suicide_drone( const item &it )
+{
+    return it.typeId() == itype_fpv_military_suicide_drone;
+}
+
+static bool is_fpv_baba_yaga_drone( const item &it )
+{
+    return it.typeId() == itype_fpv_baba_yaga_drone;
+}
+
+static bool is_fpv_scout_drone( const item &it )
+{
+    return it.typeId() == itype_fpv_scout_drone;
+}
+
+static itype_id fpv_drone_item_id( const std::string &drone_type )
+{
+    if( drone_type == "scout" ) {
+        return itype_fpv_scout_drone;
+    }
+    if( drone_type == "military_suicide" ) {
+        return itype_fpv_military_suicide_drone;
+    }
+    if( drone_type == "baba_yaga" ) {
+        return itype_fpv_baba_yaga_drone;
+    }
+    return itype_fpv_suicide_drone;
+}
+
+static int fpv_drone_count( const npc &operator_npc, const std::string &drone_type )
+{
+    const itype_id drone_id = fpv_drone_item_id( drone_type );
+    return count_support_items( operator_npc, [&drone_id]( const item & it ) {
+        return it.typeId() == drone_id;
+    } );
+}
+
+static bool take_fpv_drone( npc &operator_npc, const std::string &drone_type )
+{
+    const itype_id drone_id = fpv_drone_item_id( drone_type );
+    return take_one_support_item( operator_npc, [&drone_id]( const item & it ) {
+        return it.typeId() == drone_id;
+    } ).has_value();
+}
+
+static std::string active_fpv_drone_type( const npc &operator_npc )
+{
+    const std::string drone_type = operator_npc.get_value( "fpv_drone_type" ).str();
+    if( drone_type == "scout" || drone_type == "baba_yaga" || drone_type == "military_suicide" ) {
+        return drone_type;
+    }
+    return "suicide";
+}
+
+static bool active_fpv_drone_is_suicide( const npc &operator_npc )
+{
+    const std::string drone_type = active_fpv_drone_type( operator_npc );
+    return drone_type == "suicide" || drone_type == "military_suicide";
+}
+
+static bool active_fpv_drone_is_scout( const npc &operator_npc )
+{
+    return active_fpv_drone_type( operator_npc ) == "scout";
+}
+
+static bool active_fpv_drone_is_baba_yaga( const npc &operator_npc )
+{
+    return active_fpv_drone_type( operator_npc ) == "baba_yaga";
+}
+
+static bool active_fpv_drone_has_scout_package( const npc &operator_npc )
+{
+    return active_fpv_drone_is_scout( operator_npc ) || active_fpv_drone_is_baba_yaga( operator_npc );
+}
+
+static int fpv_drone_max_range_meters( const std::string &drone_type )
+{
+    if( drone_type == "scout" ) {
+        return 15000;
+    }
+    if( drone_type == "baba_yaga" ) {
+        return 20000;
+    }
+    return 7000;
+}
+
+static int fpv_drone_battery_seconds( const std::string &drone_type )
+{
+    if( drone_type == "scout" ) {
+        return 18 * 60;
+    }
+    if( drone_type == "baba_yaga" ) {
+        return 24 * 60;
+    }
+    return 6 * 60;
+}
+
+static double fpv_drone_cruise_speed_meters_per_hour( const std::string &drone_type )
+{
+    if( drone_type == "baba_yaga" ) {
+        return 70000.0;
+    }
+    return 150000.0;
+}
+
+static int fpv_drone_launch_delay_seconds( const npc &operator_npc, const std::string &drone_type )
+{
+    const int base_delay = std::max( 0, 30 - 2 * static_cast<int>( operator_npc.get_skill_level(
+                                         skill_driving ) ) );
+    return drone_type == "baba_yaga" ? base_delay * 2 : base_delay;
+}
+
+static int current_turn_number()
+{
+    return to_turn<int>( calendar::turn );
+}
+
+static std::string format_fpv_duration( int seconds )
+{
+    const int clamped = std::max( 0, seconds );
+    if( clamped > 60 ) {
+        return string_format( "%d:%02d", clamped / 60, clamped % 60 );
+    }
+    return string_format( n_gettext( "%d second", "%d seconds", clamped ), clamped );
+}
+
+static int get_fpv_turn_value( const npc &operator_npc, const std::string &key )
+{
+    return diag_value_to_int( operator_npc.get_value( key ), 0 );
+}
+
+static bool fpv_payload_has_immediate_explosion( const item &payload, const float minimum_power = 0.0f )
+{
+    if( !payload.ammo_data() ) {
+        return false;
+    }
+    for( const ammo_effect_str_id &ammo_eff : payload.ammo_data()->ammo->ammo_effects ) {
+        if( ammo_eff.obj().aoe_explosion_data.power > minimum_power ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool fpv_payload_drops_active_item( const item &payload )
+{
+    return payload.ammo_data() && payload.ammo_data()->ammo->drop_active &&
+           !payload.ammo_data()->ammo->drop.is_null();
+}
+
+static const item_transformation *fpv_payload_arming_transform( const itype &payload_type )
+{
+    if( payload_type.transform_into ) {
+        return &payload_type.transform_into.value();
+    }
+    const use_function *transform_use = payload_type.get_use( "transform" );
+    if( transform_use == nullptr ) {
+        return nullptr;
+    }
+    const iuse_transform *transform_actor = dynamic_cast<const iuse_transform *>
+                                            ( transform_use->get_actor_ptr() );
+    return transform_actor != nullptr ? &transform_actor->transform : nullptr;
+}
+
+static bool is_fpv_baba_yaga_payload( const item &it )
+{
+    if( it.typeId() == itype_landmine ) {
+        return true;
+    }
+    if( it.has_flag( json_flag_GRENADE ) && fpv_payload_arming_transform( *it.type ) != nullptr ) {
+        return true;
+    }
+    if( it.ammo_type() == ammotype_40x46mm &&
+        ( fpv_payload_has_immediate_explosion( it ) || fpv_payload_drops_active_item( it ) ) ) {
+        return true;
+    }
+    if( it.ammo_type() == ammotype_40x53mm && fpv_payload_has_immediate_explosion( it ) ) {
+        return true;
+    }
+    if( it.ammo_type() == ammotype_mortar_60mm && fpv_payload_has_immediate_explosion( it, 100.0f ) ) {
+        return true;
+    }
+    return false;
+}
+
+static int fpv_payload_item_count( const item &payload )
+{
+    return payload.count_by_charges() ? std::max( 0, payload.charges ) : 1;
+}
+
+static int fpv_payload_count( const npc &operator_npc, const itype_id &payload_id )
+{
+    return count_support_items( operator_npc, [&payload_id]( const item & it ) {
+        return it.typeId() == payload_id && is_fpv_baba_yaga_payload( it );
+    } );
+}
+
+static int loaded_fpv_payload_count( const npc &operator_npc )
+{
+    return std::max( 0, diag_value_to_int( operator_npc.get_value( "fpv_payload_loaded_count" ) ) );
+}
+
+static std::optional<itype_id> selected_fpv_payload_type( const npc &operator_npc )
+{
+    const std::string payload_type = operator_npc.get_value( "fpv_payload_type" ).str();
+    const itype_id payload_id( payload_type );
+    if( payload_type.empty() || !payload_id.is_valid() ||
+        fpv_payload_count( operator_npc, payload_id ) <= 0 ) {
+        for( size_t pos = 0; pos < operator_npc.support_inv.size(); ++pos ) {
+            for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
+                if( is_fpv_baba_yaga_payload( it ) ) {
+                    return it.typeId();
+                }
+            }
+        }
+        return std::nullopt;
+    }
+    return payload_id;
+}
+
+static std::optional<itype_id> loaded_fpv_payload_type( const npc &operator_npc )
+{
+    const std::string payload_type = operator_npc.get_value( "fpv_payload_loaded_type" ).str();
+    if( payload_type.empty() ) {
+        return std::nullopt;
+    }
+    const itype_id payload_id( payload_type );
+    if( !payload_id.is_valid() || loaded_fpv_payload_count( operator_npc ) <= 0 ) {
+        return std::nullopt;
+    }
+    return payload_id;
+}
+
+static int max_baba_yaga_payload_count( const itype_id &payload_id )
+{
+    item payload( payload_id, calendar::turn, 1 );
+    if( payload.weight() <= 0_gram ) {
+        return 0;
+    }
+    return std::max( 0, static_cast<int>( 8_kilogram / payload.weight() ) );
+}
+
+static void return_loaded_fpv_payload( npc &operator_npc )
+{
+    const std::optional<itype_id> payload_id = loaded_fpv_payload_type( operator_npc );
+    if( payload_id ) {
+        add_support_items( operator_npc, *payload_id, loaded_fpv_payload_count( operator_npc ) );
+    }
+    operator_npc.set_value( "fpv_payload_loaded_type", "" );
+    operator_npc.set_value( "fpv_payload_loaded_count", 0 );
+}
+
+static int load_baba_yaga_payload( npc &operator_npc )
+{
+    operator_npc.set_value( "fpv_payload_loaded_type", "" );
+    operator_npc.set_value( "fpv_payload_loaded_count", 0 );
+    const std::optional<itype_id> payload_id = selected_fpv_payload_type( operator_npc );
+    if( !payload_id ) {
+        return 0;
+    }
+    const int to_load = std::min( fpv_payload_count( operator_npc, *payload_id ),
+                                  max_baba_yaga_payload_count( *payload_id ) );
+    if( to_load <= 0 ) {
+        return 0;
+    }
+    int loaded = 0;
+    for( ; loaded < to_load; ++loaded ) {
+        if( !take_one_support_item( operator_npc, [&payload_id]( const item & it ) {
+            return it.typeId() == *payload_id && is_fpv_baba_yaga_payload( it );
+        } ) ) {
+            break;
+        }
+    }
+    if( loaded <= 0 ) {
+        return 0;
+    }
+    operator_npc.set_value( "fpv_payload_loaded_type", payload_id->str() );
+    operator_npc.set_value( "fpv_payload_loaded_count", loaded );
+    return loaded;
+}
+
+static void clear_fpv_scout( npc &operator_npc )
+{
+    operator_npc.set_value( "fpv_scout_active", "no" );
+    operator_npc.set_value( "fpv_scout_ready_turn", 0 );
+    operator_npc.set_value( "fpv_scout_x", 0 );
+    operator_npc.set_value( "fpv_scout_y", 0 );
+    operator_npc.set_value( "fpv_scout_z", 0 );
+    operator_npc.set_value( "fpv_scout_report_active", "no" );
+    operator_npc.set_value( "fpv_scout_report_x", 0 );
+    operator_npc.set_value( "fpv_scout_report_y", 0 );
+    operator_npc.set_value( "fpv_scout_report_z", 0 );
+}
+
+static bool fpv_scout_task_ready( const npc &operator_npc )
+{
+    return operator_npc.get_value( "fpv_scout_active" ).str() == "yes" &&
+           current_turn_number() >= get_fpv_turn_value( operator_npc, "fpv_scout_ready_turn" );
+}
+
+static void preserve_ready_fpv_scout_report( npc &operator_npc )
+{
+    if( !fpv_scout_task_ready( operator_npc ) ) {
+        return;
+    }
+    operator_npc.set_value( "fpv_scout_report_active", "yes" );
+    operator_npc.set_value( "fpv_scout_report_x", get_fpv_turn_value( operator_npc, "fpv_scout_x" ) );
+    operator_npc.set_value( "fpv_scout_report_y", get_fpv_turn_value( operator_npc, "fpv_scout_y" ) );
+    operator_npc.set_value( "fpv_scout_report_z", get_fpv_turn_value( operator_npc, "fpv_scout_z" ) );
+}
+
+static void clear_fpv_status_events( const std::string &mission_key )
+{
+    if( mission_key.empty() ) {
+        return;
+    }
+    get_timed_events().remove( timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_STATUS_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_RETURN_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
+}
+
+static void clear_fpv_payload_drop_events( const std::string &mission_key )
+{
+    if( mission_key.empty() ) {
+        return;
+    }
+    get_timed_events().remove( timed_event_type::FPV_DRONE_PAYLOAD_DROP, mission_key );
+}
+
+static void clear_fpv_mission( npc &operator_npc )
+{
+    const std::string mission_key = operator_npc.get_value( "fpv_mission_key" ).str();
+    clear_fpv_status_events( mission_key );
+    clear_fpv_payload_drop_events( mission_key );
+    operator_npc.set_value( "fpv_status", "none" );
+    operator_npc.set_value( "fpv_mission_key", "" );
+    operator_npc.set_value( "fpv_arrival_turn", 0 );
+    operator_npc.set_value( "fpv_station_end_turn", 0 );
+    operator_npc.set_value( "fpv_return_end_turn", 0 );
+    operator_npc.set_value( "fpv_outbound_seconds", 0 );
+    operator_npc.set_value( "fpv_return_seconds", 0 );
+    operator_npc.set_value( "fpv_one_way", "no" );
+    operator_npc.set_value( "fpv_expend_practiced", "no" );
+    operator_npc.set_value( "fpv_drone_type", "" );
+    operator_npc.set_value( "fpv_payload_loaded_type", "" );
+    operator_npc.set_value( "fpv_payload_loaded_count", 0 );
+    operator_npc.set_value( "fpv_command_busy_until", 0 );
+    clear_fpv_scout( operator_npc );
+}
+
+static void assign_fpv_station( npc &operator_npc )
+{
+    assign_support_station( operator_npc, "fpv_stationary_guard" );
+}
+
+static void clear_fpv_station( npc &operator_npc )
+{
+    clear_support_station( operator_npc, "fpv_stationary_guard" );
+}
+
+static std::string make_fpv_payload_drop_string_id( const std::string &payload_id,
+        const std::string &operator_name )
+{
+    return payload_id + "\n" + operator_name;
+}
+
+static void reconcile_fpv_mission( npc &operator_npc )
+{
+    const std::string status = operator_npc.get_value( "fpv_status" ).str();
+    if( status != "enroute" && status != "on_station" && status != "returning" ) {
+        return;
+    }
+
+    const int now = current_turn_number();
+    const int arrival_turn = get_fpv_turn_value( operator_npc, "fpv_arrival_turn" );
+    const int station_end_turn = get_fpv_turn_value( operator_npc, "fpv_station_end_turn" );
+    const int return_end_turn = get_fpv_turn_value( operator_npc, "fpv_return_end_turn" );
+    const bool one_way = operator_npc.get_value( "fpv_one_way" ).str() == "yes";
+
+    if( now < arrival_turn ) {
+        operator_npc.set_value( "fpv_status", "enroute" );
+        return;
+    }
+    if( now <= station_end_turn ) {
+        operator_npc.set_value( "fpv_status", "on_station" );
+        return;
+    }
+    if( one_way ) {
+        clear_fpv_mission( operator_npc );
+        return;
+    }
+    if( now <= return_end_turn ) {
+        operator_npc.set_value( "fpv_status", "returning" );
+        return;
+    }
+
+    return_loaded_fpv_payload( operator_npc );
+    add_support_items( operator_npc, fpv_drone_item_id( active_fpv_drone_type( operator_npc ) ), 1 );
+    clear_fpv_mission( operator_npc );
+}
+
+static void cancel_fpv_assignment_for_new_duty( npc &operator_npc )
+{
+    if( operator_npc.get_value( "fpv_assignment" ).str() != "operator" ) {
+        return;
+    }
+    reconcile_fpv_mission( operator_npc );
+    const std::string status = operator_npc.get_value( "fpv_status" ).str();
+    const bool drone_airborne = status == "enroute" || status == "on_station" || status == "returning";
+    if( drone_airborne ) {
+        const int loaded_payload = loaded_fpv_payload_count( operator_npc );
+        clear_fpv_mission( operator_npc );
+        if( loaded_payload > 0 ) {
+            add_msg( _( "%1$s leaves drone duty.  The airborne drone and its payload are lost." ),
+                     operator_npc.disp_name() );
+        } else {
+            add_msg( _( "%s leaves drone duty.  The airborne drone is lost." ),
+                     operator_npc.disp_name() );
+        }
+    } else {
+        clear_fpv_mission( operator_npc );
+    }
+    clear_fpv_station( operator_npc );
+    operator_npc.set_value( "fpv_assignment", "" );
+    drop_support_inventory( operator_npc );
+}
+
+static bool fpv_has_active_mission( npc &operator_npc )
+{
+    reconcile_fpv_mission( operator_npc );
+    const std::string status = operator_npc.get_value( "fpv_status" ).str();
+    return status == "enroute" || status == "on_station" || status == "returning";
+}
+
+talk_effect_fun_t::func f_reconcile_fpv_mission()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to reconcile drone mission, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        reconcile_fpv_mission( *operator_npc );
+    };
+}
+
+static void schedule_fpv_status_messages( const npc &operator_npc, const tripoint_abs_ms &player_pos,
+        const std::string &mission_key, const int first_offset_seconds, const int station_seconds_remaining,
+        const int total_battery_seconds )
+{
+    static const std::array<int, 3> status_threshold_percents = { { 20, 10, 5 } };
+    std::set<int> scheduled_remaining;
+    for( const int percent : status_threshold_percents ) {
+        const int remaining = std::max( 1,
+                                        static_cast<int>( std::lround( total_battery_seconds * percent / 100.0 ) ) );
+        if( remaining >= station_seconds_remaining || !scheduled_remaining.insert( remaining ).second ) {
+            continue;
+        }
+        const int elapsed = station_seconds_remaining - remaining;
+        if( elapsed <= 0 ) {
+            continue;
+        }
+        get_timed_events().add( timed_event_type::FPV_DRONE_STATUS_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( first_offset_seconds + elapsed ),
+                                -1, player_pos, remaining, operator_npc.disp_name(),
+                                mission_key );
+    }
+}
+
+static bool require_fpv_radio_link( const dialogue &d, const npc &operator_npc )
+{
+    if( !d.by_radio ) {
+        return true;
+    }
+    avatar &you = get_avatar();
+    if( !you.cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ||
+        ( !operator_npc.cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) &&
+          !support_has_item_with_flag( operator_npc, json_flag_TWO_WAY_RADIO ) ) ) {
+        add_msg( _( "Both you and %s need a two-way radio." ), operator_npc.disp_name() );
+        return false;
+    }
+    return true;
+}
+
+static bool require_fpv_controller( const npc &operator_npc )
+{
+    if( operator_npc.amount_of( itype_remotevehcontrol, false ) <= 0 &&
+        count_support_items( operator_npc, []( const item & it ) {
+        return it.typeId() == itype_remotevehcontrol;
+    } ) <= 0 ) {
+        add_msg( _( "%s needs a remote vehicle controller to operate drones." ),
+                 operator_npc.disp_name() );
+        return false;
+    }
+    return true;
+}
+
+static bool require_fpv_on_station( npc &operator_npc )
+{
+    reconcile_fpv_mission( operator_npc );
+
+    const int now = current_turn_number();
+    const int arrival_turn = get_fpv_turn_value( operator_npc, "fpv_arrival_turn" );
+    const std::string status = operator_npc.get_value( "fpv_status" ).str();
+    if( status == "returning" ) {
+        add_msg( _( "%s reports the drone is already on the return leg." ),
+                 operator_npc.disp_name() );
+        return false;
+    }
+    if( status == "enroute" && now < arrival_turn ) {
+        add_msg( _( "%1$s reports the drone is still inbound, ETA %2$s." ),
+                 operator_npc.disp_name(), format_fpv_duration( arrival_turn - now ) );
+        return false;
+    }
+    if( status != "on_station" ) {
+        add_msg( _( "%s reports no drone is on station." ), operator_npc.disp_name() );
+        return false;
+    }
+    return true;
+}
+
+static std::optional<int> mortar_drone_spotter_skill()
+{
+    int best_skill = -1;
+    for( npc *operator_npc : g->get_npcs_if( []( const npc & guy ) {
+        return guy.is_player_ally() && guy.get_value( "fpv_assignment" ).str() == "operator";
+    } ) ) {
+        reconcile_fpv_mission( *operator_npc );
+        if( operator_npc->get_value( "fpv_status" ).str() != "on_station" ) {
+            continue;
+        }
+        if( !active_fpv_drone_has_scout_package( *operator_npc ) ) {
+            continue;
+        }
+        best_skill = std::max( best_skill, static_cast<int>( operator_npc->get_skill_level( skill_driving ) ) );
+    }
+    if( best_skill < 0 ) {
+        return std::nullopt;
+    }
+    return best_skill;
+}
+
+static tripoint_abs_ms apply_circular_cep( const tripoint_abs_ms &target, const double cep )
+{
+    const double sigma = cep / 1.1774;
+    const double dx = normal_roll( 0.0, sigma );
+    const double dy = normal_roll( 0.0, sigma );
+    return tripoint_abs_ms( target.x() + static_cast<int>( std::round( dx ) ),
+                            target.y() + static_cast<int>( std::round( dy ) ),
+                            target.z() );
+}
+
+static double fpv_light_cep_multiplier( map &here, const tripoint_bub_ms &target )
+{
+    here.build_map_cache( target.z() );
+    here.update_visibility_cache( target.z() );
+    const float ambient_light = here.ambient_light_at( target );
+    if( ambient_light <= LIGHT_AMBIENT_LOW ) {
+        return 4.0;
+    }
+    if( ambient_light < LIGHT_AMBIENT_LIT ) {
+        return 2.0;
+    }
+    return 1.0;
+}
+
+static std::optional<tripoint_bub_ms> select_visible_fpv_target( const std::string &prompt )
+{
+    add_msg( m_info, prompt );
+    target_handler::trajectory trajectory = target_handler::mode_select_only( get_avatar(),
+                                            MAX_VIEW_DISTANCE );
+    if( trajectory.empty() ) {
+        return std::nullopt;
+    }
+    return trajectory.back();
+}
+
+static std::optional<tripoint_bub_ms> select_fixed_fpv_target( const std::string &prompt )
+{
+    add_msg( m_info, prompt );
+    return g->look_around();
+}
+
+static tripoint_bub_ms fpv_scout_top_position( map &here, const tripoint_bub_ms &target )
+{
+    tripoint_bub_ms top = target;
+    for( int z = target.z() + 1; z <= OVERMAP_HEIGHT; ++z ) {
+        const tripoint_bub_ms candidate( target.xy(), z );
+        if( !here.inbounds( candidate ) ) {
+            break;
+        }
+        if( here.has_floor_or_support( candidate ) ) {
+            top.z() = z;
+        }
+    }
+    return top;
+}
+
+static void set_overmap_seen_downward( const tripoint_abs_omt &pos, const om_vision_level level )
+{
+    tripoint_abs_omt seen( pos );
+    do {
+        overmap_buffer.set_seen( seen, level );
+        --seen.z();
+    } while( seen.z() >= 0 );
+}
+
+static void reveal_fpv_scout_overmap_vision( const tripoint_abs_ms &scout_abs )
+{
+    avatar &you = get_avatar();
+    tripoint_abs_omt center = project_to<coords::omt>( scout_abs );
+    center.z() = clamp( std::max( 5, you.posz() + 2 ), -OVERMAP_DEPTH, OVERMAP_HEIGHT );
+
+    int dist = you.overmap_sight_range( g->light_level( center.z() ) );
+    if( dist <= 0 ) {
+        return;
+    }
+    dist = std::max( dist + std::max( 0, center.z() ) * 2, 3 );
+    const int dist_squared = dist * dist;
+
+    set_overmap_seen_downward( center, om_vision_level::full );
+    for( const tripoint_abs_omt &p : points_in_radius( center, dist ) ) {
+        const point_rel_omt delta = p.xy() - center.xy();
+        const int h_squared = delta.x() * delta.x() + delta.y() * delta.y();
+        if( trigdist && h_squared > dist_squared ) {
+            continue;
+        }
+        if( delta == point_rel_omt() ) {
+            continue;
+        }
+
+        const point_rel_omt abs_delta = delta.abs();
+        const int max_delta = std::max( abs_delta.x(), abs_delta.y() );
+        const float multiplier = trigdist ? std::sqrt( h_squared ) / max_delta : 1;
+        const std::vector<tripoint_abs_omt> line = line_to( center, p );
+        float sight_points = dist;
+        for( auto it = line.begin(); it != line.end() && sight_points >= 0; ++it ) {
+            const oter_id &ter = overmap_buffer.ter( *it );
+            sight_points -= static_cast<int>( ter->get_see_cost() ) * multiplier;
+        }
+        if( sight_points < 0 ) {
+            continue;
+        }
+
+        const int tiles_from = rl_dist( p, center );
+        if( tiles_from < std::floor( dist / 2 ) ) {
+            set_overmap_seen_downward( p, om_vision_level::full );
+        } else if( tiles_from < dist ) {
+            set_overmap_seen_downward( p, om_vision_level::details );
+        } else if( tiles_from < dist * 2 ) {
+            set_overmap_seen_downward( p, om_vision_level::outlines );
+        } else {
+            set_overmap_seen_downward( p, om_vision_level::vague );
+        }
+    }
+}
+
+static bool show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool thermal )
+{
+    map &here = get_map();
+    avatar &you = get_avatar();
+    const tripoint_bub_ms scout_bub = here.get_bub( scout_abs );
+    if( !here.inbounds( scout_bub ) ) {
+        add_msg( _( "The drone scout feed is no longer within the local control bubble." ) );
+        return false;
+    }
+
+    const tripoint_bub_ms previous_pos = you.pos_bub( here );
+    const tripoint_rel_ms previous_offset = you.view_offset;
+    const bool had_debug_nightvision = you.has_trait( trait_DEBUG_NIGHTVISION );
+    const bool had_infrared = you.has_trait( trait_INFRARED );
+    const std::set<efftype_id> drone_blocked_effects = {
+        effect_blind, effect_boomered, effect_darkness, effect_narcosis, effect_no_sight
+    };
+    std::vector<effect> restored_effects;
+
+    for( const effect &eff : you.get_effects() ) {
+        if( drone_blocked_effects.count( eff.get_id() ) > 0 ) {
+            restored_effects.emplace_back( eff );
+        }
+    }
+    for( const effect &eff : restored_effects ) {
+        you.remove_effect( eff.get_id(), eff.get_bp() );
+    }
+    if( !had_debug_nightvision ) {
+        you.set_mutation( trait_DEBUG_NIGHTVISION );
+    }
+    if( thermal && !had_infrared ) {
+        you.set_mutation( trait_INFRARED );
+    }
+
+    you.setpos( here, scout_bub, false );
+    you.recalc_sight_limits();
+    tripoint_bub_ms center = scout_bub;
+    here.build_map_cache( scout_bub.z() );
+    here.update_visibility_cache( scout_bub.z() );
+    g->look_around( true, center, scout_bub, false, true, false );
+
+    you.setpos( here, previous_pos, false );
+    you.view_offset = previous_offset;
+    if( !had_infrared ) {
+        you.unset_mutation( trait_INFRARED );
+    }
+    if( !had_debug_nightvision ) {
+        you.unset_mutation( trait_DEBUG_NIGHTVISION );
+    }
+    for( const effect &eff : restored_effects ) {
+        you.add_effect( eff );
+    }
+    you.recalc_sight_limits();
+    here.invalidate_map_cache( scout_bub.z() );
+    here.invalidate_visibility_cache();
+    here.build_map_cache( previous_pos.z() );
+    here.update_visibility_cache( previous_pos.z() );
+    return true;
+}
+
+static void practice_fpv_operation( npc &operator_npc )
+{
+    SkillLevel &driving = operator_npc.get_skill_level_object( skill_driving );
+    driving.set_exercise( driving.exercise() + 1 );
+}
+
+static void practice_fpv_expenditure( npc &operator_npc )
+{
+    if( operator_npc.get_value( "fpv_expend_practiced" ).str() == "yes" ) {
+        return;
+    }
+    practice_fpv_operation( operator_npc );
+    operator_npc.set_value( "fpv_expend_practiced", "yes" );
+}
+
+static int transfer_baba_yaga_payload( npc &operator_npc )
+{
+    int transferred = 0;
+    std::optional<itype_id> selected_id;
+    drop_locations payloads = select_nearby_handover_items( is_fpv_baba_yaga_payload,
+                              _( "Select bomber drone payloads to hand over" ) );
+    for( drop_location &selected : payloads ) {
+        std::optional<item> payload = take_handover_item( selected.first, selected.second );
+        if( !payload || !is_fpv_baba_yaga_payload( *payload ) ) {
+            continue;
+        }
+        const int payload_count = fpv_payload_item_count( *payload );
+        if( payload_count <= 0 ) {
+            continue;
+        }
+        const itype_id payload_id = payload->typeId();
+        if( !selected_id ) {
+            selected_id = payload_id;
+        }
+        operator_npc.support_inv.add_item( std::move( *payload ) );
+        transferred += payload_count;
+    }
+    if( selected_id ) {
+        operator_npc.set_value( "fpv_payload_type", selected_id->str() );
+    }
+    return transferred;
+}
+
+static bool is_fpv_support_item( const item &it )
+{
+    return is_fpv_suicide_drone( it ) || is_fpv_military_suicide_drone( it ) ||
+           is_fpv_scout_drone( it ) || is_fpv_baba_yaga_drone( it ) ||
+           it.typeId() == itype_remotevehcontrol || it.has_flag( json_flag_TWO_WAY_RADIO ) ||
+           is_fpv_baba_yaga_payload( it );
+}
+
+talk_effect_fun_t::func f_manage_fpv_support_inventory()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to manage drone support inventory, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( d.by_radio ) {
+            add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        manage_support_inventory( *operator_npc, is_fpv_support_item, _( "Drone support equipment" ),
+                                  _( "Select drone equipment to hand over" ),
+                                  _( "Take back which drone support equipment?" ) );
+    };
+}
+
+talk_effect_fun_t::func f_assign_fpv_drone_operator()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to assign drone operator, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( d.by_radio ) {
+            add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        if( !operator_npc->is_player_ally() ) {
+            add_msg( _( "%s is not willing to operate drones for you." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+        if( operator_npc->get_skill_level( skill_driving ) < 2 ) {
+            add_msg( _( "%s needs at least moderate driving training to pilot drones." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+        cancel_mortar_assignment_for_new_duty( *operator_npc );
+
+        const bool needs_controller = operator_npc->amount_of( itype_remotevehcontrol, false ) <= 0 &&
+                                      count_support_items( *operator_npc, []( const item & it ) {
+            return it.typeId() == itype_remotevehcontrol;
+        } ) <= 0;
+        if( needs_controller ) {
+            item_location controller = select_nearby_handover_item( []( const item & it ) {
+                return it.typeId() == itype_remotevehcontrol;
+            }, _( "Select a remote vehicle controller to hand over" ) );
+            std::optional<item> controller_item = take_handover_item( controller, 1 );
+            if( !controller_item || controller_item->typeId() != itype_remotevehcontrol ) {
+                add_msg( _( "%s needs a remote vehicle controller, and you do not have one to hand over." ),
+                         operator_npc->disp_name() );
+                return;
+            }
+            operator_npc->support_inv.add_item( std::move( *controller_item ) );
+        }
+
+        int suicide_drones = 0;
+        int military_suicide_drones = 0;
+        int scout_drones = 0;
+        int baba_yaga_drones = 0;
+        const auto drone_filter = []( const item & it ) {
+            return is_fpv_suicide_drone( it ) || is_fpv_military_suicide_drone( it ) ||
+                   is_fpv_scout_drone( it ) || is_fpv_baba_yaga_drone( it );
+        };
+        drop_locations drones = select_nearby_handover_items( drone_filter,
+                               _( "Select drones to hand over" ) );
+        for( drop_location &selected : drones ) {
+            std::optional<item> drone = take_handover_item( selected.first, selected.second );
+            if( !drone ) {
+                continue;
+            }
+            if( is_fpv_suicide_drone( *drone ) ) {
+                ++suicide_drones;
+                operator_npc->support_inv.add_item( std::move( *drone ) );
+            } else if( is_fpv_military_suicide_drone( *drone ) ) {
+                ++military_suicide_drones;
+                operator_npc->support_inv.add_item( std::move( *drone ) );
+            } else if( is_fpv_scout_drone( *drone ) ) {
+                ++scout_drones;
+                operator_npc->support_inv.add_item( std::move( *drone ) );
+            } else if( is_fpv_baba_yaga_drone( *drone ) ) {
+                ++baba_yaga_drones;
+                operator_npc->support_inv.add_item( std::move( *drone ) );
+            }
+        }
+        const int payload_count = ( baba_yaga_drones > 0 ||
+                                    fpv_drone_count( *operator_npc, "baba_yaga" ) > 0 ) ?
+                                  transfer_baba_yaga_payload( *operator_npc ) : 0;
+        operator_npc->set_value( "fpv_assignment", "operator" );
+        assign_fpv_station( *operator_npc );
+        clear_fpv_mission( *operator_npc );
+
+        const int drone_count = suicide_drones + military_suicide_drones + scout_drones + baba_yaga_drones;
+        if( drone_count == 0 ) {
+            add_msg( _( "%s sets up as drone operator, but still needs drones." ),
+                     operator_npc->disp_name() );
+        } else if( baba_yaga_drones > 0 && payload_count > 0 ) {
+            add_msg( _( "%1$s sets up as drone operator and takes %2$d drone plus %3$d bomber drone payload." ),
+                     operator_npc->disp_name(), drone_count, payload_count );
+        } else if( baba_yaga_drones > 0 ) {
+            add_msg( _( "%1$s sets up as drone operator and takes %2$d drone, but has no bomber drone payload." ),
+                     operator_npc->disp_name(), drone_count );
+        } else {
+            add_msg( _( "%1$s sets up as drone operator and takes %2$d drone." ),
+                     operator_npc->disp_name(), drone_count );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_unassign_fpv_drone_operator()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to unassign drone operator, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( d.by_radio ) {
+            add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        cancel_fpv_assignment_for_new_duty( *operator_npc );
+        talk_function::stop_guard( *operator_npc );
+    };
+}
+
+static void request_fpv_launch( dialogue const &d, const std::string &drone_type )
+{
+    npc *operator_npc = d.actor( true )->get_npc();
+    if( operator_npc == nullptr ) {
+        debugmsg( "Trying to request drone launch, but beta talker is not an NPC.  %s",
+                  d.get_callstack() );
+        return;
+    }
+    if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ) {
+        return;
+    }
+    if( operator_npc->get_value( "fpv_assignment" ).str() != "operator" ) {
+        add_msg( _( "%s has not been assigned as a drone operator." ),
+                 operator_npc->disp_name() );
+        return;
+    }
+    if( fpv_has_active_mission( *operator_npc ) ) {
+        add_msg( _( "%s reports that a drone is already airborne." ),
+                 operator_npc->disp_name() );
+        return;
+    }
+    clear_fpv_mission( *operator_npc );
+    if( !take_fpv_drone( *operator_npc, drone_type ) ) {
+        if( drone_type == "scout" ) {
+            add_msg( _( "%s reports that they have no scout drones." ), operator_npc->disp_name() );
+        } else if( drone_type == "baba_yaga" ) {
+            add_msg( _( "%s reports that they have no bomber drones." ), operator_npc->disp_name() );
+        } else if( drone_type == "military_suicide" ) {
+            add_msg( _( "%s reports that they have no military explosive FPV attack drones." ),
+                     operator_npc->disp_name() );
+        } else {
+            add_msg( _( "%s reports that they have no FPV attack drones." ), operator_npc->disp_name() );
+        }
+        return;
+    }
+
+    avatar &you = get_avatar();
+    const int distance = rl_dist( operator_npc->pos_abs(), you.pos_abs() );
+    const bool scout_drone = drone_type == "scout";
+    const bool baba_yaga_drone = drone_type == "baba_yaga";
+    const int max_range_meters = fpv_drone_max_range_meters( drone_type );
+    if( distance > max_range_meters ) {
+        add_support_items( *operator_npc, fpv_drone_item_id( drone_type ), 1 );
+        if( scout_drone ) {
+            add_msg( _( "%s reports that you are outside the 15 km scout drone control range." ),
+                     operator_npc->disp_name() );
+        } else if( baba_yaga_drone ) {
+            add_msg( _( "%s reports that you are outside the 20 km bomber drone control range." ),
+                     operator_npc->disp_name() );
+        } else if( drone_type == "military_suicide" ) {
+            add_msg( _( "%s reports that you are outside the 7 km military explosive FPV control range." ),
+                     operator_npc->disp_name() );
+        } else {
+            add_msg( _( "%s reports that you are outside the 7 km FPV control range." ),
+                     operator_npc->disp_name() );
+        }
+        return;
+    }
+
+    const int cruise_seconds = std::max( 1, static_cast<int>( std::ceil( distance * 3600.0 /
+                                      fpv_drone_cruise_speed_meters_per_hour( drone_type ) ) ) );
+    const int outbound_seconds = cruise_seconds + fpv_drone_launch_delay_seconds( *operator_npc,
+                                 drone_type );
+    const int return_seconds = cruise_seconds;
+    const int battery_seconds = fpv_drone_battery_seconds( drone_type );
+    const int reserve_seconds = 20;
+    const int cruise_budget = battery_seconds - outbound_seconds - return_seconds - reserve_seconds;
+    if( cruise_budget <= 0 ) {
+        add_support_items( *operator_npc, fpv_drone_item_id( drone_type ), 1 );
+        add_msg( _( "%s reports insufficient battery for launch, return, and reserve." ),
+                 operator_npc->disp_name() );
+        return;
+    }
+    const int station_seconds = std::max( 1, static_cast<int>( std::floor( cruise_budget / 0.6 ) ) );
+    const int now = current_turn_number();
+    const int arrival_turn = now + outbound_seconds;
+    const int station_end_turn = arrival_turn + station_seconds;
+    const int return_end_turn = station_end_turn + return_seconds;
+    const std::string mission_key = string_format( "fpv_%d_%d", operator_npc->getID().get_value(),
+                                    now );
+    const int payload_loaded = baba_yaga_drone ? load_baba_yaga_payload( *operator_npc ) : 0;
+
+    operator_npc->set_value( "fpv_status", "enroute" );
+    operator_npc->set_value( "fpv_mission_key", mission_key );
+    operator_npc->set_value( "fpv_arrival_turn", arrival_turn );
+    operator_npc->set_value( "fpv_station_end_turn", station_end_turn );
+    operator_npc->set_value( "fpv_return_end_turn", return_end_turn );
+    operator_npc->set_value( "fpv_outbound_seconds", outbound_seconds );
+    operator_npc->set_value( "fpv_return_seconds", return_seconds );
+    operator_npc->set_value( "fpv_one_way", "no" );
+    operator_npc->set_value( "fpv_expend_practiced", "no" );
+    operator_npc->set_value( "fpv_drone_type", drone_type );
+
+    get_timed_events().add( timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE,
+                            calendar::turn + time_duration::from_seconds( outbound_seconds ),
+                            -1, you.pos_abs(), station_seconds, operator_npc->disp_name(), mission_key );
+    schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, outbound_seconds,
+                                  station_seconds, battery_seconds );
+    get_timed_events().add( timed_event_type::FPV_DRONE_RETURN_MESSAGE,
+                            calendar::turn + time_duration::from_seconds( outbound_seconds + station_seconds ),
+                            -1, you.pos_abs(), return_seconds, operator_npc->disp_name(), mission_key );
+    get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
+                            calendar::turn + time_duration::from_seconds( outbound_seconds + station_seconds +
+                                            return_seconds ),
+                            -1, operator_npc->pos_abs(), -1, operator_npc->disp_name(), mission_key );
+    practice_fpv_operation( *operator_npc );
+    if( scout_drone ) {
+        add_msg( _( "You authorize scout drone launch.  %1$s reports ETA %2$s, planned time on station %3$s, and recovery %4$s after return." ),
+                 operator_npc->disp_name(), format_fpv_duration( outbound_seconds ),
+                 format_fpv_duration( station_seconds ), format_fpv_duration( return_seconds ) );
+    } else if( baba_yaga_drone ) {
+        if( payload_loaded > 0 ) {
+            add_msg( _( "You authorize bomber drone launch.  %1$s reports ETA %2$s, planned time on station %3$s, recovery %4$s after return, and %5$d payload aboard." ),
+                     operator_npc->disp_name(), format_fpv_duration( outbound_seconds ),
+                     format_fpv_duration( station_seconds ), format_fpv_duration( return_seconds ),
+                     payload_loaded );
+        } else {
+            add_msg( _( "You authorize bomber drone launch.  %1$s reports ETA %2$s, planned time on station %3$s, and no payload aboard." ),
+                     operator_npc->disp_name(), format_fpv_duration( outbound_seconds ),
+                     format_fpv_duration( station_seconds ) );
+        }
+    } else if( drone_type == "military_suicide" ) {
+        add_msg( _( "You authorize military explosive FPV launch.  %1$s reports ETA %2$s, planned time on station %3$s, and recovery %4$s after return." ),
+                 operator_npc->disp_name(), format_fpv_duration( outbound_seconds ),
+                 format_fpv_duration( station_seconds ), format_fpv_duration( return_seconds ) );
+    } else {
+        add_msg( _( "You authorize FPV launch.  %1$s reports ETA %2$s, planned time on station %3$s, and recovery %4$s after return." ),
+                 operator_npc->disp_name(), format_fpv_duration( outbound_seconds ),
+                 format_fpv_duration( station_seconds ), format_fpv_duration( return_seconds ) );
+    }
+}
+
+talk_effect_fun_t::func f_request_fpv_launch()
+{
+    return []( dialogue const & d ) {
+        request_fpv_launch( d, "suicide" );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_scout_launch()
+{
+    return []( dialogue const & d ) {
+        request_fpv_launch( d, "scout" );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_military_launch()
+{
+    return []( dialogue const & d ) {
+        request_fpv_launch( d, "military_suicide" );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_baba_yaga_launch()
+{
+    return []( dialogue const & d ) {
+        request_fpv_launch( d, "baba_yaga" );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_one_way()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to request drone one-way loiter, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ) {
+            return;
+        }
+        reconcile_fpv_mission( *operator_npc );
+
+        const int now = current_turn_number();
+        const int arrival_turn = get_fpv_turn_value( *operator_npc, "fpv_arrival_turn" );
+        const int outbound_seconds = get_fpv_turn_value( *operator_npc, "fpv_outbound_seconds" );
+        const std::string status = operator_npc->get_value( "fpv_status" ).str();
+        if( status == "returning" ) {
+            add_msg( _( "%s reports the drone is already on the return leg." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+        if( status != "enroute" && status != "on_station" ) {
+            add_msg( _( "%s reports no drone is airborne." ), operator_npc->disp_name() );
+            return;
+        }
+        if( now < arrival_turn ) {
+            add_msg( _( "%1$s reports the drone is still inbound, ETA %2$s." ),
+                     operator_npc->disp_name(), format_fpv_duration( arrival_turn - now ) );
+            return;
+        }
+        if( operator_npc->get_value( "fpv_one_way" ).str() == "yes" ) {
+            add_msg( _( "%s reports the drone is already committed one-way." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        const int battery_seconds = fpv_drone_battery_seconds( active_fpv_drone_type( *operator_npc ) );
+        const int one_way_station_seconds = std::max( 1, static_cast<int>( std::floor(
+                                            ( battery_seconds - outbound_seconds ) / 0.6 ) ) );
+        const int one_way_end_turn = arrival_turn + one_way_station_seconds;
+        const int remaining_seconds = one_way_end_turn - now;
+        if( remaining_seconds <= 0 ) {
+            add_msg( _( "%s reports the drone has no battery margin left for one-way loiter." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        const std::string mission_key = operator_npc->get_value( "fpv_mission_key" ).str();
+        avatar &you = get_avatar();
+        clear_fpv_status_events( mission_key );
+        practice_fpv_expenditure( *operator_npc );
+        operator_npc->set_value( "fpv_one_way", "yes" );
+        operator_npc->set_value( "fpv_status", "on_station" );
+        operator_npc->set_value( "fpv_station_end_turn", one_way_end_turn );
+        operator_npc->set_value( "fpv_return_end_turn", one_way_end_turn );
+
+        schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, 0, remaining_seconds,
+                                      battery_seconds );
+        get_timed_events().add( timed_event_type::FPV_DRONE_LOST_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( remaining_seconds ),
+                                -1, you.pos_abs(), -1, operator_npc->disp_name(), mission_key );
+        add_msg( _( "You commit the drone one-way.  %1$s reports battery-limited station time remaining %2$s; no recovery planned." ),
+                 operator_npc->disp_name(), format_fpv_duration( remaining_seconds ) );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_abort_one_way()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to abort drone one-way loiter, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ) {
+            return;
+        }
+        reconcile_fpv_mission( *operator_npc );
+
+        const std::string status = operator_npc->get_value( "fpv_status" ).str();
+        if( status != "on_station" && status != "enroute" ) {
+            add_msg( _( "%s reports no drone is airborne." ), operator_npc->disp_name() );
+            return;
+        }
+        if( operator_npc->get_value( "fpv_one_way" ).str() != "yes" ) {
+            add_msg( _( "%s reports the drone is already set to return on bingo fuel." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        const int now = current_turn_number();
+        const int busy_until = get_fpv_turn_value( *operator_npc, "fpv_command_busy_until" );
+        const int return_seconds = std::max( 1, get_fpv_turn_value( *operator_npc, "fpv_return_seconds" ) );
+        const int reserve_seconds = 20;
+        const int start_turn = std::max( now, busy_until );
+        const int one_way_end_turn = get_fpv_turn_value( *operator_npc, "fpv_station_end_turn" );
+        const int remaining_one_way_station = std::max( 0, one_way_end_turn - start_turn );
+        const int remaining_cruise_seconds = static_cast<int>( std::floor( remaining_one_way_station * 0.6 ) );
+        if( remaining_cruise_seconds <= return_seconds ) {
+            add_msg( _( "%s reports there is not enough battery left for safe recovery." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        int station_seconds = 0;
+        if( remaining_cruise_seconds > return_seconds + reserve_seconds ) {
+            station_seconds = std::max( 0, static_cast<int>( std::floor(
+                                           ( remaining_cruise_seconds - return_seconds - reserve_seconds ) / 0.6 ) ) );
+        }
+        const int station_end_turn = start_turn + station_seconds;
+        const int return_end_turn = station_end_turn + return_seconds;
+        const std::string mission_key = operator_npc->get_value( "fpv_mission_key" ).str();
+        avatar &you = get_avatar();
+
+        clear_fpv_status_events( mission_key );
+        operator_npc->set_value( "fpv_one_way", "no" );
+        operator_npc->set_value( "fpv_station_end_turn", station_end_turn );
+        operator_npc->set_value( "fpv_return_end_turn", return_end_turn );
+        if( now >= station_end_turn ) {
+            operator_npc->set_value( "fpv_status", "returning" );
+        } else {
+            operator_npc->set_value( "fpv_status", "on_station" );
+        }
+
+        const int first_offset_seconds = std::max( 0, start_turn - now );
+        schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, first_offset_seconds,
+                                      station_seconds, fpv_drone_battery_seconds(
+                                          active_fpv_drone_type( *operator_npc ) ) );
+        get_timed_events().add( timed_event_type::FPV_DRONE_RETURN_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( first_offset_seconds +
+                                        station_seconds ),
+                                -1, you.pos_abs(), return_seconds, operator_npc->disp_name(), mission_key );
+        get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( first_offset_seconds +
+                                        station_seconds + return_seconds ),
+                                -1, operator_npc->pos_abs(), -1, operator_npc->disp_name(), mission_key );
+
+        if( start_turn > now ) {
+            add_msg( _( "You order the drone back to bingo-return behavior.  %1$s confirms current task completion first; return profile resumes in %2$s." ),
+                     operator_npc->disp_name(), format_fpv_duration( start_turn - now ) );
+        } else {
+            add_msg( _( "You order the drone back to bingo-return behavior.  %1$s confirms." ),
+                     operator_npc->disp_name() );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_recover()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to request drone recovery, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ) {
+            return;
+        }
+        reconcile_fpv_mission( *operator_npc );
+
+        const std::string status = operator_npc->get_value( "fpv_status" ).str();
+        if( status == "returning" ) {
+            add_msg( _( "%s reports the drone is already on the return leg." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+        if( status != "on_station" ) {
+            add_msg( _( "%s reports no drone is available for recovery order." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+        if( operator_npc->get_value( "fpv_one_way" ).str() == "yes" ) {
+            add_msg( _( "%s reports the drone is committed one-way; use the bingo-return abort order first." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        const int now = current_turn_number();
+        const int busy_until = get_fpv_turn_value( *operator_npc, "fpv_command_busy_until" );
+        const int return_seconds = std::max( 1, get_fpv_turn_value( *operator_npc, "fpv_return_seconds" ) );
+        const int start_turn = std::max( now, busy_until );
+        const std::string mission_key = operator_npc->get_value( "fpv_mission_key" ).str();
+        avatar &you = get_avatar();
+
+        clear_fpv_status_events( mission_key );
+        operator_npc->set_value( "fpv_station_end_turn", start_turn );
+        operator_npc->set_value( "fpv_return_end_turn", start_turn + return_seconds );
+        if( now >= start_turn ) {
+            operator_npc->set_value( "fpv_status", "returning" );
+        } else {
+            operator_npc->set_value( "fpv_status", "on_station" );
+        }
+
+        const int first_offset_seconds = std::max( 0, start_turn - now );
+        schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, first_offset_seconds,
+                                      0, fpv_drone_battery_seconds(
+                                          active_fpv_drone_type( *operator_npc ) ) );
+        get_timed_events().add( timed_event_type::FPV_DRONE_RETURN_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( first_offset_seconds ),
+                                -1, you.pos_abs(), return_seconds, operator_npc->disp_name(), mission_key );
+        get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( first_offset_seconds +
+                                        return_seconds ),
+                                -1, operator_npc->pos_abs(), -1, operator_npc->disp_name(), mission_key );
+
+        if( start_turn > now ) {
+            add_msg( _( "You order immediate drone recovery.  %1$s confirms current task completion first; return profile starts in %2$s." ),
+                     operator_npc->disp_name(), format_fpv_duration( start_turn - now ) );
+        } else {
+            add_msg( _( "You order immediate drone recovery.  %1$s confirms return profile is active." ),
+                     operator_npc->disp_name() );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_attack()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to request FPV drone attack, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ) {
+            return;
+        }
+        reconcile_fpv_mission( *operator_npc );
+
+        const int now = current_turn_number();
+        const int arrival_turn = get_fpv_turn_value( *operator_npc, "fpv_arrival_turn" );
+        const int station_end_turn = get_fpv_turn_value( *operator_npc, "fpv_station_end_turn" );
+        const std::string status = operator_npc->get_value( "fpv_status" ).str();
+        if( status == "returning" ) {
+            add_msg( _( "%s reports the FPV drone is already on the return leg." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+        if( status != "enroute" && status != "on_station" ) {
+            add_msg( _( "%s reports no FPV drone is airborne." ), operator_npc->disp_name() );
+            return;
+        }
+        if( now < arrival_turn ) {
+            add_msg( _( "%1$s reports the FPV drone is still inbound, ETA %2$s." ),
+                     operator_npc->disp_name(), format_fpv_duration( arrival_turn - now ) );
+            return;
+        }
+        if( now > station_end_turn ) {
+            add_msg( _( "%s reports the FPV drone has exhausted station time and broken off." ),
+                     operator_npc->disp_name() );
+            clear_fpv_mission( *operator_npc );
+            return;
+        }
+        if( !active_fpv_drone_is_suicide( *operator_npc ) ) {
+            add_msg( _( "%s reports the active drone is not configured for terminal attack." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        map &here = get_map();
+        avatar &you = get_avatar();
+        const int target_mode = uilist( _( "Command FPV drone to attack what?" ), {
+            _( "Fixed visible square" ), _( "Visible creature" )
+        } );
+        if( target_mode < 0 ) {
+            return;
+        }
+
+        const std::optional<tripoint_bub_ms> target_bub = target_mode == 0 ?
+                select_fixed_fpv_target( _( "Designate a fixed FPV attack point." ) ) :
+                select_visible_fpv_target( _( "Designate a visible FPV attack target." ) );
+        if( !target_bub ) {
+            return;
+        }
+        if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
+            add_msg( _( "You need line of sight to designate that target." ) );
+            return;
+        }
+
+        const bool fixed_point_attack = target_mode == 0;
+        tripoint_abs_ms target_abs = here.get_abs( *target_bub );
+        if( target_mode == 1 ) {
+            Creature *const target = get_creature_tracker().creature_at<Creature>( *target_bub, true );
+            if( target == nullptr || target == &you ) {
+                add_msg( _( "There is no visible creature at that location." ) );
+                return;
+            }
+            if( !you.sees( here, target->pos_bub( here ) ) ) {
+                add_msg( _( "You need line of sight to designate that target." ) );
+                return;
+            }
+            target_abs = target->pos_abs();
+        }
+
+        const int vehicle_skill = operator_npc->get_skill_level( skill_driving );
+        const int time_to_target = std::max( 5, 40 - vehicle_skill * 2 );
+        const double light_multiplier = fpv_light_cep_multiplier( here, *target_bub );
+        const double cep = std::max( 1.0, 15.0 - vehicle_skill ) *
+                           ( fixed_point_attack ? 0.4 : 1.0 ) * light_multiplier;
+        const tripoint_abs_ms impact_abs = apply_circular_cep( target_abs, cep );
+        const bool military_explosive_drone =
+            active_fpv_drone_type( *operator_npc ) == "military_suicide";
+        const explosion_data drone_explosion = military_explosive_drone ?
+                                               explosion_data( 920.0f, 0.8f, false, shrapnel_data( 400, 0.4f ) ) :
+                                               explosion_data( 300.0f, 0.8f, false, shrapnel_data( 400 ) );
+
+        get_timed_events().add( timed_event_type::EXPLOSION,
+                                calendar::turn + time_duration::from_seconds( time_to_target ),
+                                impact_abs, drone_explosion );
+        get_timed_events().add( timed_event_type::FPV_DRONE_IMPACT_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( time_to_target + 1 ),
+                                -1, impact_abs, -1, operator_npc->disp_name(), "" );
+
+        practice_fpv_expenditure( *operator_npc );
+        clear_fpv_mission( *operator_npc );
+        if( light_multiplier > 1.0 ) {
+            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s, probable hit area %3$d meters, and notes the camera package is not built for this light." ),
+                     operator_npc->disp_name(), format_fpv_duration( time_to_target ),
+                     static_cast<int>( std::round( cep ) ) );
+        } else {
+            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s and probable hit area %3$d meters." ),
+                     operator_npc->disp_name(), format_fpv_duration( time_to_target ),
+                     static_cast<int>( std::round( cep ) ) );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_payload_drop()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to request bomber drone payload drop, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ||
+            !require_fpv_on_station( *operator_npc ) ) {
+            return;
+        }
+        if( !active_fpv_drone_is_baba_yaga( *operator_npc ) ) {
+            add_msg( _( "%s reports the active drone cannot drop payload." ), operator_npc->disp_name() );
+            return;
+        }
+        const std::optional<itype_id> payload_id = loaded_fpv_payload_type( *operator_npc );
+        if( !payload_id ) {
+            add_msg( _( "%s reports the bomber drone has no payload aboard." ), operator_npc->disp_name() );
+            return;
+        }
+        preserve_ready_fpv_scout_report( *operator_npc );
+
+        map &here = get_map();
+        avatar &you = get_avatar();
+        const int target_mode = uilist( _( "Command bomber drone to drop payload where?" ), {
+            _( "Fixed local square" ), _( "Local creature" )
+        } );
+        if( target_mode < 0 ) {
+            return;
+        }
+
+        const std::optional<tripoint_bub_ms> target_bub = target_mode == 0 ?
+                select_fixed_fpv_target( _( "Designate a fixed bomber drone payload drop point." ) ) :
+                select_visible_fpv_target( _( "Designate a local bomber drone payload drop target." ) );
+        if( !target_bub ) {
+            return;
+        }
+        if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
+            add_msg( _( "You need line of sight to designate that drop target." ) );
+            return;
+        }
+
+        tripoint_abs_ms target_abs = here.get_abs( *target_bub );
+        if( target_mode == 1 ) {
+            Creature *const target = get_creature_tracker().creature_at<Creature>( *target_bub, true );
+            if( target == nullptr || target == &you ) {
+                add_msg( _( "There is no visible creature at that location." ) );
+                return;
+            }
+            if( !you.sees( here, target->pos_bub( here ) ) ) {
+                add_msg( _( "You need line of sight to designate that drop target." ) );
+                return;
+            }
+            target_abs = target->pos_abs();
+        }
+
+        const int vehicle_skill = operator_npc->get_skill_level( skill_driving );
+        const double cep = std::max( 0.0, 4.0 - vehicle_skill / 3.0 );
+        tripoint_abs_ms impact_abs = apply_circular_cep( target_abs, cep );
+        const tripoint_bub_ms impact_bub = here.get_bub( impact_abs );
+        if( here.inbounds( impact_bub ) ) {
+            impact_abs = here.get_abs( fpv_scout_top_position( here, impact_bub ) );
+        }
+
+        const int delay_seconds = std::max( 1, 15 - vehicle_skill + rng( 0, 5 ) );
+        operator_npc->set_value( "fpv_command_busy_until", current_turn_number() + delay_seconds );
+        operator_npc->set_value( "fpv_payload_loaded_count",
+                                 loaded_fpv_payload_count( *operator_npc ) - 1 );
+
+        get_timed_events().add( timed_event_type::FPV_DRONE_PAYLOAD_DROP,
+                                calendar::turn + time_duration::from_seconds( delay_seconds ),
+                                -1, impact_abs, -1, make_fpv_payload_drop_string_id( payload_id->str(),
+                                        operator_npc->disp_name() ),
+                                operator_npc->get_value( "fpv_mission_key" ).str() );
+        add_msg( _( "You command bomber drone payload release.  %1$s reports drop in %2$s, probable hit area %3$d meters, %4$d payload remaining." ),
+                 operator_npc->disp_name(), format_fpv_duration( delay_seconds ),
+                 static_cast<int>( std::round( cep ) ), loaded_fpv_payload_count( *operator_npc ) );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_scout()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to request drone scout, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ||
+            !require_fpv_on_station( *operator_npc ) ) {
+            return;
+        }
+        preserve_ready_fpv_scout_report( *operator_npc );
+
+        map &here = get_map();
+        avatar &you = get_avatar();
+        add_msg( m_info, _( "Designate a visible drone scout point." ) );
+        const std::optional<tripoint_bub_ms> target_bub = g->look_around();
+        if( !target_bub ) {
+            return;
+        }
+        if( !you.sees( here, *target_bub ) ) {
+            add_msg( _( "You need line of sight to designate that scout point." ) );
+            return;
+        }
+
+        const tripoint_bub_ms scout_bub = fpv_scout_top_position( here, *target_bub );
+        const tripoint_abs_ms scout_abs = here.get_abs( scout_bub );
+        const int vehicle_skill = operator_npc->get_skill_level( skill_driving );
+        const int delay_seconds = std::max( 1, 20 - vehicle_skill );
+        const int ready_turn = current_turn_number() + delay_seconds;
+        operator_npc->set_value( "fpv_command_busy_until", ready_turn );
+
+        operator_npc->set_value( "fpv_scout_active", "yes" );
+        operator_npc->set_value( "fpv_scout_ready_turn", ready_turn );
+        operator_npc->set_value( "fpv_scout_x", scout_abs.x() );
+        operator_npc->set_value( "fpv_scout_y", scout_abs.y() );
+        operator_npc->set_value( "fpv_scout_z", scout_abs.z() );
+
+        add_msg( _( "You request a drone scout pass.  %1$s reports camera alignment in %2$s." ),
+                 operator_npc->disp_name(), format_fpv_duration( delay_seconds ) );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_scout_report( const bool thermal )
+{
+    return [thermal]( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to request drone scout report, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ||
+            !require_fpv_on_station( *operator_npc ) ) {
+            return;
+        }
+        preserve_ready_fpv_scout_report( *operator_npc );
+        const bool has_pending_scout = operator_npc->get_value( "fpv_scout_active" ).str() == "yes";
+        const bool has_saved_report = operator_npc->get_value( "fpv_scout_report_active" ).str() == "yes";
+        if( !has_pending_scout && !has_saved_report ) {
+            add_msg( _( "%s reports no drone scout feed has been tasked." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        const int now = current_turn_number();
+        const int ready_turn = get_fpv_turn_value( *operator_npc, "fpv_scout_ready_turn" );
+        if( has_pending_scout && now < ready_turn && !has_saved_report ) {
+            add_msg( _( "%1$s reports the drone scout feed is still stabilizing, ETA %2$s." ),
+                     operator_npc->disp_name(), format_fpv_duration( ready_turn - now ) );
+            return;
+        }
+
+        const bool use_current_scout = has_pending_scout && now >= ready_turn;
+        const tripoint_abs_ms scout_abs(
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_x" : "fpv_scout_report_x" ),
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_y" : "fpv_scout_report_y" ),
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_z" : "fpv_scout_report_z" ) );
+        const bool scout_drone = active_fpv_drone_has_scout_package( *operator_npc );
+        if( thermal ) {
+            add_msg( _( "%s feeds a thermal drone scout observation over the radio." ),
+                     operator_npc->disp_name() );
+        } else {
+            add_msg( _( "%s describes the drone scout observation over the radio." ),
+                     operator_npc->disp_name() );
+        }
+        if( scout_drone ) {
+            reveal_fpv_scout_overmap_vision( scout_abs );
+        }
+        show_fpv_scout_view( scout_abs, thermal );
     };
 }
 
@@ -9145,8 +11091,45 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
 #undef WRAP
         }
     };
-    const auto iter = static_functions_map.find( effect_id );
+        const auto iter = static_functions_map.find( effect_id );
     if( iter != static_functions_map.end() ) {
+        static const std::unordered_set<std::string> cancels_support_assignment = {
+            "sort_loot",
+            "find_mount",
+            "do_chop_plank",
+            "do_vehicle_deconstruct",
+            "do_vehicle_repair",
+            "do_chop_trees",
+            "do_fishing",
+            "do_construction",
+            "do_mining",
+            "do_mopping",
+            "do_read",
+            "do_eread",
+            "do_read_repeatedly",
+            "do_study",
+            "do_craft",
+            "do_butcher",
+            "do_farming",
+            "assign_guard",
+            "assign_camp",
+            "stop_guard",
+            "return_to_camp_duties",
+            "goto_location",
+            "do_disassembly",
+        };
+        if( cancels_support_assignment.count( effect_id ) > 0 ) {
+            set_effect( talk_effect_fun_t( [effect = iter->second]( dialogue const & d ) {
+                npc *operator_npc = d.actor( true )->get_npc();
+                if( operator_npc == nullptr ) {
+                    return;
+                }
+                talk_effect_fun::cancel_fpv_assignment_for_new_duty( *operator_npc );
+                talk_effect_fun::cancel_mortar_assignment_for_new_duty( *operator_npc );
+                effect( *operator_npc );
+            } ) );
+            return;
+        }
         set_effect( iter->second );
         return;
     }
@@ -9232,6 +11215,10 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
         set_effect( talk_effect_fun_t( talk_effect_fun::f_assign_mortar() ) );
         return;
     }
+    if( effect_id == "unassign_mortar" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_unassign_mortar() ) );
+        return;
+    }
     if( effect_id == "request_mortar_fire" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_request_mortar_fire() ) );
         return;
@@ -9242,6 +11229,74 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     }
     if( effect_id == "select_mortar_ammo" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_select_mortar_ammo() ) );
+        return;
+    }
+    if( effect_id == "manage_mortar_support_inventory" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_manage_mortar_support_inventory() ) );
+        return;
+    }
+    if( effect_id == "assign_fpv_drone_operator" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_assign_fpv_drone_operator() ) );
+        return;
+    }
+    if( effect_id == "unassign_fpv_drone_operator" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_unassign_fpv_drone_operator() ) );
+        return;
+    }
+    if( effect_id == "manage_fpv_support_inventory" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_manage_fpv_support_inventory() ) );
+        return;
+    }
+    if( effect_id == "reconcile_fpv_mission" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_reconcile_fpv_mission() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_launch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_launch() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_scout_launch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_scout_launch() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_military_launch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_military_launch() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_baba_yaga_launch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_baba_yaga_launch() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_one_way" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_one_way() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_abort_one_way" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_abort_one_way() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_recover" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_recover() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_attack" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_attack() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_payload_drop" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_payload_drop() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_scout" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_scout() ) );
+        return;
+    }
+    if( effect_id == "request_fpv_scout_report" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_scout_report( false ) ) );
+        return;
+    }
+    if( effect_id == "request_fpv_thermal_scout_report" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_scout_report( true ) ) );
         return;
     }
     if( effect_id == "u_make_radio_representative" ) {

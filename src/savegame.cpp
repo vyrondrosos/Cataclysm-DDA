@@ -1850,8 +1850,50 @@ void global_variables::unserialize( const JsonObject &jo )
 
 void timed_event_manager::unserialize_all( const JsonArray &ja )
 {
+    const auto timed_event_type_from_string_id = []( const std::string &type_id,
+    timed_event_type &out ) -> bool {
+        static const std::unordered_map<std::string, timed_event_type> type_map = {
+            { "none", timed_event_type::NONE },
+            { "help", timed_event_type::HELP },
+            { "wanted", timed_event_type::WANTED },
+            { "robot_attack", timed_event_type::ROBOT_ATTACK },
+            { "spawn_wyrms", timed_event_type::SPAWN_WYRMS },
+            { "amigara", timed_event_type::AMIGARA },
+            { "amigara_whispers", timed_event_type::AMIGARA_WHISPERS },
+            { "roots_die", timed_event_type::ROOTS_DIE },
+            { "temple_open", timed_event_type::TEMPLE_OPEN },
+            { "temple_flood", timed_event_type::TEMPLE_FLOOD },
+            { "temple_spawn", timed_event_type::TEMPLE_SPAWN },
+            { "dim", timed_event_type::DIM },
+            { "artifact_light", timed_event_type::ARTIFACT_LIGHT },
+            { "dsa_alrp_summon", timed_event_type::DSA_ALRP_SUMMON },
+            { "custom_light_level", timed_event_type::CUSTOM_LIGHT_LEVEL },
+            { "transform_radius", timed_event_type::TRANSFORM_RADIUS },
+            { "update_mapgen", timed_event_type::UPDATE_MAPGEN },
+            { "revert_submap", timed_event_type::REVERT_SUBMAP },
+            { "override_place", timed_event_type::OVERRIDE_PLACE },
+            { "explosion", timed_event_type::EXPLOSION },
+            { "mortar_fire_message", timed_event_type::MORTAR_FIRE_MESSAGE },
+            { "mortar_impact_message", timed_event_type::MORTAR_IMPACT_MESSAGE },
+            { "mortar_field", timed_event_type::MORTAR_FIELD },
+            { "fpv_drone_arrival_message", timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE },
+            { "fpv_drone_status_message", timed_event_type::FPV_DRONE_STATUS_MESSAGE },
+            { "fpv_drone_return_message", timed_event_type::FPV_DRONE_RETURN_MESSAGE },
+            { "fpv_drone_recovered_message", timed_event_type::FPV_DRONE_RECOVERED_MESSAGE },
+            { "fpv_drone_lost_message", timed_event_type::FPV_DRONE_LOST_MESSAGE },
+            { "fpv_drone_impact_message", timed_event_type::FPV_DRONE_IMPACT_MESSAGE },
+            { "fpv_drone_payload_drop", timed_event_type::FPV_DRONE_PAYLOAD_DROP },
+        };
+        const auto it = type_map.find( type_id );
+        if( it == type_map.end() ) {
+            return false;
+        }
+        out = it->second;
+        return true;
+    };
+
     for( JsonObject jo : ja ) {
-        int type;
+        timed_event_type type = timed_event_type::NONE;
         time_point when;
         int faction_id;
         int strength;
@@ -1865,7 +1907,22 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
         jo.read( "map_square", map_square, false );
         jo.read( "strength", strength );
         jo.read( "string_id", string_id );
-        jo.read( "type", type );
+        if( jo.has_string( "type" ) ) {
+            const std::string type_id = jo.get_string( "type" );
+            if( !timed_event_type_from_string_id( type_id, type ) ) {
+                debugmsg( "Invalid timed event type '%s' while loading save", type_id );
+                continue;
+            }
+        } else {
+            int legacy_type = static_cast<int>( timed_event_type::NONE );
+            jo.read( "type", legacy_type );
+            if( legacy_type < static_cast<int>( timed_event_type::NONE ) ||
+                legacy_type >= static_cast<int>( timed_event_type::NUM_TIMED_EVENT_TYPES ) ) {
+                debugmsg( "Invalid legacy timed event type '%d' while loading save", legacy_type );
+                continue;
+            }
+            type = static_cast<timed_event_type>( legacy_type );
+        }
         jo.read( "when", when );
         jo.read( "key", key );
         point_sm_ms pt;
@@ -1893,7 +1950,7 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                 }
             }
         }
-        get_timed_events().add( static_cast<timed_event_type>( type ), when, faction_id, map_square,
+        get_timed_events().add( type, when, faction_id, map_square,
                                 strength,
                                 string_id, std::move( revert ), key );
     }
@@ -1975,6 +2032,74 @@ void global_variables::load_migrations( const JsonObject &jo, std::string_view )
 
 void timed_event_manager::serialize_all( JsonOut &jsout )
 {
+    const auto timed_event_type_to_string_id = []( const timed_event_type type ) -> std::string {
+        switch( type ) {
+            case timed_event_type::NONE:
+                return "none";
+            case timed_event_type::HELP:
+                return "help";
+            case timed_event_type::WANTED:
+                return "wanted";
+            case timed_event_type::ROBOT_ATTACK:
+                return "robot_attack";
+            case timed_event_type::SPAWN_WYRMS:
+                return "spawn_wyrms";
+            case timed_event_type::AMIGARA:
+                return "amigara";
+            case timed_event_type::AMIGARA_WHISPERS:
+                return "amigara_whispers";
+            case timed_event_type::ROOTS_DIE:
+                return "roots_die";
+            case timed_event_type::TEMPLE_OPEN:
+                return "temple_open";
+            case timed_event_type::TEMPLE_FLOOD:
+                return "temple_flood";
+            case timed_event_type::TEMPLE_SPAWN:
+                return "temple_spawn";
+            case timed_event_type::DIM:
+                return "dim";
+            case timed_event_type::ARTIFACT_LIGHT:
+                return "artifact_light";
+            case timed_event_type::DSA_ALRP_SUMMON:
+                return "dsa_alrp_summon";
+            case timed_event_type::CUSTOM_LIGHT_LEVEL:
+                return "custom_light_level";
+            case timed_event_type::TRANSFORM_RADIUS:
+                return "transform_radius";
+            case timed_event_type::UPDATE_MAPGEN:
+                return "update_mapgen";
+            case timed_event_type::REVERT_SUBMAP:
+                return "revert_submap";
+            case timed_event_type::OVERRIDE_PLACE:
+                return "override_place";
+            case timed_event_type::EXPLOSION:
+                return "explosion";
+            case timed_event_type::MORTAR_FIRE_MESSAGE:
+                return "mortar_fire_message";
+            case timed_event_type::MORTAR_IMPACT_MESSAGE:
+                return "mortar_impact_message";
+            case timed_event_type::MORTAR_FIELD:
+                return "mortar_field";
+            case timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE:
+                return "fpv_drone_arrival_message";
+            case timed_event_type::FPV_DRONE_STATUS_MESSAGE:
+                return "fpv_drone_status_message";
+            case timed_event_type::FPV_DRONE_RETURN_MESSAGE:
+                return "fpv_drone_return_message";
+            case timed_event_type::FPV_DRONE_RECOVERED_MESSAGE:
+                return "fpv_drone_recovered_message";
+            case timed_event_type::FPV_DRONE_LOST_MESSAGE:
+                return "fpv_drone_lost_message";
+            case timed_event_type::FPV_DRONE_IMPACT_MESSAGE:
+                return "fpv_drone_impact_message";
+            case timed_event_type::FPV_DRONE_PAYLOAD_DROP:
+                return "fpv_drone_payload_drop";
+            case timed_event_type::NUM_TIMED_EVENT_TYPES:
+                break;
+        }
+        return "none";
+    };
+
     jsout.start_array();
     for( const timed_event &elem : get_timed_events().events ) {
         jsout.start_object();
@@ -1983,7 +2108,7 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
         jsout.member( "map_square", elem.map_square );
         jsout.member( "strength", elem.strength );
         jsout.member( "string_id", elem.string_id );
-        jsout.member( "type", elem.type );
+        jsout.member( "type", timed_event_type_to_string_id( elem.type ) );
         jsout.member( "when", elem.when );
         jsout.member( "key", elem.key );
         if( elem.revert.is_uniform() ) {
@@ -2189,6 +2314,7 @@ void npc::import_and_clean( const JsonObject &data )
     companion_mission_exertion = defaults.companion_mission_exertion;
     companion_mission_travel_time = defaults.companion_mission_travel_time;
     companion_mission_inv.clear();
+    support_inv.clear();
     chatbin.missions.clear();
     chatbin.missions_assigned.clear();
     chatbin.mission_selected = nullptr;
@@ -2217,4 +2343,3 @@ void npc::export_to( const cata_path &path ) const
         serialize( jsout );
     } );
 }
-

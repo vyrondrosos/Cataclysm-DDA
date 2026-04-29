@@ -456,6 +456,7 @@
       { "group": "military_papr_kit", "prob": 5 },
       { "item": "two_way_radio", "prob": 60, "charges": [ 0, 100 ] },
       { "item": "balthazar_radio", "prob": 1 },
+      { "group": "fpv_scout_drone_hardcase_full", "prob": 2 },
       { "group": "infantry_knives", "prob": 80 }
     ]
   },
@@ -583,6 +584,7 @@
       { "item": "mil_flight_suit", "prob": 30 },
       { "group": "military_papr_kit", "prob": 15 },
       { "group": "molle_papr_kit", "prob": 15 },
+      { "group": "fpv_scout_drone_hardcase_full", "prob": 3 },
       { "item": "combo_cover", "prob": 20 },
       { "item": "pants_army", "prob": 70 },
       { "item": "combat_shirt", "prob": 35 },
@@ -804,6 +806,7 @@
       [ "bot_rifleturret", 10 ],
       [ "bot_crows_m240", 10 ],
       [ "bot_talon_m202a1", 10 ],
+      { "group": "fpv_scout_drone_hardcase_full", "prob": 5 },
       [ "bot_dispatch_military", 15 ],
       [ "bot_turret_searchlight", 75 ]
     ]
