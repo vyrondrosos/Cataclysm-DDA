@@ -921,6 +921,7 @@
       [ [ "scrap", 1 ] ],
       [ [ "e_scrap", 1 ] ],
       [ [ "quad_rotors", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
       [ [ "sensor_module", 1 ] ],
       [ [ "identification_module", 1 ] ],
       [ [ "plastic_chunk", 1 ] ]
@@ -942,6 +943,138 @@
       [ [ "scrap", 1 ] ],
       [ [ "e_scrap", 1 ] ],
       [ [ "quad_rotors", 1 ] ],
+      [ [ "sensor_module", 1 ] ],
+      [ [ "identification_module", 1 ] ],
+      [ [ "plastic_chunk", 1 ] ]
+    ]
+  },
+  {
+    "result": "bot_lab_security_drone_BS",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "skill_used": "electronics",
+    "difficulty": 4,
+    "time": "15 m",
+    "using": [ [ "soldering_standard", 5 ] ],
+    "qualities": [ { "id": "SCREW", "level": 1 } ],
+    "components": [
+      [ [ "ai_module", 1 ] ],
+      [ [ "RAM", 1 ] ],
+      [ [ "small_storage_battery", 1 ] ],
+      [ [ "scrap", 1 ] ],
+      [ [ "e_scrap", 1 ] ],
+      [ [ "quad_rotors", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
+      [ [ "sensor_module", 1 ] ],
+      [ [ "identification_module", 1 ] ],
+      [ [ "plastic_chunk", 1 ] ]
+    ]
+  },
+  {
+    "result": "bot_lab_security_drone_BM",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "skill_used": "electronics",
+    "difficulty": 4,
+    "time": "15 m",
+    "using": [ [ "soldering_standard", 5 ] ],
+    "qualities": [ { "id": "SCREW", "level": 1 } ],
+    "components": [
+      [ [ "ai_module", 1 ] ],
+      [ [ "RAM", 1 ] ],
+      [ [ "small_storage_battery", 1 ] ],
+      [ [ "scrap", 1 ] ],
+      [ [ "e_scrap", 1 ] ],
+      [ [ "quad_rotors", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
+      [ [ "sensor_module", 1 ] ],
+      [ [ "identification_module", 1 ] ],
+      [ [ "plastic_chunk", 1 ] ]
+    ]
+  },
+  {
+    "result": "bot_lab_security_drone_BM2",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "skill_used": "electronics",
+    "difficulty": 4,
+    "time": "15 m",
+    "using": [ [ "soldering_standard", 5 ] ],
+    "qualities": [ { "id": "SCREW", "level": 1 } ],
+    "components": [
+      [ [ "ai_module", 1 ] ],
+      [ [ "RAM", 1 ] ],
+      [ [ "small_storage_battery", 1 ] ],
+      [ [ "scrap", 1 ] ],
+      [ [ "e_scrap", 1 ] ],
+      [ [ "quad_rotors", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
+      [ [ "sensor_module", 1 ] ],
+      [ [ "identification_module", 1 ] ],
+      [ [ "plastic_chunk", 1 ] ]
+    ]
+  },
+  {
+    "result": "bot_lab_security_drone_GM",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "skill_used": "electronics",
+    "difficulty": 4,
+    "time": "15 m",
+    "using": [ [ "soldering_standard", 5 ] ],
+    "qualities": [ { "id": "SCREW", "level": 1 } ],
+    "components": [
+      [ [ "ai_module", 1 ] ],
+      [ [ "RAM", 1 ] ],
+      [ [ "small_storage_battery", 1 ] ],
+      [ [ "scrap", 1 ] ],
+      [ [ "e_scrap", 1 ] ],
+      [ [ "quad_rotors", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
+      [ [ "sensor_module", 1 ] ],
+      [ [ "identification_module", 1 ] ],
+      [ [ "plastic_chunk", 1 ] ]
+    ]
+  },
+  {
+    "result": "bot_lab_security_drone_GR",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "skill_used": "electronics",
+    "difficulty": 4,
+    "time": "15 m",
+    "using": [ [ "soldering_standard", 5 ] ],
+    "qualities": [ { "id": "SCREW", "level": 1 } ],
+    "components": [
+      [ [ "ai_module", 1 ] ],
+      [ [ "RAM", 1 ] ],
+      [ [ "small_storage_battery", 1 ] ],
+      [ [ "scrap", 1 ] ],
+      [ [ "e_scrap", 1 ] ],
+      [ [ "quad_rotors", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
+      [ [ "sensor_module", 1 ] ],
+      [ [ "identification_module", 1 ] ],
+      [ [ "plastic_chunk", 1 ] ]
+    ]
+  },
+  {
+    "result": "bot_lab_security_drone_YM",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "skill_used": "electronics",
+    "difficulty": 4,
+    "time": "15 m",
+    "using": [ [ "soldering_standard", 5 ] ],
+    "qualities": [ { "id": "SCREW", "level": 1 } ],
+    "components": [
+      [ [ "ai_module", 1 ] ],
+      [ [ "RAM", 1 ] ],
+      [ [ "small_storage_battery", 1 ] ],
+      [ [ "scrap", 1 ] ],
+      [ [ "e_scrap", 1 ] ],
+      [ [ "quad_rotors", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
       [ [ "sensor_module", 1 ] ],
       [ [ "identification_module", 1 ] ],
       [ [ "plastic_chunk", 1 ] ]
@@ -1380,6 +1513,7 @@
     "components": [
       [ [ "ai_module", 1 ] ],
       [ [ "sensor_module", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
       [ [ "directed_floodlight", 3 ] ],
       [ [ "small_storage_battery", 1 ] ],
       [ [ "power_supply", 1 ] ],
@@ -1657,6 +1791,7 @@
       [ [ "plut_cell", 1 ] ],
       [ [ "broken_manhack", 4 ] ],
       [ [ "omnicamera", 1 ] ],
+      [ [ "flir_camera", 1 ] ],
       [ [ "storage_battery", 1 ] ]
     ]
   },
