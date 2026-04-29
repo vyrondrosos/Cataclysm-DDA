@@ -3094,6 +3094,12 @@ void item::io( Archive &archive )
         return !f.is_valid();
     } );
 
+    hot_flags_own = 0;
+    const item::FlagsSetType &owned = item_tags;
+    for( const flag_id &f : owned ) {
+        hot_flags_own |= hot_bit_for( f );
+    }
+
     if( note_read ) {
         snip_id = SNIPPET.migrate_hash_to_id( note );
     } else {
