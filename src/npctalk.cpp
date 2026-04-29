@@ -6145,7 +6145,7 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
         return;
     }
 
-    const int max_range_ms = 2000;
+    const int max_range_ms = 3500;
     map &here = get_map();
     std::optional<tripoint_abs_ms> target_abs_ms;
     const std::optional<tripoint_abs_ms> previous_target = get_mortar_last_target( *gunner );
@@ -6193,7 +6193,7 @@ static void request_mortar_fire( dialogue const &d, const bool repeat_target )
     }
 
     if( rl_dist( *mortar_abs, *target_abs_ms ) > max_range_ms ) {
-        add_msg( _( "Target is outside the 2 km fire mission range." ) );
+        add_msg( _( "Target is outside the 3.5 km fire mission range." ) );
         return;
     }
     if( rl_dist( *mortar_abs, *target_abs_ms ) <= MAX_VIEW_DISTANCE ) {
