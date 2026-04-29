@@ -59,19 +59,19 @@
       },
       {
         "text": "Fire one mortar round at a target I designate.",
-        "condition": "is_by_radio",
+        "condition": { "and": [ "is_by_radio", { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
         "topic": "TALK_DONE",
         "effect": "request_mortar_fire"
       },
       {
         "text": "Repeat the last mortar fire mission.",
-        "condition": "is_by_radio",
+        "condition": { "and": [ "is_by_radio", { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
         "topic": "TALK_DONE",
         "effect": "request_mortar_repeat_fire"
       },
       {
         "text": "Switch mortar ammunition.",
-        "condition": "is_by_radio",
+        "condition": { "and": [ "is_by_radio", { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
         "topic": "TALK_DONE",
         "effect": "select_mortar_ammo"
       },
