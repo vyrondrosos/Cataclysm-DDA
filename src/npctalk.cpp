@@ -5815,6 +5815,114 @@ static void add_mortar_ammo( npc &gunner, const item &round, const int count )
     }
 }
 
+static std::vector<itype_id> available_mortar_ammo_types( const npc &gunner );
+
+static drop_locations select_nearby_handover_items( const std::function<bool( const item & )> &filter,
+        const std::string &title, const bool quiet = false )
+{
+    avatar &you = get_avatar();
+    inventory_filter_preset preset( [&filter]( const item_location & loc ) {
+        return loc && filter( *loc );
+    } );
+    inventory_multiselector inv_s( you, preset, title, {}, true );
+    inv_s.set_title( title );
+    inv_s.set_display_stats( false );
+    inv_s.clear_items();
+    inv_s.add_character_items( you );
+    inv_s.add_nearby_items( 1 );
+    if( inv_s.empty() ) {
+        if( !quiet ) {
+            popup( _( "You don't have any matching items at hand." ), PF_GET_KEY );
+        }
+        return drop_locations();
+    }
+    return inv_s.execute( true );
+}
+
+static std::optional<item> take_handover_item( item_location &loc, const int requested_count )
+{
+    if( !loc ) {
+        return std::nullopt;
+    }
+    item &selected = *loc;
+    item taken = selected;
+    if( selected.count_by_charges() ) {
+        const int count = std::max( 1, std::min( requested_count, selected.charges ) );
+        taken.charges = count;
+        if( selected.charges > count ) {
+            selected.mod_charges( -count );
+        } else {
+            loc.remove_item();
+        }
+    } else {
+        loc.remove_item();
+    }
+    return taken;
+}
+
+static int give_mortar_rounds( npc &gunner, const std::string &title, const bool quiet = false )
+{
+    int transferred = 0;
+    drop_locations selected_rounds = select_nearby_handover_items( is_60mm_mortar_round, title, quiet );
+    for( drop_location &selected : selected_rounds ) {
+        std::optional<item> round = take_handover_item( selected.first, selected.second );
+        if( !round || !is_60mm_mortar_round( *round ) ) {
+            continue;
+        }
+        const int round_count = round->count_by_charges() ? round->charges : 1;
+        transferred += round_count;
+        add_mortar_ammo( gunner, *round, round_count );
+    }
+    return transferred;
+}
+
+static std::string mortar_ammo_summary( const npc &gunner )
+{
+    std::vector<std::string> lines;
+    for( const itype_id &ammo_id : available_mortar_ammo_types( gunner ) ) {
+        const item round( ammo_id, calendar::turn );
+        lines.emplace_back( string_format( "%s x%d", round.tname(), mortar_ammo_count( gunner,
+                                           ammo_id ) ) );
+    }
+    return lines.empty() ? _( "nothing" ) : string_join( lines, ", " );
+}
+
+static int take_back_mortar_rounds( npc &gunner )
+{
+    const std::vector<itype_id> ammo_types = available_mortar_ammo_types( gunner );
+    if( ammo_types.empty() ) {
+        popup( _( "There are no mortar rounds to take back." ), PF_GET_KEY );
+        return 0;
+    }
+
+    uilist menu;
+    menu.text = _( "Take back which mortar ammunition?" );
+    for( size_t i = 0; i < ammo_types.size(); ++i ) {
+        const item round( ammo_types[i], calendar::turn );
+        menu.addentry( i, true, MENU_AUTOASSIGN, "%s (%d)", round.tname(),
+                       mortar_ammo_count( gunner, ammo_types[i] ) );
+    }
+    menu.query();
+    if( menu.ret < 0 || static_cast<size_t>( menu.ret ) >= ammo_types.size() ) {
+        return 0;
+    }
+
+    const itype_id ammo_id = ammo_types[menu.ret];
+    const int count = mortar_ammo_count( gunner, ammo_id );
+    if( count <= 0 ) {
+        return 0;
+    }
+    avatar &you = get_avatar();
+    item returned( ammo_id, calendar::turn, count );
+    you.i_add_or_drop( returned );
+    set_mortar_ammo_count( gunner, ammo_id, 0 );
+    if( const std::optional<itype_id> selected = selected_mortar_ammo( gunner );
+        selected && *selected == ammo_id ) {
+        gunner.set_value( "mortar_selected_ammo", "" );
+    }
+    return count;
+}
+
 static std::optional<item> take_cached_mortar_round( npc &gunner )
 {
     if( const std::optional<itype_id> selected = selected_mortar_ammo( gunner ) ) {
@@ -6045,13 +6153,8 @@ talk_effect_fun_t::func f_assign_mortar()
             gunner->i_add( std::move( radios.front() ) );
         }
 
-        int ammo_transferred = 0;
-        std::list<item> mortar_rounds = you.remove_items_with( is_60mm_mortar_round );
-        for( item &round : mortar_rounds ) {
-            const int round_count = round.count_by_charges() ? round.charges : 1;
-            ammo_transferred += round_count;
-            add_mortar_ammo( *gunner, round, round_count );
-        }
+        const int ammo_transferred = give_mortar_rounds( *gunner,
+                                     _( "Select mortar rounds to hand over" ), true );
 
         map &here = get_map();
         const tripoint_abs_ms mortar_abs = here.get_abs( *mortar_pos );
@@ -6068,6 +6171,53 @@ talk_effect_fun_t::func f_assign_mortar()
         } else {
             add_msg( _( "%s mans the mortar, but still needs 60mm ammunition." ),
                      gunner->disp_name() );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_manage_mortar_ammo()
+{
+    return []( dialogue const & d ) {
+        npc *gunner = d.actor( true )->get_npc();
+        if( gunner == nullptr ) {
+            debugmsg( "Trying to manage mortar ammo, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( d.by_radio ) {
+            add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        if( !get_assigned_mortar_pos( *gunner ) ) {
+            add_msg( _( "%s has not been assigned to a mortar." ), gunner->disp_name() );
+            return;
+        }
+
+        while( true ) {
+            const int action = uilist( _( "Mortar ammunition" ), {
+                _( "Provide mortar rounds." ),
+                _( "Take mortar rounds back." ),
+                _( "Ask what mortar rounds are available." )
+            } );
+            if( action < 0 ) {
+                return;
+            }
+            if( action == 0 ) {
+                const int transferred = give_mortar_rounds( *gunner,
+                                          _( "Select mortar rounds to hand over" ) );
+                if( transferred > 0 ) {
+                    add_msg( _( "You hand %1$d mortar round to %2$s." ), transferred,
+                             gunner->disp_name() );
+                }
+            } else if( action == 1 ) {
+                const int returned = take_back_mortar_rounds( *gunner );
+                if( returned > 0 ) {
+                    add_msg( _( "%1$s returns %2$d mortar round." ), gunner->disp_name(), returned );
+                }
+            } else {
+                add_msg( _( "%1$s reports available mortar ammunition: %2$s." ),
+                         gunner->disp_name(), mortar_ammo_summary( *gunner ) );
+            }
         }
     };
 }
@@ -9242,6 +9392,10 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     }
     if( effect_id == "select_mortar_ammo" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_select_mortar_ammo() ) );
+        return;
+    }
+    if( effect_id == "manage_mortar_ammo" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_manage_mortar_ammo() ) );
         return;
     }
     if( effect_id == "u_make_radio_representative" ) {
