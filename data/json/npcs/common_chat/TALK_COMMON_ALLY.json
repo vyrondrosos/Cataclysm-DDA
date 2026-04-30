@@ -241,6 +241,12 @@
         "effect": "assign_mortar"
       },
       {
+        "text": "Manage mortar ammunition.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "compare_string": [ "m224", { "npc_val": "mortar_assignment" } ] } ] },
+        "topic": "TALK_DONE",
+        "effect": "manage_mortar_ammo"
+      },
+      {
         "text": "Guard this position.",
         "condition": { "not": "is_by_radio" },
         "topic": "TALK_FRIEND_GUARD",

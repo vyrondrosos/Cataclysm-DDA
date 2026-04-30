@@ -6164,6 +6164,21 @@ talk_effect_fun_t::func f_assign_mortar()
         gunner->set_value( "mortar_assignment_z", mortar_abs.z() );
         gunner->set_value( "mortar_has_target", "no" );
         set_mortar_current_cep( *gunner, 100.0 );
+        if( gunner->has_player_activity() ) {
+            gunner->revert_after_activity();
+        }
+        gunner->set_attitude( NPCATT_NULL );
+        gunner->set_mission( NPC_MISSION_GUARD_ALLY );
+        gunner->chatbin.first_topic = gunner->chatbin.talk_friend_guard;
+        gunner->guard_pos = gunner->pos_abs();
+        gunner->set_ai_guard_pos( gunner->pos_abs() );
+        gunner->goal = npc::no_goal_point;
+        gunner->omt_path.clear();
+        gunner->path.clear();
+        gunner->chair_pos = std::nullopt;
+        gunner->wander_pos = std::nullopt;
+        gunner->clear_destination();
+        gunner->clear_committed_goal();
 
         if( ammo_transferred > 0 ) {
             add_msg( _( "%1$s mans the mortar and takes %2$d mortar round." ),
