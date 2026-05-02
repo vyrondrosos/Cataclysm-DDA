@@ -5887,6 +5887,15 @@ static std::string mortar_ammo_summary( const npc &gunner )
     return lines.empty() ? _( "nothing" ) : string_join( lines, ", " );
 }
 
+static int total_mortar_ammo_count( const npc &gunner )
+{
+    int total = 0;
+    for( const itype_id &ammo_id : available_mortar_ammo_types( gunner ) ) {
+        total += mortar_ammo_count( gunner, ammo_id );
+    }
+    return total;
+}
+
 static int take_back_mortar_rounds( npc &gunner )
 {
     const std::vector<itype_id> ammo_types = available_mortar_ammo_types( gunner );
@@ -6234,6 +6243,39 @@ talk_effect_fun_t::func f_manage_mortar_ammo()
                          gunner->disp_name(), mortar_ammo_summary( *gunner ) );
             }
         }
+    };
+}
+
+talk_effect_fun_t::func f_report_mortar_support()
+{
+    return []( dialogue const & d ) {
+        npc *gunner = d.actor( true )->get_npc();
+        if( gunner == nullptr ) {
+            debugmsg( "Trying to report mortar support, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        avatar &you = get_avatar();
+        if( !you.cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ||
+            !gunner->cache_has_item_with_flag( json_flag_TWO_WAY_RADIO, true ) ) {
+            add_msg( _( "Both you and %s need a two-way radio." ), gunner->disp_name() );
+            return;
+        }
+        if( !get_assigned_mortar_pos( *gunner ) ) {
+            add_msg( _( "%s has not been assigned to a mortar." ), gunner->disp_name() );
+            return;
+        }
+
+        cache_physical_mortar_rounds( *gunner );
+        const int total_ammo = total_mortar_ammo_count( *gunner );
+        if( total_ammo <= 0 ) {
+            add_msg( _( "%s reports that they have no 60mm mortar rounds ready." ),
+                     gunner->disp_name() );
+            return;
+        }
+
+        add_msg( _( "%1$s reports %2$d 60mm mortar rounds ready: %3$s." ),
+                 gunner->disp_name(), total_ammo, mortar_ammo_summary( *gunner ) );
     };
 }
 
@@ -9403,6 +9445,10 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     }
     if( effect_id == "request_mortar_repeat_fire" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_request_mortar_repeat_fire() ) );
+        return;
+    }
+    if( effect_id == "report_mortar_support" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_report_mortar_support() ) );
         return;
     }
     if( effect_id == "select_mortar_ammo" ) {
