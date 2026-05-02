@@ -2769,6 +2769,8 @@ item_location npc::find_usable_ammo( const item_location &weap ) const
 
 item::reload_option npc::select_ammo( const item_location &base, bool, bool empty )
 {
+    // TODO(multimag): NPC reload uses the legacy first-compatible-well
+    // fallback (no UI to disambiguate sibling wells).
     if( !base ) {
         return item::reload_option();
     }
@@ -3620,6 +3622,13 @@ bool npc::is_valid_sleep_candidate( const tripoint_bub_ms &p ) const
     const map &here = get_map();
     if( is_no_go_position( here.get_abs( p ) ) ) {
         return false;
+    }
+    // Only allow allies to sleep in your vehicle
+    if( !is_player_ally() ) {
+        const optional_vpart_position vp = here.veh_at( p );
+        if( vp && vp->vehicle().is_owned_by( get_player_character() ) ) {
+            return false;
+        }
     }
     if( p == pos_bub() ) {
         return true;
@@ -6177,6 +6186,8 @@ void npc::do_reload( const item_location &it )
     int qty = reload_opt.qty();
     int reload_time = item_reload_cost( *it, *usable_ammo, qty );
     // TODO: Consider printing this info to player too
+    // TODO(multimag): pocket_index defaults to -1 (first compatible well).
+    // NPCs cannot pick a specific well on multi-well guns yet.
     const std::string ammo_name = usable_ammo->tname();
     if( !target.reload( *this, std::move( usable_ammo ), qty ) ) {
         debugmsg( "do_reload failed: item %s could not be reloaded with %ld charge(s) of %s",

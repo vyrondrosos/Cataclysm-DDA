@@ -54,6 +54,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "faction.h"
 #include "fault.h"
 #include "field_type.h"
 #include "flag.h"
@@ -3088,10 +3089,6 @@ void pickup_activity_actor::do_turn( player_activity &, Character &who )
 
         cancel_pickup( who );
 
-        if( who.get_value( "THIEF_MODE_KEEP" ).str() != "YES" ) {
-            who.set_value( "THIEF_MODE", "THIEF_ASK" );
-        }
-
         if( !keep_going ) {
             // The user canceled the activity, so we're done
             // AIM might have more pickup activities pending, also cancel them.
@@ -4946,6 +4943,8 @@ bool target_practice_activity_actor::check_weapon_valid( Character &who )
 
 bool target_practice_activity_actor::attempt_reload( Character &who )
 {
+    // TODO(multimag): pocket_index defaults to -1; target practice cannot
+    // pick a specific well on multi-well guns yet.
     item *gun = gun_loc.get_item();
 
     std::vector<item_location> ammo_locs;
@@ -5794,9 +5793,6 @@ void consume_activity_actor::finish( player_activity &act, Character & )
             player_character.consume( consume_item, /*force=*/true );
         } else {
             debugmsg( "Item location/name to be consumed should not be null." );
-        }
-        if( player_character.get_value( "THIEF_MODE_KEEP" ).str() != "YES" ) {
-            player_character.set_value( "THIEF_MODE", "THIEF_ASK" );
         }
     }
 
@@ -7784,6 +7780,7 @@ reload_activity_actor::reload_activity_actor( item::reload_option &&opt, int ext
 {
     moves_total = opt.moves() + extra_moves;
     quantity = opt.qty();
+    pocket_index = opt.pocket_index;
     target_loc = std::move( opt.target );
     ammo_loc = std::move( opt.ammo );
     seconds_per_round = opt.qty() ? std::min( 1, moves_total / quantity ) : 0;
@@ -7860,7 +7857,7 @@ void reload_activity_actor::reload( player_activity &act, Character &who, int lo
     const std::string reloadable_name = reloadable.tname();
     const bool ammo_is_filthy = ammo.is_filthy();
 
-    if( !reloadable.reload( who, ammo_loc, qty ) ) {
+    if( !reloadable.reload( who, ammo_loc, qty, pocket_index ) ) {
         return;
     }
 
@@ -7973,6 +7970,7 @@ void reload_activity_actor::serialize( JsonOut &jsout ) const
 
     jsout.member( "moves_total", moves_total );
     jsout.member( "qty", quantity );
+    jsout.member( "pocket_index", pocket_index );
     jsout.member( "target_loc", target_loc );
     jsout.member( "ammo_loc", ammo_loc );
     jsout.member( "seconds_per_round", seconds_per_round );
@@ -7989,6 +7987,10 @@ std::unique_ptr<activity_actor> reload_activity_actor::deserialize( JsonValue &j
 
     data.read( "moves_total", actor.moves_total );
     data.read( "qty", actor.quantity );
+    // Saves missing the key route through the first-compatible-well path.
+    // TODO(multimag): backwards-compat default; remove after a stable release.
+    actor.pocket_index = -1;
+    data.read( "pocket_index", actor.pocket_index );
     data.read( "target_loc", actor.target_loc );
     data.read( "ammo_loc", actor.ammo_loc );
     data.read( "seconds_per_round", actor.seconds_per_round );
@@ -9450,18 +9452,22 @@ std::unique_ptr<activity_actor> haircut_activity_actor::deserialize( JsonValue &
 static bool check_stealing( Character &who, item &it )
 {
     if( !it.is_owned_by( who, true ) ) {
-        // Has the player given input on if stealing is ok?
-        if( who.get_value( "THIEF_MODE" ).str() == "THIEF_ASK" ) {
-            Pickup::query_thief( it );
-        }
-        if( who.get_value( "THIEF_MODE" ).str() == "THIEF_HONEST" ) {
-            if( who.get_value( "THIEF_MODE_KEEP" ).str() != "YES" ) {
-                who.set_value( "THIEF_MODE", "THIEF_ASK" );
-            }
+        const std::string thief_mode = who.get_value( "THIEF_MODE" ).str();
+        if( thief_mode == "THIEF_HONEST" ) {
             return false;
+        } else if( thief_mode != "THIEF_STEAL" ) {
+            // Default (THIEF_ASK) - check faction steal_persist
+            faction *owner_fac = g->faction_manager_ptr->get( it.get_owner(), false );
+            if( owner_fac && owner_fac->steal_persist.has_value() ) {
+                if( !*owner_fac->steal_persist ) {
+                    return false; // NEVER
+                }
+                // ALWAYS
+            } else if( !Pickup::query_thief( it ) ) {
+                return false;
+            }
         }
     }
-
     return true;
 }
 
