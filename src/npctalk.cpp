@@ -5841,9 +5841,6 @@ int mortar_ammo_count( const npc &gunner, const itype_id &ammo_id )
 std::optional<itype_id> selected_mortar_ammo( const npc &gunner )
 {
     const diag_value selected = gunner.get_value( "mortar_selected_ammo" );
-    if( selected.is_empty() ) {
-        return std::nullopt;
-    }
     const itype_id ammo_id( selected.str() );
     if( !ammo_id.is_valid() || mortar_ammo_count( gunner, ammo_id ) <= 0 ) {
         return std::nullopt;
@@ -5864,10 +5861,7 @@ std::vector<std::string> mortar_ammo_types( const npc &gunner )
         return result;
     }
     for( const diag_value &ammo_type : stored_types.array() ) {
-        const std::string &ammo_type_id = ammo_type.str();
-        if( !ammo_type_id.empty() ) {
-            result.emplace_back( ammo_type_id );
-        }
+        result.emplace_back( ammo_type.str() );
     }
     return result;
 }
@@ -5883,7 +5877,7 @@ void add_mortar_ammo_type( npc &gunner, const itype_id &ammo_id )
         for( const std::string &stored_type : ammo_types ) {
             stored_types.emplace_back( stored_type );
         }
-        gunner.set_value( "mortar_ammo_types", diag_value( std::move( stored_types ) ) );
+        gunner.set_value( "mortar_ammo_types", stored_types );
     }
 }
 
@@ -6021,7 +6015,7 @@ int take_back_mortar_rounds( npc &gunner, const mortar_type &mortar )
     set_mortar_ammo_count( gunner, ammo_id, 0 );
     if( const std::optional<itype_id> selected = selected_mortar_ammo( gunner );
         selected && *selected == ammo_id ) {
-        gunner.set_value( "mortar_selected_ammo", "" );
+        gunner.remove_value( "mortar_selected_ammo" );
     }
     return count;
 }
@@ -6104,12 +6098,12 @@ std::optional<assigned_mortar> get_assigned_mortar( const npc &gunner )
     if( !mortar_id.is_valid() || assignment_pos.is_empty() ) {
         return std::nullopt;
     }
+    const tripoint_abs_ms pos = assignment_pos.tripoint();
     if( !assignment_pos.is_tripoint() ) {
-        assignment_pos.tripoint();
         return std::nullopt;
     }
     return assigned_mortar{
-        assignment_pos.tripoint(),
+        pos,
         &mortar_id.obj()
     };
 }
