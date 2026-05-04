@@ -76,6 +76,7 @@
 #include "material.h"
 #include "math_parser_jmath.h"
 #include "mission.h"
+#include "military_site_specialization.h"
 #include "mod_manager.h"
 #include "mod_tileset.h"
 #include "monfaction.h"
@@ -413,6 +414,7 @@ void DynamicDataLoader::initialize()
     add( "overmap_location", &overmap_locations::load );
     add( "city", &city::load_city );
     add( "overmap_special", &overmap_specials::load );
+    add( "military_site_specialization", &military_site_specializations::load );
     add( "overmap_special_migration", &overmap_special_migration::load_migrations );
     add( "city_building", &city_buildings::load );
     add( "map_extra", &MapExtras::load );
@@ -694,6 +696,7 @@ void DynamicDataLoader::unload_data()
     mapgen_palette::reset();
     materials::reset();
     mission_type::reset();
+    military_site_specializations::reset();
     mod_migrations::reset();
     move_mode::reset();
     monfactions::reset();
@@ -1013,6 +1016,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Overmap locations" ), &overmap_locations::check_consistency },
             { _( "Cities" ), &city::check_consistency },
             { _( "Overmap specials" ), &overmap_specials::check_consistency },
+            { _( "Military site specializations" ), &military_site_specializations::check_consistency },
             { _( "Map extras" ), &MapExtras::check_consistency },
             { _( "Scenarios" ), &scenario::check_all },
             { _( "Shop rates" ), &shopkeeper_cons_rates::check_all },

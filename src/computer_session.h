@@ -109,6 +109,7 @@ class computer_session
         void action_map_sewer();
         void action_map_subway();
         void action_maps();
+        void action_military_site_index();
         void action_miss_disarm();
         void action_miss_launch();
         void action_open();
