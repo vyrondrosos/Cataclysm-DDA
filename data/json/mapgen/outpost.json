@@ -49,6 +49,7 @@
         "&": { "item": "SUS_toilet", "chance": 50 }
       },
       "toilets": { "&": {  } },
+      "place_specialized_loot": [ { "specialization": "mil_site_outpost", "x": 10, "y": [ 11, 20 ], "chance": 100, "repeat": [ 1, 2 ] } ],
       "monster": { "L": { "monster": "mon_turret_searchlight", "chance": 100 }, " ": { "group": "GROUP_MIL_BASE", "chance": 10 } }
     }
   },

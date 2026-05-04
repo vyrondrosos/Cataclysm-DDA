@@ -9,6 +9,7 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
@@ -41,6 +42,7 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "military_site_specialization.h"
 #include "mission.h"
 #include "monster.h"
 #include "mtype.h"
@@ -344,6 +346,7 @@ computer_session::computer_action_functions = {
     { COMPACT_MAP_SEWER, &computer_session::action_map_sewer },
     { COMPACT_MAP_SUBWAY, &computer_session::action_map_subway },
     { COMPACT_MAPS, &computer_session::action_maps },
+    { COMPACT_MILITARY_SITE_INDEX, &computer_session::action_military_site_index },
     { COMPACT_MISS_DISARM, &computer_session::action_miss_disarm },
     { COMPACT_MISS_LAUNCH, &computer_session::action_miss_launch },
     { COMPACT_OPEN, &computer_session::action_open },
@@ -683,6 +686,69 @@ void computer_session::action_maps()
         _( "Surface map data downloaded.  Local anomalous-access error logged.  Press any key…" ) );
     comp.remove_option( COMPACT_MAPS );
     comp.alerts ++;
+}
+
+void computer_session::action_military_site_index()
+{
+    struct report_entry {
+        tripoint_abs_omt pos;
+        std::string site_name;
+        std::string specialization;
+        bool generated = false;
+    };
+
+    Character &player_character = get_player_character();
+    player_character.mod_moves( -to_moves<int>( 1_seconds ) * 0.3 );
+    const tripoint_abs_omt center = player_character.pos_abs_omt();
+    std::vector<report_entry> reports;
+
+    for( const military_site_specialization &site : military_site_specializations::get_all() ) {
+        omt_find_params params;
+        params.types.emplace_back( site.overmap_terrain(), site.match_type() );
+        params.search_range = 180;
+        params.existing_only = true;
+        params.min_z = center.z();
+        params.max_z = center.z();
+
+        for( const tripoint_abs_omt &loc : overmap_buffer.find_all( center, params ) ) {
+            const oter_id &oter = overmap_buffer.ter( loc );
+            if( !site.matches_terrain( oter ) ) {
+                continue;
+            }
+
+            const military_site_specialization_entry *entry = site.resolve( loc, oter );
+            if( entry == nullptr ) {
+                continue;
+            }
+
+            overmap_buffer.set_seen( loc, om_vision_level::details );
+            reports.push_back( report_entry{ loc, site.name().translated(),
+                                             entry->label.translated(),
+                                             overmap_buffer.is_omt_generated( loc ) } );
+        }
+    }
+
+    std::sort( reports.begin(), reports.end(), [&center]( const report_entry & lhs,
+    const report_entry & rhs ) {
+        return rl_dist( center, lhs.pos ) < rl_dist( center, rhs.pos );
+    } );
+
+    print_line( _( "MILITARY SITE LOGISTICS INDEX\n" ) );
+
+    if( reports.empty() ) {
+        print_line( _( "No indexed military sites found in existing regional map records.\n" ) );
+    } else {
+        for( const report_entry &report : reports ) {
+            print_line( _( "%s: %d %s, OMT %d,%d,%d.  Primary stores: %s.%s\n" ),
+                        report.site_name, rl_dist( center, report.pos ),
+                        direction_name_short( direction_from( center, report.pos ) ),
+                        report.pos.x(), report.pos.y(), report.pos.z(),
+                        report.specialization,
+                        report.generated ? _( "  Local map records may be stale." ) : "" );
+        }
+    }
+
+    query_any( _( "Press any key to continue…" ) );
 }
 
 void computer_session::helper_map( bool ( *func )( const oter_id & ), const char *query,

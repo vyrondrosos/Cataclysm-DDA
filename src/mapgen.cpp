@@ -65,6 +65,7 @@
 #include "mapgen_functions.h"
 #include "mapgendata.h"
 #include "memory_fast.h"
+#include "military_site_specialization.h"
 #include "messages.h"
 #include "mission.h"
 #include "mongroup.h"
@@ -2508,6 +2509,50 @@ class jmapgen_loot : public jmapgen_piece
         int chance;
 };
 
+/** Place items from the resolved specialization for this military site. */
+class jmapgen_specialized_loot : public jmapgen_piece
+{
+        friend jmapgen_objects;
+
+    public:
+        explicit jmapgen_specialized_loot( const JsonObject &jsi ) :
+            specialization( jsi.get_string( "specialization" ) )
+            , chance( jsi.get_int( "chance", 100 ) ) {
+            if( !specialization.is_valid() ) {
+                set_mapgen_defer( jsi, "specialization", "no such military site specialization" );
+            }
+        }
+
+        void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
+                    const std::string &/*context*/ ) const override {
+            if( rng( 0, 99 ) >= chance ) {
+                return;
+            }
+
+            const military_site_specialization_entry *entry =
+                military_site_specializations::resolve( specialization, dat.pos(), dat.terrain_type() );
+            if( entry == nullptr ) {
+                return;
+            }
+
+            Item_group result_group( Item_group::Type::G_COLLECTION, 100, 0, 0,
+                                     "specialized military site loot entry" );
+            result_group.add_group_entry( entry->loot_group, 100 );
+
+            const Item_spawn_data *const isd = &result_group;
+            std::vector<item> spawn;
+            spawn.reserve( 20 );
+            isd->create( spawn, calendar::start_of_cataclysm,
+                         spawn_flags::use_spawn_rate );
+            dat.m.spawn_items( tripoint_bub_ms( rng( x.val, x.valmax ), rng( y.val, y.valmax ),
+                                                dat.zlevel() + z.get() ), spawn );
+        }
+
+    private:
+        military_site_specialization_id specialization;
+        int chance;
+};
+
 /**
  * Place spawn points for a monster group (actual monster spawning is done later).
  * "monster": id of the monster group.
@@ -4019,6 +4064,31 @@ void jmapgen_objects::load_objects<jmapgen_loot>(
     }
 }
 
+template<>
+void jmapgen_objects::load_objects<jmapgen_specialized_loot>(
+    const JsonArray &parray, std::string_view/*context*/ )
+{
+    for( JsonObject jsi : parray ) {
+        jmapgen_place where( jsi );
+        where.offset( m_offset );
+
+        if( !check_bounds( where, jsi ) ) {
+            jsi.allow_omitted_members();
+            continue;
+        }
+
+        auto loot = make_shared_fast<jmapgen_specialized_loot>( jsi );
+        const float rate = std::max( get_option<float>( "ITEM_SPAWNRATE" ), 1.0f );
+
+        if( where.repeat.valmax != 1 ) {
+            where.repeat.val = std::max( static_cast<int>( where.repeat.val * rate ), 1 );
+            where.repeat.valmax = std::max( static_cast<int>( where.repeat.valmax * rate ), 1 );
+        }
+
+        add( where, loot );
+    }
+}
+
 template<typename PieceType>
 void jmapgen_objects::load_objects( const JsonObject &jsi, const std::string &member_name,
                                     const std::string &context )
@@ -4746,6 +4816,7 @@ bool mapgen_function_json_base::setup_common( const JsonObject &jo )
     objects.load_objects<jmapgen_gaspump>( jo, "place_gaspumps", context_ );
     objects.load_objects<jmapgen_item_group>( jo, "place_items", context_ );
     objects.load_objects<jmapgen_loot>( jo, "place_loot", context_ );
+    objects.load_objects<jmapgen_specialized_loot>( jo, "place_specialized_loot", context_ );
     objects.load_objects<jmapgen_monster_group>( jo, "place_monsters", context_ );
     objects.load_objects<jmapgen_vehicle>( jo, "place_vehicles", context_ );
     objects.load_objects<jmapgen_remove_vehicles>( jo, "remove_vehicles", context_ );

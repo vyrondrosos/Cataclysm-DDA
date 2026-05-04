@@ -822,6 +822,7 @@
         { "item": "holster", "x": [ 20, 21 ], "y": 15, "chance": 75, "repeat": 100 },
         { "group": "mil_base_tent_medical_thrash", "x": [ 52, 64 ], "y": [ 54, 71 ], "chance": 25, "repeat": 15 }
       ],
+      "place_specialized_loot": [ { "specialization": "mil_site_base_armory", "x": [ 8, 30 ], "y": [ 9, 12 ], "chance": 100, "repeat": [ 2, 3 ] } ],
       "place_monsters": [
         { "monster": "GROUP_MIL_BASE", "x": [ 0, 23 ], "y": [ 26, 47 ], "repeat": [ 6, 8 ], "density": 0.1 },
         { "monster": "GROUP_MIL_BASE", "x": [ 24, 47 ], "y": [ 26, 47 ], "repeat": [ 1, 2 ], "density": 0.1 },
@@ -1286,7 +1287,10 @@
         "0": {
           "name": "Medical Storage Access",
           "security": 4,
-          "options": [ { "name": "Open Storage Door", "action": "unlock" } ],
+          "options": [
+            { "name": "Open Storage Door", "action": "unlock" },
+            { "name": "Military Site Logistics Index", "action": "military_site_index" }
+          ],
           "failures": [ { "action": "shutdown" }, { "action": "alarm" } ]
         }
       }

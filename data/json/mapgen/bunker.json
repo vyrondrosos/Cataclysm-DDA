@@ -187,6 +187,7 @@
         { "item": "television", "x": 17, "y": 13, "chance": 95 },
         { "item": "stereo", "x": 19, "y": 15, "chance": 80 }
       ],
+      "place_specialized_loot": [ { "specialization": "mil_site_bunker", "x": [ 2, 7 ], "y": 21, "chance": 100, "repeat": [ 1, 2 ] } ],
       "vehicles": { "n": { "vehicle": "hospital_bed", "status": 0 } },
       "monster": { "~": { "monster": "mon_turret_rifle" } }
     }
