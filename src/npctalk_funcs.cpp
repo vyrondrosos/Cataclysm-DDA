@@ -331,6 +331,7 @@ void talk_function::do_fishing( npc &p )
 void talk_function::revert_activity( npc &p )
 {
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     p.revert_after_activity();
 }
 
@@ -415,6 +416,7 @@ void talk_function::goto_location( npc &p )
         return;
     }
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     p.set_mission( NPC_MISSION_TRAVELLING );
     p.chatbin.first_topic = p.chatbin.talk_friend_guard;
     p.guard_pos = std::nullopt;
@@ -430,6 +432,7 @@ void talk_function::assign_guard( npc &p )
     }
 
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     if( p.has_player_activity() ) {
         p.revert_after_activity();
     }
@@ -457,6 +460,7 @@ void talk_function::assign_camp( npc &p )
     if( bcp ) {
         basecamp *temp_camp = *bcp;
         p.clear_mortar_support( true );
+        p.clear_fpv_support( true );
         if( p.has_player_activity() ) {
             p.revert_after_activity();
         }
@@ -482,6 +486,7 @@ void talk_function::assign_camp( npc &p )
 void talk_function::return_to_camp_duties( npc &p )
 {
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     p.set_attitude( NPCATT_NULL );
     p.set_mission( NPC_MISSION_CAMP_RESIDENT );
     p.guard_pos = std::nullopt;
@@ -522,6 +527,7 @@ void talk_function::stop_guard( npc &p )
         return;
     }
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     p.set_attitude( NPCATT_FOLLOW );
     add_msg( _( "%s begins to follow you." ), p.get_name() );
     p.set_mission( NPC_MISSION_NULL );
@@ -919,6 +925,7 @@ void talk_function::drop_items_in_place( npc &p )
 void talk_function::follow( npc &p )
 {
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     g->add_npc_follower( p.getID() );
     p.set_attitude( NPCATT_FOLLOW );
     p.set_fac( faction_your_followers );
@@ -932,6 +939,7 @@ void talk_function::follow( npc &p )
 void talk_function::follow_only( npc &p )
 {
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     p.set_attitude( NPCATT_FOLLOW );
 }
 
@@ -985,6 +993,7 @@ void talk_function::flee( npc &p )
 void talk_function::leave( npc &p )
 {
     p.clear_mortar_support( true );
+    p.clear_fpv_support( true );
     add_msg( _( "%s leaves." ), p.get_name() );
     g->remove_npc_follower( p.getID() );
     std::string new_fac_id = "solo_";

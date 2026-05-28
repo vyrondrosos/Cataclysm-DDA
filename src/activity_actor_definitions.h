@@ -4042,6 +4042,33 @@ class man_mortar_activity_actor : public activity_actor
         character_id gunner_id;
 };
 
+
+/**
+* NPC-only activity to keep a follower assigned to drone control.
+*/
+class operate_drone_activity_actor : public activity_actor
+{
+    public:
+        operate_drone_activity_actor() = default;
+
+        void start( player_activity &act, Character &who ) override;
+        void do_turn( player_activity &act, Character &who ) override;
+        void finish( player_activity &, Character & ) override {};
+        void canceled( player_activity &, Character &who ) override;
+
+        const activity_id &get_type() const override {
+            static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
+            return ACT_OPERATE_DRONE;
+        }
+
+        std::unique_ptr<activity_actor> clone() const override {
+            return std::make_unique<operate_drone_activity_actor>( *this );
+        }
+
+        void serialize( JsonOut &jsout ) const override;
+        static std::unique_ptr<activity_actor> deserialize( JsonValue &jsin );
+};
+
 /**
 * Player activity for sustained laser target designation.
 */

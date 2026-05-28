@@ -1161,5 +1161,13 @@
     "based_on": "neither",
     "rooted": true,
     "verb": "manning a mortar"
+  },
+  {
+    "id": "ACT_OPERATE_DRONE",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "based_on": "neither",
+    "rooted": true,
+    "verb": "operating drones"
   }
 ]

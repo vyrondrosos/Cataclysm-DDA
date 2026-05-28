@@ -2,10 +2,14 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
+#include <list>
+#include <locale>
 #include <map>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -17,23 +21,35 @@
 #include "basecamp.h"
 #include "cata_io.h"
 #include "cata_path.h"
+#include "cata_utility.h"
+#include "catacharset.h"
 #include "character_id.h"
 #include "city.h"
 #include "colony.h"
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "dialogue_chatbin.h"
+#include "effect.h"
+#include "enum_conversions.h"
 #include "explosion.h"
 #include "faction.h"
+#include "flexbuffer_json.h"
+#include "generic_factory.h"
 #include "hash_utils.h"
 #include "horde_entity.h"
+#include "horde_map.h"
 #include "input.h"
 #include "item_wakeup.h"
+#include "inventory.h"
+#include "item.h"
 #include "json.h"
 #include "json_loader.h"
 #include "kill_tracker.h"
 #include "map.h"
 #include "mapgen_post_process.h"
+#include "mapgendata.h"
+#include "mdarray.h"
 #include "messages.h"
 #include "mission.h"
 #include "mongroup.h"
@@ -41,17 +57,21 @@
 #include "mtype.h"
 #include "npc.h"
 #include "omdata.h"
-#include "options.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "overmap_types.h"
 #include "overmap_map_data_cache.h"
 #include "path_info.h"
+#include "player_activity.h"
+#include "point.h"
 #include "power_network.h"
 #include "regional_settings.h"
 #include "scent_map.h"
 #include "stats_tracker.h"
+#include "submap.h"
 #include "timed_event.h"
+#include "units.h"
+#include "vehicle.h"
 
 class overmap_connection;
 
@@ -1934,6 +1954,9 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                          fire_data->feedback_accuracy_multiplier );
                 jo.read( "mortar_fire_feedback_location_multiplier",
                          fire_data->feedback_location_multiplier );
+                if( jo.has_member( "mortar_fire_feedback_reported" ) ) {
+                    fire_data->feedback_reported = jo.get_bool( "mortar_fire_feedback_reported" );
+                }
                 break;
             }
             case timed_event_type::MORTAR_IMPACT_MESSAGE: {
@@ -1948,6 +1971,9 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                     impact->accuracy_multiplier, true );
                 jo.get_member( "mortar_feedback_location_multiplier" ).read(
                     impact->location_multiplier, true );
+                if( jo.has_member( "mortar_feedback_reported" ) ) {
+                    impact->feedback_reported = jo.get_bool( "mortar_feedback_reported" );
+                }
                 if( jo.has_member( "mortar_impact_report" ) ) {
                     jo.get_member( "mortar_impact_report" ).read( impact->report, true );
                 }
@@ -1957,7 +1983,9 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                 if( !jo.has_member( "target" ) ) {
                     continue;
                 }
-                jo.get_member( "target" ).read( event.target, true );
+                event.data = std::make_unique<timed_event_target_data>();
+                jo.get_member( "target" ).read(
+                    event.get_data<timed_event_target_data>()->target, true );
                 break;
             }
             case timed_event_type::MORTAR_QUEUED_FIRE: {
@@ -2088,6 +2116,10 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
                               fire_data->feedback_accuracy_multiplier );
                 jsout.member( "mortar_fire_feedback_location_multiplier",
                               fire_data->feedback_location_multiplier );
+                if( fire_data->feedback_reported ) {
+                    jsout.member( "mortar_fire_feedback_reported",
+                                  *fire_data->feedback_reported );
+                }
                 break;
             }
             case timed_event_type::MORTAR_IMPACT_MESSAGE: {
@@ -2104,15 +2136,20 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
                               impact->accuracy_multiplier );
                 jsout.member( "mortar_feedback_location_multiplier",
                               impact->location_multiplier );
+                if( impact->feedback_reported ) {
+                    jsout.member( "mortar_feedback_reported", *impact->feedback_reported );
+                }
                 jsout.member( "mortar_impact_report", impact->report );
                 break;
             }
             case timed_event_type::MORTAR_GUIDED_IMPACT: {
-                if( elem.target.is_invalid() ) {
+                const timed_event_target_data *target_data =
+                    elem.get_data<timed_event_target_data>();
+                if( target_data == nullptr || target_data->target.is_invalid() ) {
                     debugmsg( "Guided mortar impact event missing target." );
                     break;
                 }
-                jsout.member( "target", elem.target );
+                jsout.member( "target", target_data->target );
                 break;
             }
             case timed_event_type::MORTAR_QUEUED_FIRE: {
@@ -2360,6 +2397,7 @@ void npc::import_and_clean( const JsonObject &data )
     companion_mission_exertion = defaults.companion_mission_exertion;
     companion_mission_travel_time = defaults.companion_mission_travel_time;
     companion_mission_inv.clear();
+    support_inv.clear();
     chatbin.missions.clear();
     chatbin.missions_assigned.clear();
     chatbin.mission_selected = nullptr;
