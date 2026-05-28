@@ -106,6 +106,7 @@
         ],
         "prob": 40
       },
+      { "group": "milspec_drone_crate_full", "count": [ 1, 2 ], "prob": 15 },
       { "item": "atgm_heat", "count": [ 2, 6 ], "prob": 10 }
     ]
   },
@@ -145,6 +146,7 @@
         ],
         "prob": 30
       },
+      { "group": "milspec_drone_crate_full", "prob": 15 },
       { "group": "milspec_arsenal_atgm_gun", "count": [ 1, 2 ], "prob": 10 }
     ]
   },

@@ -4,6 +4,7 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "calendar.h"
@@ -42,11 +43,22 @@ enum class timed_event_type : int {
     MORTAR_FIELD,
     MORTAR_QUEUED_FIRE,
     MORTAR_GUIDED_IMPACT,
+    FPV_DRONE_ARRIVAL_MESSAGE,
+    FPV_DRONE_STATUS_MESSAGE,
+    FPV_DRONE_RETURN_MESSAGE,
+    FPV_DRONE_RECOVERED_MESSAGE,
+    FPV_DRONE_LOST_MESSAGE,
+    FPV_DRONE_IMPACT_MESSAGE,
+    FPV_DRONE_PAYLOAD_DROP,
     NUM_TIMED_EVENT_TYPES
 };
 
 struct timed_event_data {
     virtual ~timed_event_data() = default;
+};
+
+struct timed_event_target_data : timed_event_data {
+    tripoint_abs_ms target = tripoint_abs_ms::invalid;
 };
 
 struct timed_event_character_data : timed_event_data {
@@ -63,6 +75,7 @@ struct mortar_fire_event_data : timed_event_data {
     int impact_message_strength = 0;
     double feedback_accuracy_multiplier = 1.0;
     double feedback_location_multiplier = 1.0;
+    std::optional<bool> feedback_reported;
 };
 
 struct mortar_impact_event_data : timed_event_data {
@@ -70,6 +83,7 @@ struct mortar_impact_event_data : timed_event_data {
     tripoint_abs_ms target = tripoint_abs_ms::invalid;
     double accuracy_multiplier = 1.0;
     double location_multiplier = 1.0;
+    std::optional<bool> feedback_reported;
     bool report = true;
 };
 
@@ -178,6 +192,7 @@ class timed_event_manager
         timed_event *get( timed_event_type type );
         timed_event *get( timed_event_type type, const std::string &key );
         std::list<timed_event> const &get_all() const;
+        void remove( timed_event_type type, const std::string &key );
         void set_all( const std::string &key, time_duration time_in_future );
         /// Process all queued events, potentially altering the game state and
         /// modifying the event queue.

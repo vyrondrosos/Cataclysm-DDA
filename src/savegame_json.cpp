@@ -10,21 +10,18 @@
 #include <bitset>
 #include <climits>
 #include <cmath>
-#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <iterator>
-#include <limits>
 #include <list>
 #include <map>
 #include <memory>
-#include <new>
-#include <numeric>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -34,7 +31,7 @@
 #include "active_item_cache.h"
 #include "activity_actor.h"
 #include "activity_actor_definitions.h"
-#include "activity_type.h"
+#include "activity_tracker.h"
 #include "addiction.h"
 #include "auto_pickup.h"
 #include "avatar.h"
@@ -46,6 +43,7 @@
 #include "cata_utility.h"
 #include "cata_variant.h"
 #include "character.h"
+#include "character_attire.h"
 #include "character_id.h"
 #include "character_martial_arts.h"
 #include "clone_ptr.h"
@@ -60,45 +58,57 @@
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "dialogue_chatbin.h"
+#include "dialogue_helpers.h"
 #include "effect.h"
 #include "effect_source.h"
+#include "enum_conversions.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
 #include "field.h"
-#include "field_type.h"
 #include "flag.h"
 #include "flat_set.h"
+#include "flexbuffer_json.h"
 #include "game.h"
-#include "game_constants.h"
+#include "generic_factory.h"
+#include "global_vars.h"
+#include "hash_utils.h"
 #include "inventory.h"
 #include "item.h"
 #include "item_contents.h"
 #include "item_factory.h"
 #include "item_location.h"
 #include "item_pocket.h"
+#include "item_uid.h"
 #include "itype.h"
+#include "iuse.h"
 #include "json.h"
 #include "kill_tracker.h"
-#include "lru_cache.h"
+#include "list.h"
 #include "magic.h"
 #include "magic_teleporter_list.h"
 #include "map.h"
 #include "map_memory.h"
+#include "map_scale_constants.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "mattack_common.h"
+#include "mdarray.h"
 #include "memory_fast.h"
 #include "mission.h"
+#include "mission_companion.h"
 #include "monster.h"
 #include "morale.h"
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
-#include "options.h"
+#include "npc_opinion.h"
 #include "overmapbuffer.h"
 #include "pimpl.h"
 #include "player_activity.h"
+#include "pocket_type.h"
 #include "point.h"
 #include "profession.h"
 #include "proficiency.h"
@@ -108,23 +118,26 @@
 #include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
+#include "safe_reference.h"
 #include "scenario.h"
 #include "skill.h"
 #include "stats_tracker.h"
 #include "stomach.h"
+#include "string_formatter.h"
 #include "submap.h"
+#include "talker.h"
 #include "text_snippets.h"
 #include "tileray.h"
+#include "trap.h"
+#include "units.h"
 #include "units_utility.h"
 #include "value_ptr.h"
 #include "veh_type.h"
 #include "vehicle.h"
 #include "vitamin.h"
 #include "vpart_position.h"
-#include "vpart_range.h"
 #include "weather.h"
 
-struct mutation_branch;
 struct oter_type_t;
 
 static const activity_id ACT_FETCH_REQUIRED( "ACT_FETCH_REQUIRED" );
@@ -2299,6 +2312,10 @@ void npc::load( const JsonObject &data )
     if( data.has_member( "companion_mission_inv" ) ) {
         companion_mission_inv.json_load_items( data.get_member( "companion_mission_inv" ) );
     }
+    support_inv.clear();
+    if( data.has_member( "support_inv" ) ) {
+        support_inv.json_load_items( data.get_member( "support_inv" ) );
+    }
 
     if( !data.read( "restock", restock ) ) {
         restock = calendar::before_time_starts;
@@ -2394,6 +2411,8 @@ void npc::store( JsonOut &json ) const
     json.member( "companion_mission_travel_time", companion_mission_travel_time );
     json.member( "companion_mission_inv" );
     companion_mission_inv.json_save_items( json );
+    json.member( "support_inv" );
+    support_inv.json_save_items( json );
     json.member( "restock", restock );
 
     json.member( "complaints", complaints );

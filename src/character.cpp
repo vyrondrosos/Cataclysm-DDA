@@ -98,6 +98,7 @@
 #include "stomach.h"
 #include "string_formatter.h"
 #include "submap.h"  // IWYU pragma: keep
+#include "talker.h"
 #include "translation.h"
 #include "translations.h"
 #include "trap.h"
@@ -118,6 +119,7 @@ static const activity_id ACT_GAME( "ACT_GAME" );
 static const activity_id ACT_HAND_CRANK( "ACT_HAND_CRANK" );
 static const activity_id ACT_HEATING( "ACT_HEATING" );
 static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
+static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
 static const activity_id ACT_MOVE_ITEMS( "ACT_MOVE_ITEMS" );
 static const activity_id ACT_MOVE_LOOT( "ACT_MOVE_LOOT" );
@@ -5296,7 +5298,8 @@ void Character::assign_activity( const player_activity &act )
         activity.set_resume_values( act, *this );
     } else {
         if( activity ) {
-            if( is_npc() && activity.id() == ACT_MAN_MORTAR && act.id() != ACT_MAN_MORTAR ) {
+            if( is_npc() && ( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ) &&
+                activity.id() != act.id() ) {
                 activity.canceled( *this );
             } else {
                 backlog.push_front( activity );

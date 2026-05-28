@@ -20,6 +20,12 @@
         "condition": { "math": [ "has_var(n_mortar_assignment)" ] },
         "topic": "TALK_NPC_MORTAR_SUPPORT"
       },
+      {
+        "text": "Drone support.",
+        "condition": { "math": [ "has_var(n_fpv_assignment)" ] },
+        "topic": "TALK_NPC_DRONE_SUPPORT",
+        "effect": "reconcile_fpv_mission"
+      },
       { "text": "I'd like your opinion on a job we're doing.", "topic": "TALK_Liam_Opinions" },
       {
         "text": "I just wanted to talk for a bit.",
@@ -131,6 +137,18 @@
         "condition": { "not": "is_by_radio" },
         "topic": "TALK_FRIEND_Liam",
         "effect": "npc_gets_item"
+      },
+      {
+        "text": "Man the nearby mortar and take these rounds.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "not": "npc_has_activity" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
+        "topic": "TALK_DONE",
+        "effect": "assign_mortar"
+      },
+      {
+        "text": "Set up as a drone operator and take these drones.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "not": "npc_has_activity" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
+        "topic": "TALK_DONE",
+        "effect": "assign_fpv_drone_operator"
       },
       {
         "text": "Guard this position.",

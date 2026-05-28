@@ -122,7 +122,6 @@ struct tool_comp;
 struct trait_and_var;
 struct trap;
 struct w_point;
-template <typename E> struct enum_traits;
 
 using bionic_uid = unsigned int;
 
