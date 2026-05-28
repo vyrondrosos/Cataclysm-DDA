@@ -1418,6 +1418,7 @@ class npc : public Character
         void set_attitude( npc_attitude new_attitude );
         void set_mission( npc_mission new_mission );
         int clear_mortar_support( bool notify = false );
+        int clear_fpv_support( bool notify = false );
         bool has_activity() const;
         bool has_job() const {
             return job.has_job();
@@ -1611,6 +1612,8 @@ class npc : public Character
         time_duration companion_mission_travel_time = 0_hours;
         //Inventory that is added and dropped on mission
         inventory companion_mission_inv;
+        // Equipment held for player-directed support duties such as drone operations.
+        inventory support_inv;
         npc_mission mission = NPC_MISSION_NULL;
         npc_mission previous_mission = NPC_MISSION_NULL;
         // Personality & other defining characteristics

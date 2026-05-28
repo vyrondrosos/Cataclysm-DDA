@@ -4098,6 +4098,20 @@ const char *timed_event_type_name( timed_event_type t )
             return "mortar_queued_fire";
         case timed_event_type::MORTAR_GUIDED_IMPACT:
             return "mortar_guided_impact";
+        case timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE:
+            return "fpv_drone_arrival_message";
+        case timed_event_type::FPV_DRONE_STATUS_MESSAGE:
+            return "fpv_drone_status_message";
+        case timed_event_type::FPV_DRONE_RETURN_MESSAGE:
+            return "fpv_drone_return_message";
+        case timed_event_type::FPV_DRONE_RECOVERED_MESSAGE:
+            return "fpv_drone_recovered_message";
+        case timed_event_type::FPV_DRONE_LOST_MESSAGE:
+            return "fpv_drone_lost_message";
+        case timed_event_type::FPV_DRONE_IMPACT_MESSAGE:
+            return "fpv_drone_impact_message";
+        case timed_event_type::FPV_DRONE_PAYLOAD_DROP:
+            return "fpv_drone_payload_drop";
         case timed_event_type::NUM_TIMED_EVENT_TYPES:
             break;
     }

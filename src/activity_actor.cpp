@@ -203,6 +203,7 @@ static const activity_id ACT_JACKHAMMER( "ACT_JACKHAMMER" );
 static const activity_id ACT_LOCKPICK( "ACT_LOCKPICK" );
 static const activity_id ACT_LONGSALVAGE( "ACT_LONGSALVAGE" );
 static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
+static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
 static const activity_id ACT_MEND_ITEM( "ACT_MEND_ITEM" );
 static const activity_id ACT_MIGRATION_CANCEL( "ACT_MIGRATION_CANCEL" );
@@ -13886,6 +13887,52 @@ std::unique_ptr<activity_actor> laser_designator_activity_actor::deserialize( Js
     return actor.clone();
 }
 
+void operate_drone_activity_actor::start( player_activity &act, Character &who )
+{
+    if( !who.is_npc() ) {
+        act.set_to_null();
+        return;
+    }
+    act.moves_total = calendar::INDEFINITELY_LONG;
+    act.moves_left = calendar::INDEFINITELY_LONG;
+}
+
+void operate_drone_activity_actor::do_turn( player_activity &act, Character &who )
+{
+    if( !who.is_npc() ) {
+        act.set_to_null();
+        return;
+    }
+    npc &operator_npc = dynamic_cast<npc &>( who );
+    const diag_value assignment = operator_npc.get_value( "fpv_assignment" );
+    if( assignment.is_empty() || assignment.str().empty() ) {
+        act.set_to_null();
+        operator_npc.revert_after_activity();
+        return;
+    }
+    operator_npc.pause();
+    act.moves_left = calendar::INDEFINITELY_LONG;
+}
+
+void operate_drone_activity_actor::canceled( player_activity &, Character &who )
+{
+    if( who.is_npc() ) {
+        dynamic_cast<npc &>( who ).clear_fpv_support( true );
+    }
+}
+
+void operate_drone_activity_actor::serialize( JsonOut &jsout ) const
+{
+    jsout.start_object();
+    jsout.end_object();
+}
+
+std::unique_ptr<activity_actor> operate_drone_activity_actor::deserialize( JsonValue &jsin )
+{
+    jsin.get_object();
+    return operate_drone_activity_actor().clone();
+}
+
 void wait_activity_actor::start( player_activity &act, Character & )
 {
     act.moves_total = to_moves<int>( initial_wait_time );
@@ -15380,6 +15427,7 @@ deserialize_functions = {
     { ACT_LOCKPICK, &lockpick_activity_actor::deserialize },
     { ACT_LONGSALVAGE, &longsalvage_activity_actor::deserialize },
     { ACT_MAN_MORTAR, &man_mortar_activity_actor::deserialize },
+    { ACT_OPERATE_DRONE, &operate_drone_activity_actor::deserialize },
     { ACT_MEDITATE, &meditate_activity_actor::deserialize },
     { ACT_MEND_ITEM, &mend_item_activity_actor::deserialize },
     { ACT_MIGRATION_CANCEL, &migration_cancel_activity_actor::deserialize },

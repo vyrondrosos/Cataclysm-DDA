@@ -79,6 +79,7 @@
 #include "talker.h"
 #include "talker_npc.h"
 #include "text_snippets.h"
+#include "timed_event.h"
 #include "trait_group.h"
 #include "translations.h"
 #include "units.h"
@@ -91,6 +92,7 @@
 #include "weather.h"
 
 static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
+static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
 static const activity_id ACT_TRY_SLEEP( "ACT_TRY_SLEEP" );
 
 static const efftype_id effect_bouldering( "bouldering" );
@@ -1162,10 +1164,11 @@ void npc::starting_inv_wear_item( npc *who, item &it )
 
 void npc::revert_after_activity()
 {
-    if( activity.id() == ACT_MAN_MORTAR ) {
+    if( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ) {
         activity.canceled( *this );
     } else if( previous_mission != NPC_MISSION_GUARD_ALLY ) {
         clear_mortar_support();
+        clear_fpv_support();
     }
     mission = previous_mission;
     attitude = previous_attitude;
@@ -3261,6 +3264,7 @@ void npc::die( map *here, Creature *nkiller )
     }
 
     clear_mortar_support();
+    clear_fpv_support();
 
     if( assigned_camp ) {
         std::optional<basecamp *> bcp = overmap_buffer.find_camp( ( *assigned_camp ).xy() );
@@ -3984,9 +3988,11 @@ std::string npc::get_unique_id() const
 
 void npc::set_mission( npc_mission new_mission )
 {
-    if( new_mission != NPC_MISSION_GUARD_ALLY &&
-        ( new_mission != NPC_MISSION_ACTIVITY || activity.id() != ACT_MAN_MORTAR ) ) {
+    const bool preserving_support_activity = new_mission == NPC_MISSION_ACTIVITY &&
+            ( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE );
+    if( new_mission != NPC_MISSION_GUARD_ALLY && !preserving_support_activity ) {
         clear_mortar_support();
+        clear_fpv_support();
     }
     if( new_mission != mission ) {
         previous_mission = mission;
@@ -4037,6 +4043,8 @@ int npc::clear_mortar_support( const bool notify )
     remove_value( "mortar_adjustment_ready_turn" );
     remove_value( "mortar_adjustment_tactic" );
     remove_value( "mortar_creeping_axis_to" );
+    remove_value( "mortar_last_spot_player_observed" );
+    remove_value( "mortar_last_spot_drone_observed" );
     remove_value( "mortar_selected_ammo" );
     remove_value( "mortar_crew_gunner_id" );
     remove_value( "mortar_crew_gunner_name" );
@@ -4058,6 +4066,101 @@ int npc::clear_mortar_support( const bool notify )
         add_msg( _( "%s stops assisting the mortar crew." ), disp_name() );
     }
     return released_rounds;
+}
+
+
+int npc::clear_fpv_support( const bool notify )
+{
+    const diag_value assignment = get_value( "fpv_assignment" );
+    const bool assigned = !assignment.is_empty() && !assignment.str().empty();
+    const diag_value status_value = get_value( "fpv_status" );
+    const std::string status = status_value.is_empty() ? std::string() : status_value.str();
+    const bool drone_airborne = status == "enroute" || status == "on_station" || status == "returning";
+    if( !assigned && support_inv.size() == 0 && !drone_airborne ) {
+        return 0;
+    }
+
+    const diag_value mission_key_value = get_value( "fpv_mission_key" );
+    const std::string mission_key = mission_key_value.is_empty() ? std::string() : mission_key_value.str();
+    if( !mission_key.empty() ) {
+        get_timed_events().remove( timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE, mission_key );
+        get_timed_events().remove( timed_event_type::FPV_DRONE_STATUS_MESSAGE, mission_key );
+        get_timed_events().remove( timed_event_type::FPV_DRONE_RETURN_MESSAGE, mission_key );
+        get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
+        get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
+        get_timed_events().remove( timed_event_type::FPV_DRONE_PAYLOAD_DROP, mission_key );
+    }
+
+    if( !drone_airborne ) {
+        const diag_value payload_type_value = get_value( "fpv_payload_loaded_type" );
+        const std::string payload_type = payload_type_value.is_empty() ? std::string() : payload_type_value.str();
+        const int loaded_count = std::max( 0, static_cast<int>( get_value( "fpv_payload_loaded_count" ).dbl() ) );
+        const itype_id payload_id( payload_type );
+        if( loaded_count > 0 && payload_id.is_valid() ) {
+            item payload( payload_id, calendar::turn, loaded_count );
+            if( payload.count_by_charges() ) {
+                support_inv.add_item( std::move( payload ) );
+            } else {
+                for( int i = 0; i < loaded_count; ++i ) {
+                    support_inv.add_item( item( payload_id, calendar::turn ) );
+                }
+            }
+        }
+    }
+
+    int dropped_items = 0;
+    map &here = get_map();
+    const tripoint_bub_ms drop_pos = pos_bub( here );
+    for( size_t pos = 0; pos < support_inv.size(); ++pos ) {
+        for( const item &it : support_inv.const_stack( pos ) ) {
+            if( !it.count_by_charges() || it.charges > 0 ) {
+                dropped_items += it.count();
+                here.add_item_or_charges( drop_pos, it );
+            }
+        }
+    }
+    support_inv.clear();
+
+    remove_value( "fpv_assignment" );
+    remove_value( "fpv_status" );
+    remove_value( "fpv_mission_key" );
+    remove_value( "fpv_arrival_turn" );
+    remove_value( "fpv_station_end_turn" );
+    remove_value( "fpv_return_end_turn" );
+    remove_value( "fpv_outbound_seconds" );
+    remove_value( "fpv_return_seconds" );
+    remove_value( "fpv_one_way" );
+    remove_value( "fpv_expend_practiced" );
+    remove_value( "fpv_drone_type" );
+    remove_value( "fpv_payload_loaded_type" );
+    remove_value( "fpv_payload_loaded_count" );
+    remove_value( "fpv_command_busy_until" );
+    remove_value( "fpv_payload_drop_busy_until" );
+    remove_value( "fpv_station_x" );
+    remove_value( "fpv_station_y" );
+    remove_value( "fpv_station_z" );
+    remove_value( "fpv_scout_active" );
+    remove_value( "fpv_scout_ready_turn" );
+    remove_value( "fpv_scout_x" );
+    remove_value( "fpv_scout_y" );
+    remove_value( "fpv_scout_z" );
+    remove_value( "fpv_scout_report_active" );
+    remove_value( "fpv_scout_report_x" );
+    remove_value( "fpv_scout_report_y" );
+    remove_value( "fpv_scout_report_z" );
+    remove_value( "fpv_payload_type" );
+
+    if( notify ) {
+        if( drone_airborne ) {
+            add_msg( _( "%s stops drone duty.  The airborne drone is lost." ), disp_name() );
+        }
+        if( dropped_items > 0 ) {
+            add_msg( n_gettext( "%1$s drops %2$d drone support item.",
+                                "%1$s drops %2$d drone support items.", dropped_items ),
+                     disp_name(), dropped_items );
+        }
+    }
+    return dropped_items;
 }
 
 bool npc::has_activity() const
@@ -4273,6 +4376,17 @@ int npc::get_thirst() const
 
 std::string npc::describe_mission() const
 {
+    const diag_value mortar_assignment = get_value( "mortar_assignment" );
+    if( !mortar_assignment.is_empty() && !mortar_assignment.str().empty() ) {
+        return string_format( _( "Currently, I'm manning a mortar.  Overall, %s" ),
+                              myclass.obj().get_job_description() );
+    }
+    const diag_value fpv_assignment = get_value( "fpv_assignment" );
+    if( !fpv_assignment.is_empty() && !fpv_assignment.str().empty() ) {
+        return string_format( _( "Currently, I'm assigned to drone control.  Overall, %s" ),
+                              myclass.obj().get_job_description() );
+    }
+
     switch( mission ) {
         case NPC_MISSION_SHELTER:
             return string_format( _( "I'm holing up here for safety.  Long term, %s" ),

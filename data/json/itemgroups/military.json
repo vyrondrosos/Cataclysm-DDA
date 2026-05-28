@@ -464,6 +464,7 @@
       { "item": "eplrs_net_control_station", "prob": 12, "charges": [ 0, 56 ] },
       { "item": "laser_rangefinder", "prob": 8, "charges": [ 0, 100 ] },
       { "item": "balthazar_radio", "prob": 1 },
+      { "group": "fpv_scout_drone_hardcase_full", "prob": 2 },
       { "group": "infantry_knives", "prob": 80 }
     ]
   },
@@ -595,6 +596,7 @@
       { "group": "molle_papr_kit", "prob": 15 },
       { "item": "laser_rangefinder", "prob": 5, "charges": [ 0, 100 ] },
       { "item": "eplrs_net_control_station", "prob": 8, "charges": [ 0, 56 ] },
+      { "group": "fpv_scout_drone_hardcase_full", "prob": 3 },
       { "item": "combo_cover", "prob": 20 },
       { "item": "pants_army", "prob": 70 },
       { "item": "combat_shirt", "prob": 35 },
@@ -816,6 +818,7 @@
       [ "bot_rifleturret", 10 ],
       [ "bot_crows_m240", 10 ],
       [ "bot_talon_m202a1", 10 ],
+      { "group": "fpv_scout_drone_hardcase_full", "prob": 5 },
       [ "bot_dispatch_military", 15 ],
       [ "bot_turret_searchlight", 75 ]
     ]
