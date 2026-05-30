@@ -559,6 +559,34 @@
     "origins": [ "ORIGIN_GAME_START" ]
   },
   {
+    "id": "MISSION_APACHE_FIND_MILITARY_HELIPORT",
+    "type": "mission_definition",
+    "name": { "str": "Reach a military heliport" },
+    "description": "The Apache is down to fumes, but a military heliport should have fuel, tools, and a better chance of intact flight gear than an open field.",
+    "goal": "MGOAL_GO_TO_TYPE",
+    "destination": "helipad_nw",
+    "difficulty": 4,
+    "value": 0,
+    "start": {
+      "assign_mission_target": { "om_terrain": "helipad_nw", "reveal_radius": 10, "om_special": "military helipad", "min_distance": 25, "z": 0 }
+    },
+    "origins": [ "ORIGIN_GAME_START" ]
+  },
+  {
+    "id": "MISSION_APACHE_RETURN_TO_CARRIER",
+    "type": "mission_definition",
+    "name": { "str": "Return to the carrier" },
+    "description": "The carrier was the last place you had anything like a chain of command.  If anyone from your unit is still alive, the flight deck is the place to look.",
+    "goal": "MGOAL_GO_TO_TYPE",
+    "destination": "aircraft_carrier_1b",
+    "difficulty": 4,
+    "value": 0,
+    "start": {
+      "assign_mission_target": { "om_terrain": "aircraft_carrier_1b", "reveal_radius": 20, "om_special": "aircraft_carrier", "z": 0 }
+    },
+    "origins": [ "ORIGIN_GAME_START" ]
+  },
+  {
     "id": "MISSION_HELICOPTER_PILOT",
     "type": "mission_definition",
     "name": { "str": "Go to the refueling stop" },

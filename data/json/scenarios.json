@@ -812,6 +812,19 @@
   },
   {
     "type": "scenario",
+    "id": "apache_farm_landing",
+    "name": "Apache Farm Landing",
+    "points": 5,
+    "description": "You were flying close air support from the carrier when everything finally came apart.  With your gunner still alive and the Apache nearly dry, you put down in the first open field you could find.  The bird is intact, but getting it airborne again means finding fuel and a way back to friendly ground.",
+    "start_name": "Emergency Landing Site",
+    "allowed_locs": [ "sloc_field" ],
+    "map_extra": "mx_apache_farm_landing",
+    "missions": [ "MISSION_APACHE_FIND_MILITARY_HELIPORT", "MISSION_APACHE_RETURN_TO_CARRIER" ],
+    "professions": [ "marine_apache_pilot" ],
+    "distance_initial_visibility": 0
+  },
+  {
+    "type": "scenario",
     "id": "wilderness",
     "name": "Wilderness",
     "points": 0,
