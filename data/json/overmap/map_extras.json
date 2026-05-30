@@ -180,6 +180,18 @@
     "flags": [ "MAN_MADE", "CLASSIC" ]
   },
   {
+    "id": "mx_apache_farm_landing",
+    "type": "map_extra",
+    "name": { "str": "Apache Landing" },
+    "description": "An attack helicopter has landed here.",
+    "generator": { "generator_method": "update_mapgen", "generator_id": "mx_apache_farm_landing" },
+    "min_max_zlevel": [ 0, 0 ],
+    "sym": "H",
+    "color": "light_blue",
+    "autonote_visibility": "same_tile",
+    "flags": [ "MAN_MADE", "CLASSIC" ]
+  },
+  {
     "id": "mx_science",
     "type": "map_extra",
     "name": { "str": "Scientists" },
