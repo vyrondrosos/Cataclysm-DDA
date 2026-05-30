@@ -138,73 +138,161 @@
     "responses": [
       {
         "text": "Launch a suicide FPV drone to my position.",
-        "condition": { "and": [ { "math": [ "has_var(n_fpv_assignment)" ] }, { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } } ] },
+        "condition": {
+          "and": [
+            { "math": [ "has_var(n_fpv_assignment)" ] },
+            { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_launch"
       },
       {
         "text": "Launch a military explosive FPV drone to my position.",
-        "condition": { "and": [ { "math": [ "has_var(n_fpv_assignment)" ] }, { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } } ] },
+        "condition": {
+          "and": [
+            { "math": [ "has_var(n_fpv_assignment)" ] },
+            { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_military_launch"
       },
       {
         "text": "Launch a scout drone to my position.",
-        "condition": { "and": [ { "math": [ "has_var(n_fpv_assignment)" ] }, { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } } ] },
+        "condition": {
+          "and": [
+            { "math": [ "has_var(n_fpv_assignment)" ] },
+            { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_scout_launch"
       },
       {
         "text": "Launch a bomber drone to my position.",
-        "condition": { "and": [ { "math": [ "has_var(n_fpv_assignment)" ] }, { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } }, { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } } ] },
+        "condition": {
+          "and": [
+            { "math": [ "has_var(n_fpv_assignment)" ] },
+            { "not": { "compare_string": [ "enroute", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] } },
+            { "not": { "compare_string": [ "returning", { "npc_val": "fpv_status" } ] } }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_baba_yaga_launch"
       },
       {
         "text": "Ignore bingo fuel and keep the drone on station. (warning: this will lose the drone when the battery runs out)",
-        "condition": { "and": [ { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] }, { "not": { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] } } ] },
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            { "not": { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] } }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_one_way"
       },
       {
         "text": "Abort the one-way order and recover on bingo fuel.",
-        "condition": { "and": [ { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] }, { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] } ] },
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_abort_one_way"
       },
       {
         "text": "Recover the drone now.",
-        "condition": { "and": [ { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] }, { "not": { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] } } ] },
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            { "not": { "compare_string": [ "yes", { "npc_val": "fpv_one_way" } ] } }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_recover"
       },
       {
         "text": "Command the airborne FPV drone to attack.",
-        "condition": { "and": [ { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] }, { "or": [ { "compare_string": [ "suicide", { "npc_val": "fpv_drone_type" } ] }, { "compare_string": [ "military_suicide", { "npc_val": "fpv_drone_type" } ] } ] } ] },
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            {
+              "or": [
+                { "compare_string": [ "suicide", { "npc_val": "fpv_drone_type" } ] },
+                { "compare_string": [ "military_suicide", { "npc_val": "fpv_drone_type" } ] }
+              ]
+            }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_attack"
       },
       {
         "text": "Drop the bomber drone payload.",
-        "condition": { "and": [ { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] }, { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] } ] },
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_payload_drop"
       },
       {
         "text": "Task the airborne drone to scout a point.",
-        "condition": { "and": [ { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] }, { "or": [ { "compare_string": [ "scout", { "npc_val": "fpv_drone_type" } ] }, { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] } ] } ] },
+        "condition": {
+          "and": [
+            { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
+            {
+              "or": [
+                { "compare_string": [ "scout", { "npc_val": "fpv_drone_type" } ] },
+                { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] }
+              ]
+            }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_scout"
       },
       {
         "text": "Give me the drone scout report.",
-        "condition": { "or": [ { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] }, { "compare_string": [ "yes", { "npc_val": "fpv_scout_report_active" } ] } ] },
+        "condition": {
+          "or": [
+            { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
+            { "compare_string": [ "yes", { "npc_val": "fpv_scout_report_active" } ] }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_scout_report"
       },
       {
         "text": "Give me the thermal drone scout report.",
-        "condition": { "and": [ { "or": [ { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] }, { "compare_string": [ "yes", { "npc_val": "fpv_scout_report_active" } ] } ] }, { "or": [ { "compare_string": [ "scout", { "npc_val": "fpv_drone_type" } ] }, { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] } ] } ] },
+        "condition": {
+          "and": [
+            {
+              "or": [
+                { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
+                { "compare_string": [ "yes", { "npc_val": "fpv_scout_report_active" } ] }
+              ]
+            },
+            {
+              "or": [
+                { "compare_string": [ "scout", { "npc_val": "fpv_drone_type" } ] },
+                { "compare_string": [ "baba_yaga", { "npc_val": "fpv_drone_type" } ] }
+              ]
+            }
+          ]
+        },
         "topic": "TALK_DONE",
         "effect": "request_fpv_thermal_scout_report"
       },

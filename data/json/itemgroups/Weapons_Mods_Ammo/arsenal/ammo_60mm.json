@@ -90,9 +90,6 @@
     "type": "item_group",
     "id": "milspec_drone_crate_full",
     "container-item": "ammunition_box_drone_hardcases",
-    "items": [
-      { "group": "fpv_scout_drone_hardcase_full", "prob": 100 },
-      { "group": "fpv_drone_hardcase_full", "prob": 70 }
-    ]
+    "items": [ { "group": "fpv_scout_drone_hardcase_full", "prob": 100 }, { "group": "fpv_drone_hardcase_full", "prob": 70 } ]
   }
 ]
