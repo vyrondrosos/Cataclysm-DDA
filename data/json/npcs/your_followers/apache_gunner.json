@@ -1,0 +1,70 @@
+[
+  {
+    "type": "npc",
+    "id": "starting_follower_apache_gunner",
+    "//": "Scenario specific follower for the Apache Farm Landing start.",
+    "class": "NC_STARTING_APACHE_GUNNER",
+    "attitude": 3,
+    "mission": 7,
+    "chat": "TALK_FRIEND",
+    "faction": "your_followers"
+  },
+  {
+    "type": "npc_class",
+    "id": "NC_STARTING_APACHE_GUNNER",
+    "name": { "str": "attack helicopter gunner" },
+    "job_description": "I'm your second set of eyes.",
+    "common": false,
+    "traits": [ { "group": "BG_survival_story_SOLDIER" }, { "group": "NPC_starting_traits" }, { "group": "Appearance_demographics" } ],
+    "worn_override": "NC_STARTING_APACHE_GUNNER_worn",
+    "carry_override": "NC_STARTING_APACHE_GUNNER_carry",
+    "weapon_override": "NC_STARTING_APACHE_GUNNER_wield",
+    "skills": [
+      { "skill": "driving", "bonus": 4 },
+      { "skill": "gun", "bonus": 4 },
+      { "skill": "pistol", "bonus": 3 },
+      { "skill": "smg", "bonus": 3 },
+      { "skill": "melee", "bonus": 2 },
+      { "skill": "stabbing", "bonus": 2 },
+      { "skill": "survival", "bonus": 2 }
+    ],
+    "proficiencies": [ "prof_helicopter_pilot", "prof_gun_cleaning", "prof_auto_pistols_familiar", "prof_knives_familiar" ]
+  },
+  {
+    "type": "item_group",
+    "id": "NC_STARTING_APACHE_GUNNER_worn",
+    "subtype": "collection",
+    "items": [
+      { "item": "nomex_socks" },
+      { "item": "boxer_shorts" },
+      { "item": "boots_combat" },
+      { "item": "gloves_tactical" },
+      { "item": "flight_helmet", "ammo-item": "light_battery_cell", "charges": 150 },
+      { "item": "mil_flight_suit" },
+      { "item": "chestrig" },
+      { "item": "m9", "ammo-item": "9mm", "charges": 15, "container-item": "holster" },
+      { "item": "knife_combat_marine", "container-item": "sheath" }
+    ]
+  },
+  {
+    "type": "item_group",
+    "id": "NC_STARTING_APACHE_GUNNER_carry",
+    "subtype": "collection",
+    "items": [
+      { "item": "mre_package" },
+      { "group": "charged_two_way_radio" },
+      { "item": "m9mag", "ammo-item": "9mm", "charges": 15 },
+      { "item": "m9mag", "ammo-item": "9mm", "charges": 15 },
+      { "item": "m9mag", "ammo-item": "9mm", "charges": 15 },
+      { "item": "btmp9mag_9x19mm_30", "ammo-item": "9mm", "charges": 30 },
+      { "item": "btmp9mag_9x19mm_30", "ammo-item": "9mm", "charges": 30 },
+      { "item": "btmp9mag_9x19mm_30", "ammo-item": "9mm", "charges": 30 }
+    ]
+  },
+  {
+    "type": "item_group",
+    "id": "NC_STARTING_APACHE_GUNNER_wield",
+    "subtype": "collection",
+    "items": [ { "item": "bt_apc9k", "ammo-item": "9mm", "charges": 30 } ]
+  }
+]

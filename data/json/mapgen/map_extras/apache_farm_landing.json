@@ -1,0 +1,12 @@
+[
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "mx_apache_farm_landing",
+    "object": {
+      "flags": [ "ALLOW_TERRAIN_UNDER_OTHER_DATA" ],
+      "place_vehicles": [ { "vehicle": "helicopter_apache_1a", "x": 13, "y": 12, "fuel": -1, "status": 0, "rotation": 90 } ],
+      "place_npcs": [ { "class": "starting_follower_apache_gunner", "x": 16, "y": 13 } ],
+      "place_zones": [ { "type": "ZONE_START_POINT", "faction": "your_followers", "x": [ 14, 16 ], "y": [ 12, 14 ] } ]
+    }
+  }
+]
