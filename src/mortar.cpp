@@ -33,6 +33,7 @@
 #include "value_ptr.h"
 
 static const itype_id itype_60mm_shell_m721( "60mm_shell_m721" );
+static const itype_id itype_81mm_shell_m853a1( "81mm_shell_m853a1" );
 static const itype_id itype_laser_rangefinder( "laser_rangefinder" );
 static const itype_id itype_mortar_fire_control_tablet( "mortar_fire_control_tablet" );
 static const itype_id itype_software_mortar_fire_control( "software_mortar_fire_control" );
@@ -412,7 +413,8 @@ bool mortar_round_has_high_explosive_payload( const item &round )
 
 bool mortar_round_has_impact_payload( const item &round )
 {
-    if( round.typeId() == itype_60mm_shell_m721 ) {
+    if( round.typeId() == itype_60mm_shell_m721 ||
+        round.typeId() == itype_81mm_shell_m853a1 ) {
         return true;
     }
     if( !round.ammo_data() ) {
@@ -573,8 +575,10 @@ bool mortar_schedule_impact_payload( const item &round, const tripoint_abs_ms &i
                                      const time_point &when )
 {
     bool scheduled = false;
-    if( round.typeId() == itype_60mm_shell_m721 ) {
-        const int illumination_duration = rng( 40, 60 );
+    if( round.typeId() == itype_60mm_shell_m721 ||
+        round.typeId() == itype_81mm_shell_m853a1 ) {
+        const int illumination_duration = round.typeId() == itype_60mm_shell_m721 ?
+                                          rng( 40, 60 ) : rng( 45, 55 );
         get_timed_events().add_mortar_field( when, impact, 1, "fd_mortar_illumination", 0,
                                              illumination_duration );
         scheduled = true;

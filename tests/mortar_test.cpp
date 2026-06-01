@@ -30,6 +30,7 @@
 static const itype_id itype_60mm_shell_m720a1( "60mm_shell_m720a1" );
 static const itype_id itype_rock( "rock" );
 static const mortar_type_id mortar_m224( "m224" );
+static const mortar_type_id mortar_m252( "m252" );
 static const oter_str_id oter_field( "field" );
 static const ter_str_id ter_t_wall( "t_wall" );
 
@@ -94,6 +95,22 @@ TEST_CASE( "mortar_deployment_matches_furniture", "[mortar]" )
     CHECK_FALSE( mortar.is_deployed_at( abs_pos ) );
 }
 
+TEST_CASE( "mortar_81mm_type_uses_m252_performance_values", "[mortar]" )
+{
+    const mortar_type &mortar = mortar_m252.obj();
+
+    CHECK( mortar.range() == 5900 );
+    CHECK( to_seconds<int>( mortar.npc_fire_message_delay() ) == 20 );
+
+    mortar_error error = mortar.minimum_error( 1000 );
+    CHECK( error.range == Approx( 15.0 ) );
+    CHECK( error.deflection == Approx( 10.0 ) );
+
+    error = mortar.minimum_error( 5900 );
+    CHECK( error.range == Approx( 88.5 ) );
+    CHECK( error.deflection == Approx( 59.0 ) );
+}
+
 TEST_CASE( "mortar_ballistic_multiplier_caps", "[mortar]" )
 {
     CHECK( mortar_type::effective_ballistic_multiplier( 9.0 ) == Approx( 9.0 ) );
@@ -127,6 +144,22 @@ TEST_CASE( "mortar_60mm_flight_time_scales_with_distance", "[mortar]" )
             CHECK( npc_seconds >= minimum_seconds );
             CHECK( npc_seconds <= maximum_seconds );
         }
+    }
+}
+
+TEST_CASE( "mortar_81mm_flight_time_scales_with_range", "[mortar]" )
+{
+    rng_set_engine_seed( 1 );
+    const mortar_type &mortar = mortar_m252.obj();
+
+    for( int i = 0; i < 20; ++i ) {
+        const int player_seconds = to_seconds<int>( mortar.player_flight_time( mortar.range() ) );
+        CHECK( player_seconds >= 45 );
+        CHECK( player_seconds <= 65 );
+
+        const int npc_seconds = to_seconds<int>( mortar.npc_flight_time( mortar.range() ) );
+        CHECK( npc_seconds >= 45 );
+        CHECK( npc_seconds <= 65 );
     }
 }
 
