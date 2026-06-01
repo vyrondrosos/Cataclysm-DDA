@@ -1,0 +1,25 @@
+[
+  {
+    "type": "ITEM",
+    "id": "mortar_m252",
+    "name": { "str_sp": "medium mortar" },
+    "description": "The M252 81mm mortar is a medium-weight mortar system with substantially greater range and payload than the 60mm M224.  It is intended for a crew, but a single trained operator can still use it slowly with firing tables and patient adjustment.",
+    "variants": [
+      {
+        "id": "mortar_m252",
+        "name": { "str": "81mm M252 mortar" },
+        "description": "The M252 81mm mortar is a medium-weight mortar system with substantially greater range and payload than the 60mm M224.  It is intended for a crew, but a single trained operator can still use it slowly with firing tables and patient adjustment."
+      }
+    ],
+    "use_action": { "type": "deploy_furn", "furn_type": "f_m252_mortar" },
+    "category": "other",
+    "material": [ "steel" ],
+    "weight": "41300 g",
+    "volume": "90 L",
+    "longest_side": "130 cm",
+    "price": "24717 USD",
+    "price_postapoc": "35 USD",
+    "symbol": "q",
+    "color": "light_gray"
+  }
+]

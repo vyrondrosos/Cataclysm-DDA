@@ -55,6 +55,7 @@
 static const activity_id ACT_MORTAR_AIMING( "ACT_MORTAR_AIMING" );
 
 static const itype_id itype_60mm_shell_m721( "60mm_shell_m721" );
+static const itype_id itype_81mm_shell_m853a1( "81mm_shell_m853a1" );
 static const itype_id itype_laser_rangefinder( "laser_rangefinder" );
 static const itype_id itype_mortar_fire_control_tablet( "mortar_fire_control_tablet" );
 static const itype_id itype_software_mortar_fire_control( "software_mortar_fire_control" );
@@ -80,6 +81,23 @@ constexpr double mortar_laser_rangefinder_axis_multiplier = 0.5;
 constexpr int mortar_laser_rangefinder_range = 2000;
 constexpr float mortar_he_explosion_power_threshold = 100.0f;
 constexpr double mortar_danger_area_scale = 1.5;
+
+bool mortar_round_has_illumination_payload( const item &round )
+{
+    return round.typeId() == itype_60mm_shell_m721 ||
+           round.typeId() == itype_81mm_shell_m853a1;
+}
+
+int mortar_illumination_duration( const item &round )
+{
+    if( !mortar_round_has_illumination_payload( round ) ) {
+        return 0;
+    }
+    if( round.typeId() == itype_60mm_shell_m721 ) {
+        return rng( 40, 60 );
+    }
+    return rng( 45, 55 );
+}
 
 bool mortar_item_has_fire_control( const item &it )
 {
@@ -685,8 +703,8 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
                                            target_distance ) :
                                        flight_time.evaluate( d );
     const time_point impact_time = calendar::turn + impact_delay + aim_dur;
-    if( loc->typeId() == itype_60mm_shell_m721 ) {
-        const int illumination_duration = rng( 40, 60 );
+    const int illumination_duration = mortar_illumination_duration( *loc );
+    if( illumination_duration > 0 ) {
         get_timed_events().add_mortar_field( impact_time, target_abs_ms, 1,
                                              "fd_mortar_illumination", 0,
                                              illumination_duration );

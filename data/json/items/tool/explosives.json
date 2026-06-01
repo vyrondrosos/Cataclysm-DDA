@@ -1099,5 +1099,21 @@
     "material": [ { "type": "plastic", "portion": 80 }, { "type": "powder", "portion": 20 } ],
     "symbol": "=",
     "color": "dark_gray"
+  },
+  {
+    "id": "81mm_propellant",
+    "type": "ITEM",
+    "name": { "str": "81 mm mortar propellant charge" },
+    "description": "Small explosive in a form of donut without a piece, this thing is designed to be attached on the mortar shell tail, to increase the projectile velocity and, therefore, its range.  Since the projectile it was connected to was already shot, you can only cut it for its content.",
+    "weight": "100 g",
+    "//": "Larger 81mm propellant increment; composition simplified to match 60mm propellant.",
+    "volume": "130 ml",
+    "longest_side": "60 mm",
+    "price": "20 USD",
+    "price_postapoc": "3 USD",
+    "flags": [ "IRREPLACEABLE_CONSUMABLE" ],
+    "material": [ { "type": "plastic", "portion": 80 }, { "type": "powder", "portion": 20 } ],
+    "symbol": "=",
+    "color": "dark_gray"
   }
 ]

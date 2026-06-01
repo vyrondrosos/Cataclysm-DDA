@@ -181,6 +181,9 @@ static const itype_id fuel_type_animal( "animal" );
 static const itype_id itype_60mm_shell_m720a1( "60mm_shell_m720a1" );
 static const itype_id itype_60mm_shell_m721( "60mm_shell_m721" );
 static const itype_id itype_60mm_shell_m768( "60mm_shell_m768" );
+static const itype_id itype_81mm_shell_m821a2( "81mm_shell_m821a2" );
+static const itype_id itype_81mm_shell_m853a1( "81mm_shell_m853a1" );
+static const itype_id itype_81mm_shell_m889a1( "81mm_shell_m889a1" );
 static const itype_id itype_eplrs_net_control_station( "eplrs_net_control_station" );
 static const itype_id itype_foodperson_mask( "foodperson_mask" );
 static const itype_id itype_foodperson_mask_on( "foodperson_mask_on" );
@@ -6132,7 +6135,9 @@ int take_back_mortar_rounds( npc &gunner, const mortar_type &mortar )
 bool mortar_ammo_auto_switch_allowed( const itype_id &from, const itype_id &to )
 {
     return ( from == itype_60mm_shell_m720a1 && to == itype_60mm_shell_m768 ) ||
-           ( from == itype_60mm_shell_m768 && to == itype_60mm_shell_m720a1 );
+           ( from == itype_60mm_shell_m768 && to == itype_60mm_shell_m720a1 ) ||
+           ( from == itype_81mm_shell_m821a2 && to == itype_81mm_shell_m889a1 ) ||
+           ( from == itype_81mm_shell_m889a1 && to == itype_81mm_shell_m821a2 );
 }
 
 std::optional<itype_id> find_mortar_ammo_auto_switch( const npc &gunner,
@@ -6565,9 +6570,26 @@ bool mortar_round_has_high_explosive_payload( const item &round )
     return false;
 }
 
+bool mortar_round_has_illumination_payload( const item &round )
+{
+    return round.typeId() == itype_60mm_shell_m721 ||
+           round.typeId() == itype_81mm_shell_m853a1;
+}
+
+int mortar_illumination_duration( const item &round )
+{
+    if( !mortar_round_has_illumination_payload( round ) ) {
+        return 0;
+    }
+    if( round.typeId() == itype_60mm_shell_m721 ) {
+        return rng( 40, 60 );
+    }
+    return rng( 45, 55 );
+}
+
 bool mortar_round_has_impact_payload( const item &round )
 {
-    if( round.typeId() == itype_60mm_shell_m721 ) {
+    if( mortar_round_has_illumination_payload( round ) ) {
         return true;
     }
     if( !round.ammo_data() ) {
@@ -7335,8 +7357,12 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         ( eplrs_net_used ? mortar_eplrs_location_multiplier : 1.0 );
 
     const time_duration fire_delay = mortar_data.npc_fire_message_delay();
-    const time_duration fire_for_effect_interval = mortar_fire_for_effect_shot_interval(
-                launcher_skill );
+    const int base_fire_for_effect_seconds =
+        to_seconds<int>( mortar_fire_for_effect_shot_interval( launcher_skill ) );
+    const int fire_delay_seconds = std::max( 1, to_seconds<int>( fire_delay ) );
+    const time_duration fire_for_effect_interval = time_duration::from_seconds(
+                std::max( 1, static_cast<int>( std::round(
+                              base_fire_for_effect_seconds * fire_delay_seconds / 10.0 ) ) ) );
     bool any_scheduled = false;
     int scheduled_rounds = 0;
     std::optional<time_duration> first_flight_time;
@@ -7395,8 +7421,8 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         const time_point impact_time = fire_time + flight_time;
         const time_point impact_message_time = impact_time + 1_seconds;
         bool scheduled = false;
-        if( current_round.typeId() == itype_60mm_shell_m721 ) {
-            const int illumination_duration = rng( 40, 60 );
+        const int illumination_duration = mortar_illumination_duration( current_round );
+        if( illumination_duration > 0 ) {
             get_timed_events().add_mortar_field( impact_time, impact_abs_ms, 1,
                                                  "fd_mortar_illumination", 0,
                                                  illumination_duration );
