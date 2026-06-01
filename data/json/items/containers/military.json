@@ -318,6 +318,57 @@
     ]
   },
   {
+    "id": "ammunition_can_pa156",
+    "type": "ITEM",
+    "name": "heavy-duty ammo can",
+    "//0": "PA-156",
+    "copy-from": "ammunition_can_30",
+    "description": "A long metal box with handles on each end.  It is designed to hold three tube-packed 81mm mortar cartridges.",
+    "flags": [ "COLLAPSE_CONTENTS" ],
+    "weight": "8500 g",
+    "volume": "41 L",
+    "longest_side": "762 mm",
+    "//": "Approximate 30 x 14 x 6 inch 81mm mortar container.",
+    "price": "35 USD",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "rigid": true,
+        "watertight": true,
+        "max_contains_volume": "18000 ml",
+        "max_contains_weight": "80 kg",
+        "max_item_length": "660 mm"
+      }
+    ],
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "ammunition_can_pa156_81mm_m821a2_3",
+        "name": { "str": "3 81mm ammo can" },
+        "weight": 0,
+        "description": "A long metal ammo box with handles on each end.  Front side has printed:\n<color_yellow>3 CARTRIDGE, 81 MM, HE, M821A2\nW/FUZE MO M734A1\nFOR M252 MORTAR</color>"
+      },
+      {
+        "id": "ammunition_can_pa156_81mm_m889a1_3",
+        "name": { "str": "3 81mm ammo can" },
+        "weight": 0,
+        "description": "A long metal ammo box with handles on each end.  Front side has printed:\n<color_yellow>3 CARTRIDGE, 81 MM, HE, M889A1\nW/FUZE PD M935\nFOR M252 MORTAR</color>"
+      },
+      {
+        "id": "ammunition_can_pa156_81mm_m819_3",
+        "name": { "str": "3 81mm ammo can" },
+        "weight": 0,
+        "description": "A long metal ammo box with handles on each end.  Front side has printed:\n<color_yellow>3 CARTRIDGE, 81 MM, RED PHOSPHORUS SMOKE, M819\nFOR M252 MORTAR</color>"
+      },
+      {
+        "id": "ammunition_can_pa156_81mm_m853a1_3",
+        "name": { "str": "3 81mm ammo can" },
+        "weight": 0,
+        "description": "A long metal ammo box with handles on each end.  Front side has printed:\n<color_yellow>3 CARTRIDGE, 81 MM, VISIBLE LIGHT ILLUM, M853A1\nFOR M252 MORTAR</color>"
+      }
+    ]
+  },
+  {
     "id": "ammunition_tube_mortar",
     "type": "ITEM",
     "category": "container",
@@ -369,6 +420,56 @@
         "name": { "str": "mortar container" },
         "weight": 0,
         "description": "A long, thick cylindrical container.  Its olive-drab surface has printed:\nCARTRIDGE 60MM ILLUM\nM721\nFOR M224 MORTAR"
+      }
+    ]
+  },
+  {
+    "id": "ammunition_tube_mortar_81mm",
+    "type": "ITEM",
+    "category": "container",
+    "name": "mortar container",
+    "description": "A long, thick cylindrical fiber container.  Designed to store a single 81mm mortar round.",
+    "//": "Sized to fit long 81mm smoke and illumination cartridges.",
+    "weight": "800 g",
+    "volume": "4400 ml",
+    "longest_side": "660 mm",
+    "material": [ { "type": "cardboard" } ],
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "rigid": true,
+        "max_contains_volume": "3600 ml",
+        "max_contains_weight": "6000 g",
+        "max_item_length": "650 mm"
+      }
+    ],
+    "symbol": "0",
+    "color": "dark_gray",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "ammunition_tube_mortar_81mm_m821a2",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical fiber container.  Its olive-drab surface has printed:\nCARTRIDGE 81MM HE\nM821A2\nW/FUZE MO M734A1\nFOR M252 MORTAR"
+      },
+      {
+        "id": "ammunition_tube_mortar_81mm_m889a1",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical fiber container.  Its olive-drab surface has printed:\nCARTRIDGE 81MM HE\nM889A1\nW/FUZE PD M935\nFOR M252 MORTAR"
+      },
+      {
+        "id": "ammunition_tube_mortar_81mm_m819",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical fiber container.  Its light-green surface has printed:\nCARTRIDGE 81MM RED PHOSPHORUS SMOKE\nM819\nFOR M252 MORTAR"
+      },
+      {
+        "id": "ammunition_tube_mortar_81mm_m853a1",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical fiber container.  Its white surface has printed:\nCARTRIDGE 81MM VISIBLE LIGHT ILLUM\nM853A1\nFOR M252 MORTAR"
       }
     ]
   },
