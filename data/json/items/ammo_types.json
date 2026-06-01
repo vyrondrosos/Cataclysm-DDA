@@ -337,6 +337,12 @@
   },
   {
     "type": "ammunition_type",
+    "id": "mortar_81mm",
+    "name": "81 mm mortar cartridge",
+    "default": "81mm_shell_m821a2"
+  },
+  {
+    "type": "ammunition_type",
     "id": "sling-ready_grenade",
     "name": "sling-ready grenades",
     "default": "sling-ready_molotov"
