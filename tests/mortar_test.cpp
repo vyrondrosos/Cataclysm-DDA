@@ -6,9 +6,7 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <vector>
 
-#include "calendar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
