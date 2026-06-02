@@ -46,6 +46,28 @@
     "price": "850 USD"
   },
   {
+    "id": "81mm_shell_acerm",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "guided mortar shell" },
+    "description": "An Advanced Capability Extended Range Mortar 81mm high-explosive cartridge with deployable glide surfaces and a semi-active laser guidance package, trading cost and complexity for a much longer winged flight profile.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_acerm",
+        "name": { "str": "ACERM 81mm guided mortar shell (HE)", "str_pl": "ACERM 81mm guided mortar shells (HE)" },
+        "description": "An Advanced Capability Extended Range Mortar 81mm high-explosive cartridge with deployable glide surfaces and a semi-active laser guidance package, trading cost and complexity for a much longer winged flight profile."
+      }
+    ],
+    "weight": "4600 g",
+    "//": "Extended-range guided 81mm cartridge; public ACERM dimensions are sparse, so this stays within the existing 81mm tube envelope while code handles 20k tile range and gliding flight time.",
+    "volume": "2200 ml",
+    "longest_side": "645 mm",
+    "price": "18 kUSD",
+    "price_postapoc": "450 USD"
+  },
+  {
     "id": "81mm_shell_m819",
     "copy-from": "81mm_shell_m821a2",
     "type": "ITEM",

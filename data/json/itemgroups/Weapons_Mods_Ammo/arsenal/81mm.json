@@ -7,6 +7,7 @@
       { "group": "milspec_arsenal_81mm_gun&mags" },
       { "group": "ammo_can_81mm_any_full", "prob": 100 },
       { "group": "ammo_can_81mm_any_full", "prob": 30 },
+      { "group": "milspec_arsenal_81mm_acerm_cache", "prob": 15 },
       {
         "distribution": [
           { "item": "ammunition_can_pa156", "variant": "ammunition_can_pa156_81mm_m821a2_3", "count": [ 0, 2 ], "prob": 100 },
@@ -40,6 +41,17 @@
       },
       { "item": "laser_rangefinder", "prob": 30, "charges": [ 0, 100 ] },
       { "item": "eplrs_net_control_station", "prob": 40, "charges": [ 8, 56 ] }
+    ]
+  },
+  {
+    "type": "item_group",
+    "id": "milspec_arsenal_81mm_acerm_cache",
+    "subtype": "collection",
+    "items": [
+      { "group": "ammo_can_81mm_acerm_full", "prob": 100 },
+      { "group": "ammo_tube_81mm_acerm_full", "prob": 60, "count": [ 1, 2 ] },
+      { "item": "soflam", "prob": 100, "charges": [ 80, 250 ] },
+      { "item": "medium_battery_cell", "prob": 70, "count": [ 1, 3 ] }
     ]
   }
 ]

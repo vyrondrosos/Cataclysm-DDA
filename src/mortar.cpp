@@ -533,7 +533,7 @@ double mortar_type::repeat_cep_multiplier( const double launcher_skill ) const
 
 tripoint_abs_ms mortar_type::apply_dispersion( const tripoint_abs_ms &target,
         const tripoint_abs_ms &axis_from, const tripoint_abs_ms &axis_to,
-        const mortar_error &error, double *deflection_error ) const
+        const mortar_error &error, double *deflection_error, const int max_range ) const
 {
     if( deflection_error != nullptr ) {
         *deflection_error = error.deflection;
@@ -542,7 +542,7 @@ tripoint_abs_ms mortar_type::apply_dispersion( const tripoint_abs_ms &target,
                                        target, axis_from, axis_to,
                                        error.range / one_dimensional_probable_error_sigma_factor,
                                        error.deflection / one_dimensional_probable_error_sigma_factor );
-    return clamp_to_max_range( axis_from, impact, range_ );
+    return clamp_to_max_range( axis_from, impact, max_range > 0 ? max_range : range_ );
 }
 
 tripoint_abs_ms mortar_type::apply_location_error( const tripoint_abs_ms &target,

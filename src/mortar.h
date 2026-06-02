@@ -104,7 +104,8 @@ class mortar_type
                                           const tripoint_abs_ms &axis_from,
                                           const tripoint_abs_ms &axis_to,
                                           const mortar_error &error,
-                                          double *deflection_error = nullptr ) const;
+                                          double *deflection_error = nullptr,
+                                          int max_range = -1 ) const;
         tripoint_abs_ms apply_location_error( const tripoint_abs_ms &target,
                                               const tripoint_abs_ms &axis_from,
                                               const tripoint_abs_ms &axis_to,
