@@ -41,11 +41,16 @@ enum class timed_event_type : int {
     MORTAR_IMPACT_MESSAGE,
     MORTAR_FIELD,
     MORTAR_QUEUED_FIRE,
+    MORTAR_GUIDED_IMPACT,
     NUM_TIMED_EVENT_TYPES
 };
 
 struct timed_event_data {
     virtual ~timed_event_data() = default;
+};
+
+struct timed_event_target_data : timed_event_data {
+    tripoint_abs_ms target = tripoint_abs_ms::invalid;
 };
 
 struct timed_event_character_data : timed_event_data {
@@ -69,6 +74,7 @@ struct mortar_impact_event_data : timed_event_data {
     tripoint_abs_ms target = tripoint_abs_ms::invalid;
     double accuracy_multiplier = 1.0;
     double location_multiplier = 1.0;
+    bool report = true;
 };
 
 struct mortar_field_event_data : timed_event_data {
@@ -164,6 +170,11 @@ class timed_event_manager
         void add_mortar_field( const time_point &when, const tripoint_abs_ms &where,
                                int intensity, const std::string &field_type,
                                int radius, int age_seconds = 0 );
+        void add_mortar_guided_impact( const time_point &when, const tripoint_abs_ms &impact,
+                                       const tripoint_abs_ms &target, int report_strength,
+                                       const std::string &gunner_name,
+                                       const std::string &round_id,
+                                       const explosion_data &expl_data );
         /// @returns Whether at least one element of the given type is queued.
         bool queued( timed_event_type type ) const;
         /// @returns One of the queued events of the given type, or `nullptr`

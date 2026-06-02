@@ -1948,6 +1948,18 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                     impact->accuracy_multiplier, true );
                 jo.get_member( "mortar_feedback_location_multiplier" ).read(
                     impact->location_multiplier, true );
+                if( jo.has_member( "mortar_impact_report" ) ) {
+                    jo.get_member( "mortar_impact_report" ).read( impact->report, true );
+                }
+                break;
+            }
+            case timed_event_type::MORTAR_GUIDED_IMPACT: {
+                if( !jo.has_member( "target" ) ) {
+                    continue;
+                }
+                event.data = std::make_unique<timed_event_target_data>();
+                jo.get_member( "target" ).read(
+                    event.get_data<timed_event_target_data>()->target, true );
                 break;
             }
             case timed_event_type::MORTAR_QUEUED_FIRE: {
@@ -2094,6 +2106,17 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
                               impact->accuracy_multiplier );
                 jsout.member( "mortar_feedback_location_multiplier",
                               impact->location_multiplier );
+                jsout.member( "mortar_impact_report", impact->report );
+                break;
+            }
+            case timed_event_type::MORTAR_GUIDED_IMPACT: {
+                const timed_event_target_data *target_data =
+                    elem.get_data<timed_event_target_data>();
+                if( target_data == nullptr || target_data->target.is_invalid() ) {
+                    debugmsg( "Guided mortar impact event missing target." );
+                    break;
+                }
+                jsout.member( "target", target_data->target );
                 break;
             }
             case timed_event_type::MORTAR_QUEUED_FIRE: {
