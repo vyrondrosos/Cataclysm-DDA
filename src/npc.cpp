@@ -3967,9 +3967,32 @@ void npc::set_mission( npc_mission new_mission )
 int npc::clear_mortar_support( const bool notify )
 {
     const diag_value assignment = get_value( "mortar_assignment" );
+    const diag_value crew_gunner = get_value( "mortar_crew_gunner_id" );
     const diag_value stored_types = get_value( "mortar_ammo_types" );
-    if( assignment.is_empty() && stored_types.is_empty() ) {
+    if( assignment.is_empty() && crew_gunner.is_empty() && stored_types.is_empty() ) {
         return 0;
+    }
+
+    if( !assignment.is_empty() ) {
+        const int gunner_id = getID().get_value();
+        for( npc *crew : g->get_npcs_if( [gunner_id]( const npc & guy ) {
+            const diag_value stored_gunner = guy.get_value( "mortar_crew_gunner_id" );
+            return !stored_gunner.is_empty() && stored_gunner.is_dbl() &&
+                   static_cast<int>( stored_gunner.dbl() ) == gunner_id;
+        } ) ) {
+            if( crew == this ) {
+                continue;
+            }
+            if( crew->activity.id() == ACT_MAN_MORTAR ||
+                crew->peek_destination_activity().id() == ACT_MAN_MORTAR ) {
+                crew->revert_after_activity();
+            } else {
+                crew->remove_value( "mortar_crew_gunner_id" );
+                crew->remove_value( "mortar_crew_gunner_name" );
+                crew->remove_value( "mortar_crew_mortar_type" );
+                crew->remove_value( "mortar_assignment_pos" );
+            }
+        }
     }
 
     int dropped_rounds = 0;
@@ -4011,12 +4034,17 @@ int npc::clear_mortar_support( const bool notify )
     remove_value( "mortar_creeping_axis_to" );
     remove_value( "mortar_selected_ammo" );
     remove_value( "mortar_ammo_types" );
+    remove_value( "mortar_crew_gunner_id" );
+    remove_value( "mortar_crew_gunner_name" );
+    remove_value( "mortar_crew_mortar_type" );
 
     if( notify && dropped_rounds > 0 ) {
         add_msg( n_gettext( "%1$s stops manning the mortar and drops %2$d mortar round.",
                             "%1$s stops manning the mortar and drops %2$d mortar rounds.",
                             dropped_rounds ),
                  disp_name(), dropped_rounds );
+    } else if( notify && !crew_gunner.is_empty() ) {
+        add_msg( _( "%s stops assisting the mortar crew." ), disp_name() );
     }
     return dropped_rounds;
 }

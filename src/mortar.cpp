@@ -260,7 +260,7 @@ int mortar_type::minimum_launcher_skill()
     return mortar_minimum_launcher_skill;
 }
 
-double mortar_type::skill_accuracy_multiplier( const int launcher_skill )
+double mortar_type::skill_accuracy_multiplier( const double launcher_skill )
 {
     const double skill = clamp<double>( launcher_skill, mortar_minimum_launcher_skill, 10.0 );
     return 1.0 + ( 10.0 - skill ) *
@@ -512,7 +512,7 @@ tripoint_abs_ms mortar_type::clamp_fire_center_to_range( const tripoint_abs_ms &
     return clamped;
 }
 
-double mortar_type::repeat_cep_multiplier( const int launcher_skill ) const
+double mortar_type::repeat_cep_multiplier( const double launcher_skill ) const
 {
     const double skill = clamp<double>( launcher_skill, 1.0, 10.0 );
     if( skill <= 2.0 ) {

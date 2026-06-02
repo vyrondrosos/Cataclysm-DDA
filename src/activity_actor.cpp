@@ -294,6 +294,7 @@ static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_social_dissatisfied( "social_dissatisfied" );
 static const efftype_id effect_social_satisfied( "social_satisfied" );
 static const efftype_id effect_socialized_recently( "socialized_recently" );
+static const efftype_id effect_stunned( "stunned" );
 static const efftype_id effect_tied( "tied" );
 static const efftype_id effect_under_operation( "under_operation" );
 static const efftype_id effect_worked_on( "worked_on" );
@@ -13460,6 +13461,56 @@ std::unique_ptr<activity_actor> find_mount_activity_actor::deserialize( JsonValu
     return find_mount_activity_actor().clone();
 }
 
+namespace
+{
+
+bool mortar_npc_can_crew( const npc &guy )
+{
+    return !guy.is_dead() && !guy.in_sleep_state() && !guy.has_effect( effect_narcosis ) &&
+           !guy.has_effect( effect_downed ) && !guy.has_effect( effect_stunned ) &&
+           guy.get_working_arm_count() > 0;
+}
+
+std::optional<tripoint_abs_ms> mortar_assignment_pos( const npc &guy )
+{
+    const diag_value assignment_pos = guy.get_value( "mortar_assignment_pos" );
+    if( assignment_pos.is_empty() || !assignment_pos.is_tripoint() ) {
+        return std::nullopt;
+    }
+    return assignment_pos.tripoint();
+}
+
+bool mortar_primary_assignment_matches( const npc &gunner,
+                                        const tripoint_abs_ms &assigned_mortar_pos,
+                                        const mortar_type_id &assigned_mortar_type )
+{
+    const diag_value assignment = gunner.get_value( "mortar_assignment" );
+    if( assignment.is_empty() || assignment.str() != assigned_mortar_type.str() ) {
+        return false;
+    }
+    const std::optional<tripoint_abs_ms> assigned_pos = mortar_assignment_pos( gunner );
+    return assigned_pos && *assigned_pos == assigned_mortar_pos;
+}
+
+bool mortar_crew_assignment_matches( const npc &assistant, const character_id &primary_gunner_id,
+                                     const tripoint_abs_ms &assigned_mortar_pos,
+                                     const mortar_type_id &assigned_mortar_type )
+{
+    const diag_value stored_gunner_id = assistant.get_value( "mortar_crew_gunner_id" );
+    if( stored_gunner_id.is_empty() || !stored_gunner_id.is_dbl() ||
+        static_cast<int>( stored_gunner_id.dbl() ) != primary_gunner_id.get_value() ) {
+        return false;
+    }
+    const diag_value stored_mortar_type = assistant.get_value( "mortar_crew_mortar_type" );
+    if( stored_mortar_type.is_empty() || stored_mortar_type.str() != assigned_mortar_type.str() ) {
+        return false;
+    }
+    const std::optional<tripoint_abs_ms> assigned_pos = mortar_assignment_pos( assistant );
+    return assigned_pos && *assigned_pos == assigned_mortar_pos;
+}
+
+} // namespace
+
 void man_mortar_activity_actor::start( player_activity &act, Character &who )
 {
     if( !who.is_npc() ) {
@@ -13477,25 +13528,30 @@ void man_mortar_activity_actor::do_turn( player_activity &act, Character &who )
         return;
     }
     npc &gunner = dynamic_cast<npc &>( who );
-    if( gunner.get_value( "mortar_assignment" ).is_empty() ) {
+    if( !mortar_npc_can_crew( gunner ) ) {
         act.set_to_null();
         gunner.revert_after_activity();
         return;
     }
+
     map &here = get_map();
-    const diag_value assignment_pos = gunner.get_value( "mortar_assignment_pos" );
-    if( assignment_pos.is_empty() ) {
+    const bool is_assistant = gunner_id.is_valid();
+    const tripoint_abs_ms assigned_mortar_pos = mortar_pos;
+    if( is_assistant ) {
+        npc *primary_gunner = g->find_npc( gunner_id );
+        if( primary_gunner == nullptr || !mortar_npc_can_crew( *primary_gunner ) ||
+            !mortar_primary_assignment_matches( *primary_gunner, assigned_mortar_pos, mortar_type ) ||
+            !mortar_crew_assignment_matches( gunner, gunner_id, assigned_mortar_pos, mortar_type ) ) {
+            act.set_to_null();
+            gunner.revert_after_activity();
+            return;
+        }
+    } else if( !mortar_primary_assignment_matches( gunner, assigned_mortar_pos, mortar_type ) ) {
         act.set_to_null();
         gunner.revert_after_activity();
         return;
     }
-    const tripoint_abs_ms assigned_mortar_pos = assignment_pos.tripoint();
-    if( !assignment_pos.is_tripoint() ) {
-        act.set_to_null();
-        gunner.revert_after_activity();
-        return;
-    }
-    mortar_pos = assigned_mortar_pos;
+
     const tripoint_bub_ms mortar_bub = here.get_bub( assigned_mortar_pos );
     if( rl_dist( gunner.pos_bub( here ), mortar_bub ) > 1 ) {
         const std::vector<tripoint_bub_ms> route = route_adjacent( who, mortar_bub );
@@ -13506,7 +13562,7 @@ void man_mortar_activity_actor::do_turn( player_activity &act, Character &who )
         }
         who.activity = player_activity();
         who.set_destination( route, player_activity( man_mortar_activity_actor( assigned_mortar_pos,
-                             mortar_type ) ) );
+                             mortar_type, gunner_id ) ) );
         return;
     }
     gunner.pause();
@@ -13525,6 +13581,7 @@ void man_mortar_activity_actor::serialize( JsonOut &jsout ) const
     jsout.start_object();
     jsout.member( "mortar_type", mortar_type.str() );
     jsout.member( "mortar_pos", mortar_pos );
+    jsout.member( "gunner_id", gunner_id.get_value() );
     jsout.end_object();
 }
 
@@ -13534,6 +13591,9 @@ std::unique_ptr<activity_actor> man_mortar_activity_actor::deserialize( JsonValu
     man_mortar_activity_actor actor;
     actor.mortar_type = mortar_type_id( data.get_string( "mortar_type" ) );
     data.read( "mortar_pos", actor.mortar_pos );
+    if( data.has_int( "gunner_id" ) ) {
+        actor.gunner_id = character_id( data.get_int( "gunner_id" ) );
+    }
     return actor.clone();
 }
 
