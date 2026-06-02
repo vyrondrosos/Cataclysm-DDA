@@ -72,6 +72,10 @@ mortar_location_error mortar_make_location_error( const Character &spotter,
         const tripoint_abs_ms &target, double cep );
 bool mortar_schedule_impact_payload( const item &round, const tripoint_abs_ms &impact,
                                      const time_point &when );
+bool mortar_schedule_guided_impact_payload( const item &round,
+        const tripoint_abs_ms &impact, const tripoint_abs_ms &guidance_target,
+        const time_point &when, int impact_message_strength,
+        const std::string &shooter_name );
 
 class mortar_type
 {
@@ -117,15 +121,17 @@ class mortar_type
                 const tripoint_abs_ms &location_axis_from,
                 const tripoint_abs_ms &location_axis_to,
                 const mortar_location_error &location_error,
-                double total_multiplier, bool use_creeping_adjustment ) const;
+                double total_multiplier, bool use_creeping_adjustment,
+                int max_range = -1 ) const;
         tripoint_abs_ms clamp_fire_center_to_range( const tripoint_abs_ms &mortar_pos,
                 const tripoint_abs_ms &fire_center, const tripoint_abs_ms &fallback_axis_to,
-                int minimum_target_distance ) const;
+                int minimum_target_distance, int max_range = -1 ) const;
         double repeat_cep_multiplier( double launcher_skill ) const;
         tripoint_abs_ms apply_dispersion( const tripoint_abs_ms &target,
                                           const tripoint_abs_ms &axis_from,
                                           const tripoint_abs_ms &axis_to,
-                                          const mortar_error &error ) const;
+                                          const mortar_error &error,
+                                          int max_range = -1 ) const;
         tripoint_abs_ms apply_location_error( const tripoint_abs_ms &target,
                                               const tripoint_abs_ms &axis_from,
                                               const tripoint_abs_ms &axis_to,
@@ -136,7 +142,8 @@ class mortar_type
                                      const tripoint_abs_ms &location_axis_to,
                                      const mortar_location_error &location_error,
                                      const mortar_error &ballistic_error,
-                                     tripoint_abs_ms *aimpoint = nullptr ) const;
+                                     tripoint_abs_ms *aimpoint = nullptr,
+                                     int max_range = -1 ) const;
         mortar_error project_location_error( const tripoint_abs_ms &axis_from,
                                              const tripoint_abs_ms &axis_to,
                                              const tripoint_abs_ms &location_axis_from,
