@@ -125,6 +125,7 @@
 #include "string_formatter.h"
 #include "talker.h"
 #include "text_snippets.h"
+#include "timed_event.h"
 #include "translation.h"
 #include "translations.h"
 #include "trap.h"
@@ -167,6 +168,7 @@ static const activity_id ACT_CONSUME( "ACT_CONSUME" );
 static const activity_id ACT_CRACKING( "ACT_CRACKING" );
 static const activity_id ACT_CRAFT( "ACT_CRAFT" );
 static const activity_id ACT_CRAFT_WAIT( "ACT_CRAFT_WAIT" );
+static const activity_id ACT_DESIGNATE_TARGET( "ACT_DESIGNATE_TARGET" );
 static const activity_id ACT_DISABLE( "ACT_DISABLE" );
 static const activity_id ACT_DISASSEMBLE( "ACT_DISASSEMBLE" );
 static const activity_id ACT_DISMEMBER( "ACT_DISMEMBER" );
@@ -13597,6 +13599,219 @@ std::unique_ptr<activity_actor> man_mortar_activity_actor::deserialize( JsonValu
     return actor.clone();
 }
 
+namespace
+{
+
+constexpr int laser_designator_charges_per_interval = 5;
+constexpr time_duration laser_designator_charge_interval = 10_seconds;
+
+void clear_laser_designation( Character &who )
+{
+    who.remove_value( "laser_designation_active" );
+    who.remove_value( "laser_designation_target" );
+    who.remove_value( "laser_designation_success" );
+    who.remove_value( "laser_designation_turn" );
+}
+
+int laser_designation_turn()
+{
+    return to_turn<int>( calendar::turn );
+}
+
+struct laser_designator_target_state {
+    tripoint_abs_ms pos = tripoint_abs_ms::invalid;
+    int speed = 0;
+    bool moved = false;
+    bool immobile = false;
+};
+
+std::optional<laser_designator_target_state> resolve_laser_designator_target(
+    const laser_designator_activity_actor::target_type target,
+    const character_id &target_character, const int target_monster,
+    const tripoint_abs_ms &stored_target_pos, const tripoint_abs_ms &last_target_pos,
+    Character &who, map &here )
+{
+    if( target == laser_designator_activity_actor::target_type::tile ) {
+        return laser_designator_target_state{ stored_target_pos, 0, false, true };
+    }
+
+    Creature *target_creature = nullptr;
+    if( target == laser_designator_activity_actor::target_type::character ) {
+        if( target_character == who.getID() ) {
+            target_creature = &who;
+        } else if( target_character.is_valid() ) {
+            target_creature = g->find_npc( target_character );
+        }
+    } else if( target == laser_designator_activity_actor::target_type::monster ) {
+        shared_ptr_fast<monster> critter = get_creature_tracker().from_temporary_id( target_monster );
+        target_creature = critter.get();
+    }
+
+    if( target_creature == nullptr || target_creature->is_dead_state() ||
+        target_creature->is_hallucination() || !who.sees( here, *target_creature ) ) {
+        return std::nullopt;
+    }
+
+    const tripoint_abs_ms current_pos = target_creature->pos_abs();
+    return laser_designator_target_state{
+        current_pos,
+        std::max( 1, target_creature->get_speed() ),
+        last_target_pos.is_invalid() ? true : current_pos != last_target_pos,
+        target_creature->get_speed() <= 0
+    };
+}
+
+bool laser_designation_success( const Character &who,
+                                const laser_designator_target_state &target )
+{
+    if( target.immobile ) {
+        return true;
+    }
+    const double target_speed = std::max( 1.0, target.moved ? static_cast<double>( target.speed ) :
+                                          target.speed / 4.0 );
+    const double success_chance = ( who.get_per() * who.get_dex() / target_speed ) * 2.0;
+    return success_chance >= 1.0 || x_in_y( success_chance, 1.0 );
+}
+
+void write_laser_designation( Character &who, const tripoint_abs_ms &target, const bool success )
+{
+    who.set_value( "laser_designation_active", "yes" );
+    who.set_value( "laser_designation_target", target );
+    who.set_value( "laser_designation_success", success ? 1 : 0 );
+    who.set_value( "laser_designation_turn", laser_designation_turn() );
+}
+
+void stop_laser_designation( player_activity &act, Character &who, const std::string &reason )
+{
+    clear_laser_designation( who );
+    if( !reason.empty() ) {
+        who.add_msg_if_player( m_info, "%s", reason.c_str() );
+    }
+    act.set_to_null();
+}
+
+bool can_use_mounted_laser_designator( const Character &who, map &here,
+                                       const tripoint_abs_ms &mounted_pos )
+{
+    if( mounted_pos.is_invalid() || who.pos_abs() != mounted_pos ) {
+        return false;
+    }
+    const tripoint_bub_ms mounted_bub = here.get_bub( mounted_pos );
+    return here.inbounds( mounted_bub ) &&
+           here.has_flag_ter_or_furn( ter_furn_flag::TFLAG_MOUNTABLE, mounted_bub );
+}
+
+} // namespace
+
+void laser_designator_activity_actor::start( player_activity &act, Character & )
+{
+    act.moves_total = calendar::INDEFINITELY_LONG;
+    act.moves_left = calendar::INDEFINITELY_LONG;
+    next_charge = calendar::turn;
+}
+
+void laser_designator_activity_actor::do_turn( player_activity &act, Character &who )
+{
+    map &here = get_map();
+    if( !designator || designator.get_item() == nullptr ) {
+        stop_laser_designation( act, who, _( "You no longer have the laser designator." ) );
+        return;
+    }
+    if( !get_timed_events().queued( timed_event_type::MORTAR_GUIDED_IMPACT ) ) {
+        stop_laser_designation( act, who, _( "No guided mortar rounds remain in flight." ) );
+        return;
+    }
+    if( mounted ) {
+        if( target != target_type::tile ) {
+            stop_laser_designation( act, who,
+                                    _( "The mounted laser designator can only designate fixed points." ) );
+            return;
+        }
+        if( !can_use_mounted_laser_designator( who, here, mounted_pos ) ) {
+            stop_laser_designation( act, who,
+                                    _( "You are no longer positioned at the mounted laser designator." ) );
+            return;
+        }
+    }
+
+    const std::optional<laser_designator_target_state> current_target =
+        resolve_laser_designator_target( target, target_character, target_monster, target_pos,
+                                         last_target_pos, who, here );
+    if( !current_target ) {
+        stop_laser_designation( act, who,
+                                _( "You lose the target and stop designating." ) );
+        return;
+    }
+
+    const tripoint_bub_ms target_bub = here.get_bub( current_target->pos );
+    if( !here.inbounds( target_bub ) || !who.sees( here, target_bub ) ) {
+        stop_laser_designation( act, who,
+                                _( "You no longer have line of sight to the target." ) );
+        return;
+    }
+
+    if( calendar::turn >= next_charge ) {
+        if( !designator->ammo_sufficient( &who, laser_designator_charges_per_interval ) ) {
+            stop_laser_designation( act, who,
+                                    _( "The laser designator does not have enough battery power." ) );
+            return;
+        }
+        designator->ammo_consume( laser_designator_charges_per_interval,
+                                  designator.pos_bub( here ), &who );
+        next_charge = calendar::turn + laser_designator_charge_interval;
+    }
+
+    const bool success = laser_designation_success( who, *current_target );
+    write_laser_designation( who, current_target->pos, success );
+    last_target_pos = current_target->pos;
+    target_pos = current_target->pos;
+    who.pause();
+    act.moves_left = calendar::INDEFINITELY_LONG;
+}
+
+void laser_designator_activity_actor::finish( player_activity &, Character &who )
+{
+    clear_laser_designation( who );
+}
+
+void laser_designator_activity_actor::canceled( player_activity &, Character &who )
+{
+    clear_laser_designation( who );
+}
+
+void laser_designator_activity_actor::serialize( JsonOut &jsout ) const
+{
+    jsout.start_object();
+    jsout.member( "designator", designator );
+    jsout.member( "target_pos", target_pos );
+    jsout.member( "mounted_pos", mounted_pos );
+    jsout.member( "last_target_pos", last_target_pos );
+    jsout.member( "target_character", target_character );
+    jsout.member( "target_monster", target_monster );
+    jsout.member( "target", static_cast<int>( target ) );
+    jsout.member( "mounted", mounted );
+    jsout.member( "next_charge", next_charge );
+    jsout.end_object();
+}
+
+std::unique_ptr<activity_actor> laser_designator_activity_actor::deserialize( JsonValue &jsin )
+{
+    JsonObject data = jsin.get_object();
+    laser_designator_activity_actor actor;
+    int target = 0;
+    data.read( "designator", actor.designator );
+    data.read( "target_pos", actor.target_pos );
+    data.read( "mounted_pos", actor.mounted_pos );
+    data.read( "last_target_pos", actor.last_target_pos );
+    data.read( "target_character", actor.target_character, false );
+    data.read( "target_monster", actor.target_monster, false );
+    data.read( "target", target );
+    data.read( "mounted", actor.mounted );
+    data.read( "next_charge", actor.next_charge );
+    actor.target = static_cast<laser_designator_activity_actor::target_type>( target );
+    return actor.clone();
+}
+
 void wait_activity_actor::start( player_activity &act, Character & )
 {
     act.moves_total = to_moves<int>( initial_wait_time );
@@ -15057,6 +15272,7 @@ deserialize_functions = {
     { ACT_CRACKING, &safecracking_activity_actor::deserialize },
     { ACT_CRAFT, &craft_activity_actor::deserialize },
     { ACT_CRAFT_WAIT, &craft_activity_actor::deserialize },
+    { ACT_DESIGNATE_TARGET, &laser_designator_activity_actor::deserialize },
     { ACT_DISABLE, &disable_activity_actor::deserialize },
     { ACT_DISASSEMBLE, &disassemble_activity_actor::deserialize },
     { ACT_DISMEMBER, &butchery_activity_actor::deserialize },

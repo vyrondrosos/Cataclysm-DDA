@@ -4043,6 +4043,58 @@ class man_mortar_activity_actor : public activity_actor
 };
 
 /**
+* Player activity for sustained laser target designation.
+*/
+class laser_designator_activity_actor : public activity_actor
+{
+    public:
+        enum class target_type : int {
+            tile = 0,
+            character = 1,
+            monster = 2
+        };
+
+        laser_designator_activity_actor() = default;
+        laser_designator_activity_actor( const item_location &designator,
+                                         const tripoint_abs_ms &target_pos,
+                                         target_type target, bool mounted,
+                                         const tripoint_abs_ms &mounted_pos = tripoint_abs_ms::invalid,
+                                         character_id target_character = character_id(),
+                                         int target_monster = -1 ) :
+            designator( designator ), target_pos( target_pos ), mounted_pos( mounted_pos ),
+            target_character( target_character ), target_monster( target_monster ),
+            target( target ), mounted( mounted ) {}
+
+        void start( player_activity &act, Character &who ) override;
+        void do_turn( player_activity &act, Character &who ) override;
+        void finish( player_activity &, Character &who ) override;
+        void canceled( player_activity &, Character &who ) override;
+
+        const activity_id &get_type() const override {
+            static const activity_id ACT_DESIGNATE_TARGET( "ACT_DESIGNATE_TARGET" );
+            return ACT_DESIGNATE_TARGET;
+        }
+
+        std::unique_ptr<activity_actor> clone() const override {
+            return std::make_unique<laser_designator_activity_actor>( *this );
+        }
+
+        void serialize( JsonOut &jsout ) const override;
+        static std::unique_ptr<activity_actor> deserialize( JsonValue &jsin );
+
+    private:
+        item_location designator;
+        tripoint_abs_ms target_pos = tripoint_abs_ms::invalid;
+        tripoint_abs_ms mounted_pos = tripoint_abs_ms::invalid;
+        tripoint_abs_ms last_target_pos = tripoint_abs_ms::invalid;
+        character_id target_character;
+        int target_monster = -1;
+        target_type target = target_type::tile;
+        bool mounted = false;
+        time_point next_charge = calendar::turn_zero;
+};
+
+/**
 * Wait (do nothing) for a given duration (indefinitely by default)
 */
 class wait_activity_actor : public activity_actor

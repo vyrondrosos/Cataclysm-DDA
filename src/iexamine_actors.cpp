@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <set>
@@ -55,10 +56,12 @@
 static const activity_id ACT_MORTAR_AIMING( "ACT_MORTAR_AIMING" );
 
 static const itype_id itype_60mm_shell_m721( "60mm_shell_m721" );
+static const itype_id itype_81mm_shell_acerm( "81mm_shell_acerm" );
 static const itype_id itype_81mm_shell_m853a1( "81mm_shell_m853a1" );
 static const itype_id itype_laser_rangefinder( "laser_rangefinder" );
 static const itype_id itype_mortar_fire_control_tablet( "mortar_fire_control_tablet" );
 static const itype_id itype_software_mortar_fire_control( "software_mortar_fire_control" );
+static const itype_id itype_soflam( "soflam" );
 
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 
@@ -81,6 +84,35 @@ constexpr double mortar_laser_rangefinder_axis_multiplier = 0.5;
 constexpr int mortar_laser_rangefinder_range = 2000;
 constexpr float mortar_he_explosion_power_threshold = 100.0f;
 constexpr double mortar_danger_area_scale = 1.5;
+constexpr int mortar_acerm_max_range = 20000;
+
+bool mortar_round_is_acerm( const item &round )
+{
+    return round.typeId() == itype_81mm_shell_acerm;
+}
+
+bool mortar_round_is_guided( const item &round )
+{
+    return mortar_round_is_acerm( round );
+}
+
+int mortar_round_max_range( const mortar_type &mortar, const item &round )
+{
+    return mortar_round_is_acerm( round ) ? mortar_acerm_max_range : mortar.range();
+}
+
+time_duration mortar_round_player_flight_time( const mortar_type &mortar, const item &round,
+        const int distance )
+{
+    if( !mortar_round_is_acerm( round ) || distance <= mortar.range() ) {
+        return mortar.player_flight_time( distance );
+    }
+    const int extra_range = std::max( 1, mortar_acerm_max_range - mortar.range() );
+    const double fraction = clamp<double>(
+                                static_cast<double>( distance - mortar.range() ) / extra_range, 0.0, 1.0 );
+    const int extra_seconds = static_cast<int>( std::round( 60.0 * fraction * fraction ) );
+    return mortar.player_flight_time( mortar.range() ) + time_duration::from_seconds( extra_seconds );
+}
 
 bool mortar_round_has_illumination_payload( const item &round )
 {
@@ -192,6 +224,9 @@ bool mortar_has_charged_laser_rangefinder( const Character &spotter )
 {
     return spotter.cache_has_item_with( itype_laser_rangefinder,
     [&spotter]( const item & it ) {
+        return it.ammo_sufficient( &spotter );
+    } ) ||
+    spotter.cache_has_item_with( itype_soflam, [&spotter]( const item & it ) {
         return it.ammo_sufficient( &spotter );
     } );
 }
@@ -614,7 +649,13 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
         return;
     }
 
-    const int mortar_range = mortar != nullptr ? mortar->range() : range;
+    item *const selected_round_ptr = loc.get_item();
+    if( selected_round_ptr == nullptr ) {
+        add_msg( _( "You no longer have that mortar round." ) );
+        return;
+    }
+    const item &selected_round = *selected_round_ptr;
+    const int mortar_range = mortar != nullptr ? mortar_round_max_range( *mortar, selected_round ) : range;
     if( mortar_range <= 0 ) {
         debugmsg( "Mortar examine action for %s has invalid range %d.",
                   here.furn( examp ).id().c_str(), mortar_range );
@@ -638,8 +679,14 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     const int launcher_skill = you.get_skill_level( skill_launcher );
     const tripoint_abs_ms mortar_abs = here.get_abs( examp );
     const int target_distance = rl_dist( mortar_abs, target_abs_ms );
+    tripoint_abs_ms guidance_target_abs_ms = target_abs_ms;
+    if( target_distance > mortar_range ) {
+        add_msg( _( "Target is outside the selected round's fire mission range." ) );
+        return;
+    }
     if( mortar != nullptr ) {
         const tripoint_abs_ms designated_target_abs_ms = target_abs_ms;
+        guidance_target_abs_ms = designated_target_abs_ms;
         const int distance = target_distance;
         const double skill_multiplier = mortar_type::skill_accuracy_multiplier( launcher_skill );
         const double fixed_multiplier = mortar_fixed_accuracy_multiplier( you, mortar_abs );
@@ -676,7 +723,7 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
                                                 you.pos_abs(), designated_target_abs_ms, location_error );
         target_abs_ms = mortar->apply_dispersion( aimpoint_abs_ms, mortar_abs,
                         designated_target_abs_ms,
-                        ballistic_error );
+                        ballistic_error, nullptr, mortar_round_max_range( *mortar, selected_round ) );
         add_msg_debug( debugmode::DF_EXPLOSION,
                        "Player mortar fire: distance %d, minimum range %.2f, minimum deflection %.2f, "
                        "skill multiplier %.2f, fixed multiplier %.2f, raw total multiplier %.2f, "
@@ -699,8 +746,8 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     time_duration aim_dur = aim_duration.evaluate( d );
     you.assign_activity( ACT_MORTAR_AIMING, to_moves<int>( aim_dur ) );
 
-    const time_duration impact_delay = mortar != nullptr ? mortar->player_flight_time(
-                                           target_distance ) :
+    const time_duration impact_delay = mortar != nullptr ? mortar_round_player_flight_time(
+                                           *mortar, selected_round, target_distance ) :
                                        flight_time.evaluate( d );
     const time_point impact_time = calendar::turn + impact_delay + aim_dur;
     const int illumination_duration = mortar_illumination_duration( *loc );
@@ -712,8 +759,14 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     for( ammo_effect_str_id ammo_eff : loc.get_item()->ammo_data()->ammo->ammo_effects ) {
         const ammo_effect &effect = ammo_eff.obj();
         if( effect.aoe_explosion_data.power > 0 ) {
-            get_timed_events().add( timed_event_type::EXPLOSION,
-                                    impact_time, target_abs_ms, effect.aoe_explosion_data );
+            if( mortar != nullptr && mortar_round_is_guided( selected_round ) ) {
+                get_timed_events().add_mortar_guided_impact(
+                    impact_time, target_abs_ms, guidance_target_abs_ms, 0, "",
+                    selected_round.typeId().str(), effect.aoe_explosion_data );
+            } else {
+                get_timed_events().add( timed_event_type::EXPLOSION,
+                                        impact_time, target_abs_ms, effect.aoe_explosion_data );
+            }
         }
         for( const aoe_field_effect &aoe : effect.aoe_field_types ) {
             if( x_in_y( aoe.chance, 100 ) ) {
