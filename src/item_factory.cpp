@@ -2172,6 +2172,7 @@ void Item_factory::init()
     add_iuse( "SEWAGE", &iuse::sewage );
     add_iuse( "SIPHON", &iuse::siphon );
     add_iuse( "SMOKING", &iuse::smoking );
+    add_iuse( "SOFLAM", &iuse::soflam );
     add_iuse( "SOLARPACK", &iuse::solarpack );
     add_iuse( "SOLARPACK_OFF", &iuse::solarpack_off );
     add_iuse( "SPRAY_CAN", &iuse::spray_can );

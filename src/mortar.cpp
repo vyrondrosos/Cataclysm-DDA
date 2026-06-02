@@ -37,6 +37,7 @@ static const itype_id itype_81mm_shell_m853a1( "81mm_shell_m853a1" );
 static const itype_id itype_laser_rangefinder( "laser_rangefinder" );
 static const itype_id itype_mortar_fire_control_tablet( "mortar_fire_control_tablet" );
 static const itype_id itype_software_mortar_fire_control( "software_mortar_fire_control" );
+static const itype_id itype_soflam( "soflam" );
 
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 
@@ -433,6 +434,9 @@ static bool mortar_has_charged_laser_rangefinder( const Character &spotter )
     return spotter.cache_has_item_with( itype_laser_rangefinder,
     [&spotter]( const item & it ) {
         return it.ammo_sufficient( &spotter );
+    } ) ||
+    spotter.cache_has_item_with( itype_soflam, [&spotter]( const item & it ) {
+        return it.ammo_sufficient( &spotter );
     } );
 }
 
@@ -605,6 +609,36 @@ bool mortar_schedule_impact_payload( const item &round, const tripoint_abs_ms &i
     return scheduled;
 }
 
+bool mortar_schedule_guided_impact_payload( const item &round,
+        const tripoint_abs_ms &impact, const tripoint_abs_ms &guidance_target,
+        const time_point &when, const int impact_message_strength,
+        const std::string &shooter_name )
+{
+    bool scheduled = false;
+    const itype *ammo_data = round.ammo_data();
+    if( ammo_data == nullptr ) {
+        return false;
+    }
+    for( const ammo_effect_str_id &ammo_eff : ammo_data->ammo->ammo_effects ) {
+        const ammo_effect &effect = ammo_eff.obj();
+        if( effect.aoe_explosion_data.power > 0 ) {
+            get_timed_events().add_mortar_guided_impact(
+                when, impact, guidance_target, impact_message_strength, shooter_name,
+                round.typeId().str(), effect.aoe_explosion_data );
+            scheduled = true;
+        }
+        for( const aoe_field_effect &aoe : effect.aoe_field_types ) {
+            if( x_in_y( aoe.chance, 100 ) ) {
+                get_timed_events().add_mortar_field( when, impact,
+                                                     rng( aoe.intensity_min, aoe.intensity_max ),
+                                                     aoe.field_type.str(), aoe.radius );
+                scheduled = true;
+            }
+        }
+    }
+    return scheduled;
+}
+
 void mortar_type::load( const JsonObject &jo, std::string_view )
 {
     const numeric_bound_reader<int> positive_int{ 1 };
@@ -741,7 +775,8 @@ mortar_fire_solution mortar_type::make_fire_solution( const tripoint_abs_ms &mor
         const tripoint_abs_ms &location_axis_from,
         const tripoint_abs_ms &location_axis_to,
         const mortar_location_error &location_error, const double total_multiplier,
-        const bool use_creeping_adjustment ) const
+        const bool use_creeping_adjustment,
+        const int max_range ) const
 {
     mortar_fire_solution result;
     result.minimum_error = minimum_error( rl_dist( mortar_pos, target ) );
@@ -756,7 +791,7 @@ mortar_fire_solution mortar_type::make_fire_solution( const tripoint_abs_ms &mor
                                    creeping_axis_to, spotter_pos, result.reported_error );
         const tripoint_abs_ms unclamped_fire_center = result.creeping_solution->center;
         result.fire_center = clamp_fire_center_to_range( mortar_pos, unclamped_fire_center,
-                             target, MAX_VIEW_DISTANCE );
+                             target, MAX_VIEW_DISTANCE, max_range );
         if( result.fire_center != unclamped_fire_center ) {
             result.creeping_solution->center = result.fire_center;
             result.creeping_solution->offset_heading = mortar_heading_degrees( target,
@@ -769,16 +804,18 @@ mortar_fire_solution mortar_type::make_fire_solution( const tripoint_abs_ms &mor
 
 tripoint_abs_ms mortar_type::clamp_fire_center_to_range( const tripoint_abs_ms &mortar_pos,
         const tripoint_abs_ms &fire_center, const tripoint_abs_ms &fallback_axis_to,
-        const int minimum_target_distance ) const
+        const int minimum_target_distance, const int max_range ) const
 {
+    const int effective_max_range = max_range > 0 ? max_range : range_;
     const int current_distance = rl_dist( mortar_pos, fire_center );
-    if( current_distance > minimum_target_distance && current_distance <= range_ ) {
+    if( current_distance > minimum_target_distance && current_distance <= effective_max_range ) {
         return fire_center;
     }
 
-    const int minimum_valid_distance = std::min( range_,
+    const int minimum_valid_distance = std::min( effective_max_range,
                                        std::max( 0, minimum_target_distance + 1 ) );
-    const int desired_distance = clamp( current_distance, minimum_valid_distance, range_ );
+    const int desired_distance = clamp( current_distance, minimum_valid_distance,
+                                        effective_max_range );
     point d( fire_center.x() - mortar_pos.x(), fire_center.y() - mortar_pos.y() );
     int scale_distance = current_distance;
     if( d.x == 0 && d.y == 0 ) {
@@ -799,7 +836,7 @@ tripoint_abs_ms mortar_type::clamp_fire_center_to_range( const tripoint_abs_ms &
 
     const auto valid_distance = [&]( const tripoint_abs_ms & candidate ) {
         const int distance = rl_dist( mortar_pos, candidate );
-        return distance > minimum_target_distance && distance <= range_;
+        return distance > minimum_target_distance && distance <= effective_max_range;
     };
 
     tripoint_abs_ms clamped = project_to_distance( desired_distance );
@@ -807,7 +844,7 @@ tripoint_abs_ms mortar_type::clamp_fire_center_to_range( const tripoint_abs_ms &
         return clamped;
     }
     if( current_distance <= minimum_target_distance ) {
-        for( int distance = desired_distance + 1; distance <= range_; ++distance ) {
+        for( int distance = desired_distance + 1; distance <= effective_max_range; ++distance ) {
             const tripoint_abs_ms candidate = project_to_distance( distance );
             if( valid_distance( candidate ) ) {
                 return candidate;
@@ -838,13 +875,13 @@ double mortar_type::repeat_cep_multiplier( const double launcher_skill ) const
 
 tripoint_abs_ms mortar_type::apply_dispersion( const tripoint_abs_ms &target,
         const tripoint_abs_ms &axis_from, const tripoint_abs_ms &axis_to,
-        const mortar_error &error ) const
+        const mortar_error &error, const int max_range ) const
 {
     const tripoint_abs_ms impact = apply_axis_dispersion(
                                        target, axis_from, axis_to,
                                        error.range / one_dimensional_probable_error_sigma_factor,
                                        error.deflection / one_dimensional_probable_error_sigma_factor );
-    return clamp_to_max_range( axis_from, impact, range_ );
+    return clamp_to_max_range( axis_from, impact, max_range > 0 ? max_range : range_ );
 }
 
 tripoint_abs_ms mortar_type::apply_location_error( const tripoint_abs_ms &target,
@@ -859,14 +896,16 @@ tripoint_abs_ms mortar_type::apply_location_error( const tripoint_abs_ms &target
 tripoint_abs_ms mortar_type::roll_impact( const tripoint_abs_ms &fire_center,
         const tripoint_abs_ms &mortar_pos, const tripoint_abs_ms &location_axis_from,
         const tripoint_abs_ms &location_axis_to, const mortar_location_error &location_error,
-        const mortar_error &ballistic_error, tripoint_abs_ms *aimpoint ) const
+        const mortar_error &ballistic_error, tripoint_abs_ms *aimpoint,
+        const int max_range ) const
 {
     const tripoint_abs_ms aimpoint_result = apply_location_error( fire_center,
                                             location_axis_from, location_axis_to, location_error );
     if( aimpoint != nullptr ) {
         *aimpoint = aimpoint_result;
     }
-    return apply_dispersion( aimpoint_result, mortar_pos, fire_center, ballistic_error );
+    return apply_dispersion( aimpoint_result, mortar_pos, fire_center, ballistic_error,
+                             max_range );
 }
 
 mortar_error mortar_type::project_location_error( const tripoint_abs_ms &axis_from,
