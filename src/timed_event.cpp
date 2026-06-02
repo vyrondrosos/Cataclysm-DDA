@@ -14,6 +14,7 @@
 #include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
+#include "current_map.h"
 #include "debug.h"
 #include "enums.h"
 #include "event.h"
@@ -46,6 +47,7 @@
 #include "translations.h"
 #include "type_id.h"
 
+static const itype_id itype_81mm_shell_acerm( "81mm_shell_acerm" );
 static const itype_id itype_petrified_eye( "petrified_eye" );
 
 static const map_extra_id map_extra_mx_dsa_alrp( "mx_dsa_alrp" );
@@ -131,6 +133,70 @@ static void apply_mortar_field( map &target_map, const tripoint_abs_ms &center_a
     for( const tripoint_bub_ms &pt : points_in_radius_circ( center, radius ) ) {
         target_map.add_field( pt, field_type, intensity, age, false );
     }
+}
+
+static void apply_timed_explosion( Creature *source, map &here, const tripoint_abs_ms &impact_abs,
+                                   const explosion_data &data )
+{
+    if( here.inbounds( impact_abs ) ) {
+        explosion_handler::explosion( source, here.get_bub( impact_abs ), data );
+        return;
+    }
+
+    map target_map;
+    const tripoint_abs_sm origin( project_to<coords::sm>( impact_abs ) -
+                                  point_rel_sm{ HALF_MAPSIZE, HALF_MAPSIZE } );
+    target_map.load( origin, true, false );
+    swap_map swap( target_map );
+    target_map.spawn_monsters( true, true );
+    g->load_npcs( &target_map );
+    explosion_handler::_make_explosion( &target_map, source, target_map.get_bub( impact_abs ),
+                                        data );
+    target_map.process_falling();
+    target_map.save();
+}
+
+static std::optional<tripoint_abs_ms> active_laser_designation_target( const avatar &spotter )
+{
+    const diag_value &active = spotter.get_value( "laser_designation_active" );
+    if( active.is_empty() || active.str() != "yes" ) {
+        return std::nullopt;
+    }
+    const diag_value &success = spotter.get_value( "laser_designation_success" );
+    if( success.is_empty() || !success.is_dbl() || success.dbl() <= 0.0 ) {
+        return std::nullopt;
+    }
+    const diag_value &turn = spotter.get_value( "laser_designation_turn" );
+    if( turn.is_empty() || !turn.is_dbl() || to_turn<int>( calendar::turn ) -
+        static_cast<int>( turn.dbl() ) > 1 ) {
+        return std::nullopt;
+    }
+    const diag_value &target = spotter.get_value( "laser_designation_target" );
+    if( target.is_empty() || !target.is_tripoint() ) {
+        return std::nullopt;
+    }
+    return target.tripoint();
+}
+
+static int guided_mortar_error_component( const int delta )
+{
+    const int magnitude = std::abs( delta );
+    if( magnitude == 0 ) {
+        return 0;
+    }
+    const double reduced = magnitude <= 100 ? magnitude * 0.2 :
+                           20.0 + ( magnitude - 100 ) * 0.5;
+    const int rounded = std::max( 1, static_cast<int>( std::round( reduced ) ) );
+    return delta < 0 ? -rounded : rounded;
+}
+
+static tripoint_abs_ms guided_mortar_impact( const tripoint_abs_ms &unguided_impact,
+        const tripoint_abs_ms &original_target, const tripoint_abs_ms &designated_target )
+{
+    const int dx = guided_mortar_error_component( unguided_impact.x() - original_target.x() );
+    const int dy = guided_mortar_error_component( unguided_impact.y() - original_target.y() );
+    return tripoint_abs_ms( designated_target.x() + dx, designated_target.y() + dy,
+                            designated_target.z() );
 }
 
 timed_event::timed_event( timed_event_type e_t, const time_point &w, int f_id, tripoint_abs_ms p,
@@ -399,7 +465,14 @@ void timed_event::actualize()
             }
             const time_point impact_time = calendar::turn +
                                            time_duration::from_seconds( fire_data->flight_seconds );
-            if( !mortar_schedule_impact_payload( round, map_square, impact_time ) ) {
+            const bool guided = round.typeId() == itype_81mm_shell_acerm;
+            const bool payload_scheduled = guided ?
+                                           mortar_schedule_guided_impact_payload(
+                                               round, map_square, fire_data->target, impact_time,
+                                               fire_data->impact_message_strength, string_id ) :
+                                           mortar_schedule_impact_payload( round, map_square,
+                                                   impact_time );
+            if( !payload_scheduled ) {
                 add_msg_debug( debugmode::DF_NPC,
                                "Scheduled mortar fire canceled: ammunition has no impact payload." );
                 break;
@@ -410,6 +483,7 @@ void timed_event::actualize()
             impact_data.target = fire_data->target;
             impact_data.accuracy_multiplier = fire_data->feedback_accuracy_multiplier;
             impact_data.location_multiplier = fire_data->feedback_location_multiplier;
+            impact_data.report = !guided;
             get_timed_events().add_mortar_impact( impact_message_time, map_square, string_id,
                                                   fire_data->impact_message_strength,
                                                   impact_data );
@@ -432,32 +506,34 @@ void timed_event::actualize()
             const std::string recipient = string_id.empty() ? _( "the mortar team" ) : string_id;
             const int report_mode = mortar_impact_report_mode( strength );
             const bool shot_lost = mortar_impact_shot_lost( strength );
-            if( shot_lost ) {
-                if( report_mode == mortar_report_mode_none ) {
-                    add_msg( m_info,
-                             _( "The mortar round is not localized, and you have no way to report a correction to %s." ),
-                             recipient );
+            if( impact_data->report ) {
+                if( shot_lost ) {
+                    if( report_mode == mortar_report_mode_none ) {
+                        add_msg( m_info,
+                                 _( "The mortar round is not localized, and you have no way to report a correction to %s." ),
+                                 recipient );
+                    } else {
+                        add_mortar_impact_report( report_mode, recipient, _( "Shot Lost." ) );
+                    }
                 } else {
-                    add_mortar_impact_report( report_mode, recipient, _( "Shot Lost." ) );
-                }
-            } else {
-                const bool in_bubble = here.inbounds( map_square );
-                const int player_distance = rl_dist( player_character.pos_abs(), map_square );
-                const std::string cue = !in_bubble ? _( "heard in the far distance" ) :
-                                        player_distance > MAX_VIEW_DISTANCE ? _( "heard in the distance" ) :
-                                        _( "observed" );
-                const point d( map_square.x() - impact_data->target.x(),
-                               map_square.y() - impact_data->target.y() );
-                const int miss_distance = round_to_nearest_10( std::hypot( d.x, d.y ) );
-                if( miss_distance == 0 ) {
-                    add_mortar_impact_report( report_mode, recipient,
-                                              string_format( _( "Splash %s, on target." ), cue ) );
-                } else {
-                    const std::string miss_direction = direction_name(
-                                                           direction_from( point::zero, d ) );
-                    add_mortar_impact_report( report_mode, recipient,
-                                              string_format( _( "Splash %1$s, about %2$d tiles %3$s of target." ),
-                                                      cue, miss_distance, miss_direction ) );
+                    const bool in_bubble = here.inbounds( map_square );
+                    const int player_distance = rl_dist( player_character.pos_abs(), map_square );
+                    const std::string cue = !in_bubble ? _( "heard in the far distance" ) :
+                                            player_distance > MAX_VIEW_DISTANCE ? _( "heard in the distance" ) :
+                                            _( "observed" );
+                    const point d( map_square.x() - impact_data->target.x(),
+                                   map_square.y() - impact_data->target.y() );
+                    const int miss_distance = round_to_nearest_10( std::hypot( d.x, d.y ) );
+                    if( miss_distance == 0 ) {
+                        add_mortar_impact_report( report_mode, recipient,
+                                                  string_format( _( "Splash %s, on target." ), cue ) );
+                    } else {
+                        const std::string miss_direction = direction_name(
+                                                               direction_from( point::zero, d ) );
+                        add_mortar_impact_report( report_mode, recipient,
+                                                  string_format( _( "Splash %1$s, about %2$d tiles %3$s of target." ),
+                                                          cue, miss_distance, miss_direction ) );
+                    }
                 }
             }
 
@@ -520,6 +596,51 @@ void timed_event::actualize()
                 break;
             }
             talk_effect_fun::fire_queued_mortar( *gunner, map_square, std::max( 1, strength ) );
+        }
+        break;
+
+        case timed_event_type::MORTAR_GUIDED_IMPACT: {
+            const std::optional<tripoint_abs_ms> designation =
+                active_laser_designation_target( player_character );
+            const tripoint_abs_ms original_target = target.is_invalid() ? map_square : target;
+            const tripoint_abs_ms impact = designation ?
+                                           guided_mortar_impact( map_square, original_target, *designation ) :
+                                           map_square;
+            apply_timed_explosion( player_character.as_avatar(), here, impact, expl_data );
+            if( string_id.empty() && strength == mortar_report_mode_none ) {
+                break;
+            }
+
+            const bool in_bubble = here.inbounds( impact );
+            const int player_distance = rl_dist( player_character.pos_abs(), impact );
+            const std::string cue = !in_bubble ? _( "heard in the far distance" ) :
+                                    player_distance > MAX_VIEW_DISTANCE ? _( "heard in the distance" ) :
+                                    _( "observed" );
+            const std::string recipient = string_id.empty() ? _( "the mortar team" ) : string_id;
+            const int report_mode = mortar_impact_report_mode( strength );
+            if( !designation && mortar_impact_shot_lost( strength ) ) {
+                if( report_mode == mortar_report_mode_none ) {
+                    add_msg( m_info,
+                             _( "The mortar round is not localized, and you have no way to report a correction to %s." ),
+                             recipient );
+                } else {
+                    add_mortar_impact_report( report_mode, recipient, _( "Shot Lost." ) );
+                }
+                break;
+            }
+
+            const tripoint_abs_ms report_target = designation ? *designation : original_target;
+            const point d( impact.x() - report_target.x(), impact.y() - report_target.y() );
+            const int miss_distance = round_to_nearest_10( std::hypot( d.x, d.y ) );
+            if( miss_distance == 0 ) {
+                add_mortar_impact_report( report_mode, recipient,
+                                          string_format( _( "Splash %s, on target." ), cue ) );
+            } else {
+                const std::string miss_direction = direction_name( direction_from( point::zero, d ) );
+                add_mortar_impact_report( report_mode, recipient,
+                                          string_format( _( "Splash %1$s, about %2$d tiles %3$s of target." ),
+                                                  cue, miss_distance, miss_direction ) );
+            }
         }
         break;
 
@@ -734,6 +855,18 @@ void timed_event_manager::add_mortar_field( const time_point &when,
     mortar_field_event_data *field_data = event.get_data<mortar_field_event_data>();
     field_data->radius = std::max( 0, radius );
     field_data->age_seconds = age_seconds;
+}
+
+void timed_event_manager::add_mortar_guided_impact( const time_point &when,
+        const tripoint_abs_ms &impact, const tripoint_abs_ms &target,
+        const int report_strength, const std::string &gunner_name,
+        const std::string &round_id, const explosion_data &expl_data )
+{
+    events.emplace_back( timed_event_type::MORTAR_GUIDED_IMPACT, when, -1, impact,
+                         report_strength, gunner_name, round_id );
+    timed_event &event = events.back();
+    event.target = target;
+    event.expl_data = expl_data;
 }
 
 void timed_event_manager::add( timed_event_type type, const time_point &when,

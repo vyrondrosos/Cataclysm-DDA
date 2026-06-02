@@ -1,6 +1,7 @@
 #include "iexamine_actors.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -44,6 +45,8 @@
 
 static const activity_id ACT_MORTAR_AIMING( "ACT_MORTAR_AIMING" );
 
+static const itype_id itype_81mm_shell_acerm( "81mm_shell_acerm" );
+
 static const skill_id skill_launcher( "launcher" );
 
 static const ter_str_id ter_t_door_metal_c( "t_door_metal_c" );
@@ -53,6 +56,30 @@ namespace
 {
 
 constexpr double mortar_danger_area_scale = 1.5;
+constexpr int mortar_acerm_max_range = 20000;
+
+bool mortar_round_is_acerm( const item &round )
+{
+    return round.typeId() == itype_81mm_shell_acerm;
+}
+
+int mortar_round_max_range( const mortar_type &mortar, const item &round )
+{
+    return mortar_round_is_acerm( round ) ? mortar_acerm_max_range : mortar.range();
+}
+
+time_duration mortar_round_player_flight_time( const mortar_type &mortar, const item &round,
+        const int distance )
+{
+    if( !mortar_round_is_acerm( round ) || distance <= mortar.range() ) {
+        return mortar.player_flight_time( distance );
+    }
+    const int extra_range = std::max( 1, mortar_acerm_max_range - mortar.range() );
+    const double fraction = std::clamp(
+                                static_cast<double>( distance - mortar.range() ) / extra_range, 0.0, 1.0 );
+    const int extra_seconds = static_cast<int>( std::round( 60.0 * fraction * fraction ) );
+    return mortar.player_flight_time( mortar.range() ) + time_duration::from_seconds( extra_seconds );
+}
 
 bool confirm_player_mortar_probable_impact_area( const mortar_type &mortar,
         const tripoint_abs_ms &target, const tripoint_abs_ms &mortar_pos,
@@ -388,7 +415,14 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
         return;
     }
 
-    const int aim_range = mortar->range() / 24;
+    item *const selected_round = loc.get_item();
+    if( selected_round == nullptr ) {
+        add_msg( _( "You no longer have that mortar round." ) );
+        return;
+    }
+    const item &round = *selected_round;
+    const int mortar_range = mortar_round_max_range( *mortar, round );
+    const int aim_range = mortar_range / 24;
     const tripoint_abs_omt pos_omt = project_to<coords::omt>( here.get_abs( examp ) );
     tripoint_abs_omt target = ui::omap::choose_point( "Pick a target.", pos_omt, false, aim_range );
 
@@ -406,8 +440,8 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     const int launcher_skill = you.get_skill_level( skill_launcher );
     const tripoint_abs_ms mortar_abs = here.get_abs( examp );
     const int target_distance = rl_dist( mortar_abs, target_abs_ms );
-    if( target_distance > mortar->range() ) {
-        add_msg( _( "Target is outside the mortar's fire mission range." ) );
+    if( target_distance > mortar_range ) {
+        add_msg( _( "Target is outside the selected round's fire mission range." ) );
         return;
     }
     const tripoint_abs_ms designated_target_abs_ms = target_abs_ms;
@@ -416,7 +450,6 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     const double raw_total_multiplier = skill_multiplier * fixed_multiplier;
     const double total_multiplier = mortar_type::effective_ballistic_multiplier(
                                         raw_total_multiplier );
-    const item &round = *loc.get_item();
     if( !round.ammo_data() ) {
         add_msg( _( "You cannot identify that mortar round." ) );
         return;
@@ -432,7 +465,7 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     const mortar_fire_solution fire_solution = mortar->make_fire_solution(
                 mortar_abs, designated_target_abs_ms, you.pos_abs(), designated_target_abs_ms,
                 you.pos_abs(), designated_target_abs_ms, location_error, total_multiplier,
-                false );
+                false, mortar_range );
     if( target_distance <= MAX_VIEW_DISTANCE ) {
         if( round_is_he ) {
             add_msg( _( "Target is too close to the mortar; minimum safe range is %d tiles." ),
@@ -454,7 +487,7 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     tripoint_abs_ms aimpoint_abs_ms;
     target_abs_ms = mortar->roll_impact( fire_solution.fire_center, mortar_abs,
                                          you.pos_abs(), designated_target_abs_ms, location_error,
-                                         ballistic_error, &aimpoint_abs_ms );
+                                         ballistic_error, &aimpoint_abs_ms, mortar_range );
     add_msg_debug( debugmode::DF_EXPLOSION,
                    "Player mortar fire: distance %d, minimum range %.2f, minimum deflection %.2f, "
                    "skill multiplier %.2f, fixed multiplier %.2f, raw total multiplier %.2f, "
@@ -473,9 +506,15 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     time_duration aim_dur = aim_duration.evaluate( d );
     you.assign_activity( ACT_MORTAR_AIMING, to_moves<int>( aim_dur ) );
 
-    const time_duration impact_delay = mortar->player_flight_time( target_distance );
+    const time_duration impact_delay = mortar_round_player_flight_time( *mortar, round,
+                                      target_distance );
     const time_point impact_time = calendar::turn + impact_delay + aim_dur;
-    mortar_schedule_impact_payload( round, target_abs_ms, impact_time );
+    if( mortar_round_is_acerm( round ) ) {
+        mortar_schedule_guided_impact_payload( round, target_abs_ms, designated_target_abs_ms,
+                                               impact_time, 0, "" );
+    } else {
+        mortar_schedule_impact_payload( round, target_abs_ms, impact_time );
+    }
 
     loc->charges--;
     if( loc->charges <= 0 ) {
