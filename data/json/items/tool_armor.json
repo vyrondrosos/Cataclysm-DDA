@@ -1021,7 +1021,7 @@
     "material": [ { "type": "plastic", "portion": 5 }, { "type": "glass", "portion": 2 }, { "type": "aluminum", "portion": 2 } ],
     "flags": [ "ZOOM", "OVERSIZE", "BELTED", "ALLOWS_NATURAL_ATTACKS", "WATER_BREAK", "ELECTRONIC" ],
     "weight": "5200 g",
-    "volume": "12.4 L",
+    "volume": "12400 ml",
     "longest_side": "34 cm",
     "charges_per_use": 1,
     "use_action": "SOFLAM",
