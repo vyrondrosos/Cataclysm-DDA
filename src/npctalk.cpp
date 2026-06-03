@@ -6275,6 +6275,18 @@ int mortar_round_max_range( const mortar_type &mortar, const item &round )
     return mortar_round_is_acerm( round ) ? mortar_acerm_max_range : mortar.range();
 }
 
+int mortar_round_accuracy_distance( const mortar_type &mortar, const item &round,
+                                    const int distance )
+{
+    if( !mortar_round_is_acerm( round ) || distance <= mortar.range() ) {
+        return distance;
+    }
+    const int extra_range = std::max( 1, mortar_round_max_range( mortar, round ) - mortar.range() );
+    const double fraction = clamp<double>(
+                                static_cast<double>( distance - mortar.range() ) / extra_range, 0.0, 1.0 );
+    return static_cast<int>( std::round( mortar.range() * ( 1.0 + 0.5 * fraction ) ) );
+}
+
 time_duration mortar_round_npc_flight_time( const mortar_type &mortar, const item &round,
         const int distance )
 {
@@ -6440,6 +6452,23 @@ double mortar_effective_launcher_skill( const npc &gunner, const assigned_mortar
         weighted_skill_square += secondary_skill_weight * secondary_skill * secondary_skill;
     }
     return clamp<double>( std::sqrt( weighted_skill_square ), primary_skill, 10.0 );
+}
+
+int mortar_humanized_probable_error( const double error )
+{
+    if( error <= 0.0 ) {
+        return 0;
+    }
+    static constexpr std::array<int, 11> buckets = { {
+            5, 10, 15, 20, 30, 40, 50, 70, 100, 150, 200
+        }
+    };
+    for( const int bucket : buckets ) {
+        if( error <= bucket ) {
+            return bucket;
+        }
+    }
+    return static_cast<int>( std::ceil( error / 300.0 ) * 300.0 );
 }
 
 time_duration mortar_crew_adjusted_fire_delay( const mortar_type &mortar, const npc &gunner,
@@ -7378,8 +7407,8 @@ std::optional<int> select_mortar_fire_for_effect_round_count( const npc &gunner,
                    readiness->reported_error.range <= readiness->range_threshold ? 1 : 0 );
     if( readiness->reported_error.range > readiness->range_threshold ) {
         add_msg( _( "%1$s reports fire for effect is not available; current probable range error is %2$d tiles, threshold is %3$d tiles." ),
-                 gunner.disp_name(), static_cast<int>( std::round( readiness->reported_error.range ) ),
-                 static_cast<int>( std::round( readiness->range_threshold ) ) );
+                 gunner.disp_name(), mortar_humanized_probable_error( readiness->reported_error.range ),
+                 mortar_humanized_probable_error( readiness->range_threshold ) );
         return std::nullopt;
     }
 
@@ -7572,11 +7601,14 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         return;
     }
     const bool round_is_he = mortar_round_has_high_explosive_payload( *round );
+    const int accuracy_distance = mortar_round_accuracy_distance( mortar_data, *round,
+                                  target_distance );
     const mortar_fire_solution fire_solution = mortar_data.make_fire_solution(
                 mortar_abs, *target_abs_ms, you.pos_abs(), selected_creeping_axis_to,
                 location_axis_from, location_axis_to, location_error, total_multiplier,
                 round_is_he,
-                get_mortar_adjustment_tactic( gunner ) == mortar_adjustment_tactic::creeping );
+                get_mortar_adjustment_tactic( gunner ) == mortar_adjustment_tactic::creeping,
+                accuracy_distance );
     const int minimum_target_distance = fire_solution.minimum_target_distance;
     if( target_distance <= minimum_target_distance ) {
         if( round_is_he ) {
@@ -7683,14 +7715,15 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
                     base_feedback_location_multiplier, no_wait_adjustment );
 
         add_msg_debug( debugmode::DF_NPC,
-                       "Mortar fire from %s round %d/%d: distance %d, minimum range %.2f, "
+                       "Mortar fire from %s round %d/%d: distance %d, accuracy distance %d, minimum range %.2f, "
                        "minimum deflection %.2f, skill multiplier %.2f, fixed multiplier %.2f, "
                        "raw total multiplier %.2f, effective total multiplier %.2f, "
                        "minimum target distance %d, location error %.2f:%.2f, HE %d, "
                        "rangefinder %d, EPLRS %d, no-wait adjustment %d, aimpoint offset %d:%d, "
                        "impact offset %d:%d.",
                        gunner.disp_name(), static_cast<int>( i + 1 ),
-                       static_cast<int>( rounds.size() ), target_distance, minimum_error.range,
+                       static_cast<int>( rounds.size() ), target_distance, accuracy_distance,
+                       minimum_error.range,
                        minimum_error.deflection, accuracy_multiplier, fixed_multiplier,
                        raw_total_multiplier, total_multiplier, minimum_target_distance,
                        location_error.range, location_error.deflection,
@@ -7810,6 +7843,9 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
     const int shot_seconds = to_seconds<int>( fire_delay );
     const int splash_seconds = shot_seconds + to_seconds<int>( *first_flight_time );
     const mortar_error &reported_error = fire_solution.reported_error;
+    const int reported_range_error = mortar_humanized_probable_error( reported_error.range );
+    const int reported_deflection_error = mortar_humanized_probable_error(
+            reported_error.deflection );
     if( creeping_solution ) {
         const std::string offset_heading_text = string_format( "%03d",
                                                 creeping_solution->offset_heading );
@@ -7832,45 +7868,45 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
     if( launcher_skill >= 5 ) {
         if( eplrs_net_used && laser_rangefinder_used ) {
             add_msg( _( "You give the fire mission.  %1$s reads back: \"Grid accepted; EPLRS net and laser rangefinder linked.  OT direction %2$s; probable range/normal-to-range error %3$d by %4$d tiles.  Shot in %5$d, splash in %6$d.\"" ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         } else if( eplrs_net_used ) {
             add_msg( _( "You give the fire mission.  %1$s reads back: \"Grid accepted; EPLRS net linked.  OT direction %2$s; probable range/normal-to-range error %3$d by %4$d tiles.  Shot in %5$d, splash in %6$d.\"" ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         } else if( laser_rangefinder_used ) {
             add_msg( _( "You give the fire mission.  %1$s reads back: \"Grid accepted; laser rangefinder linked.  OT direction %2$s; probable range/normal-to-range error %3$d by %4$d tiles.  Shot in %5$d, splash in %6$d.\"" ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         } else {
             add_msg( _( "You give the fire mission.  %1$s reads back: \"Grid accepted.  OT direction %2$s; probable range/normal-to-range error %3$d by %4$d tiles.  Shot in %5$d, splash in %6$d.\"" ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         }
     } else {
         if( eplrs_net_used && laser_rangefinder_used ) {
             add_msg( _( "You give the fire mission.  %1$s reports EPLRS net and laser rangefinder linked, expected heading %2$s degrees, and probable range/normal-to-range error about %3$d by %4$d tiles.  Shot expected in %5$d seconds; impact in %6$d seconds." ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         } else if( eplrs_net_used ) {
             add_msg( _( "You give the fire mission.  %1$s reports EPLRS net linked, expected heading %2$s degrees, and probable range/normal-to-range error about %3$d by %4$d tiles.  Shot expected in %5$d seconds; impact in %6$d seconds." ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         } else if( laser_rangefinder_used ) {
             add_msg( _( "You give the fire mission.  %1$s reports laser rangefinder linked, expected heading %2$s degrees, and probable range/normal-to-range error about %3$d by %4$d tiles.  Shot expected in %5$d seconds; impact in %6$d seconds." ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         } else {
             add_msg( _( "You give the fire mission.  %1$s reports expected heading %2$s degrees and probable range/normal-to-range error about %3$d by %4$d tiles.  Shot expected in %5$d seconds; impact in %6$d seconds." ),
-                     gunner.disp_name(), heading_text, static_cast<int>( std::round( reported_error.range ) ),
-                     static_cast<int>( std::round( reported_error.deflection ) ), shot_seconds,
+                     gunner.disp_name(), heading_text, reported_range_error, reported_deflection_error,
+                     shot_seconds,
                      splash_seconds );
         }
     }
