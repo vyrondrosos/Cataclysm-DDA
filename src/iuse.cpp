@@ -261,6 +261,10 @@ static const furn_str_id furn_f_translocator_buoy( "f_translocator_buoy" );
 static const gun_mode_id gun_mode_DEFAULT( "DEFAULT" );
 
 static const itype_id itype_advanced_ecig( "advanced_ecig" );
+static const itype_id itype_81mm_shell_m821a2( "81mm_shell_m821a2" );
+static const itype_id itype_81mm_shell_m821a2_oksi( "81mm_shell_m821a2_oksi" );
+static const itype_id itype_81mm_shell_m889a1( "81mm_shell_m889a1" );
+static const itype_id itype_81mm_shell_m889a1_oksi( "81mm_shell_m889a1_oksi" );
 static const itype_id itype_apparatus( "apparatus" );
 static const itype_id itype_arcade_machine( "arcade_machine" );
 static const itype_id itype_atomic_coffeepot( "atomic_coffeepot" );
@@ -334,6 +338,10 @@ static const morale_type morale_food_bad( "morale_food_bad" );
 static const morale_type morale_food_good( "morale_food_good" );
 static const morale_type morale_game( "morale_game" );
 static const morale_type morale_game_found_kitten( "morale_game_found_kitten" );
+
+static const proficiency_id proficiency_prof_mortar_operation( "prof_mortar_operation" );
+
+static const skill_id skill_launcher( "launcher" );
 static const morale_type morale_marloss( "morale_marloss" );
 static const morale_type morale_music( "morale_music" );
 static const morale_type morale_wet( "morale_wet" );
@@ -6852,6 +6860,57 @@ std::optional<int> iuse::camera( Character *p, item *it, const tripoint_bub_ms &
         view_photos( p, edevice_photos, p->pos_bub() );
         return 1;
     }
+    return 1;
+}
+
+static std::optional<itype_id> oksi_guided_round_id( const item &round )
+{
+    if( round.typeId() == itype_81mm_shell_m821a2 ) {
+        return itype_81mm_shell_m821a2_oksi;
+    }
+    if( round.typeId() == itype_81mm_shell_m889a1 ) {
+        return itype_81mm_shell_m889a1_oksi;
+    }
+    return std::nullopt;
+}
+
+std::optional<int> iuse::oksi_pgk( Character *p, item *it, const tripoint_bub_ms & )
+{
+    if( p == nullptr ) {
+        debugmsg( "%s called action OKSI_PGK that requires character but no character is present",
+                  it->typeId().str() );
+        return std::nullopt;
+    }
+    if( !p->has_proficiency( proficiency_prof_mortar_operation ) ) {
+        p->add_msg_if_player( _( "You need mortar proficiency to fit the guided round kit." ) );
+        return std::nullopt;
+    }
+    if( p->fine_detail_vision_mod() > 4 ) {
+        p->add_msg_if_player( _( "You can't see well enough to fit the guidance kit." ) );
+        return std::nullopt;
+    }
+    if( p->cant_do_underwater() || p->cant_do_mounted() ) {
+        return std::nullopt;
+    }
+
+    item_location round = game_menus::inv::titled_filter_menu( []( const item_location & loc ) {
+        return loc && oksi_guided_round_id( *loc ).has_value();
+    }, *p, _( "Fit OKSI kit to which round?" ) );
+    if( !round ) {
+        p->add_msg_if_player( _( "Never mind." ) );
+        return std::nullopt;
+    }
+
+    const std::optional<itype_id> guided_id = oksi_guided_round_id( *round );
+    if( !guided_id ) {
+        return std::nullopt;
+    }
+    const std::string round_name = round->tname();
+    round.remove_item();
+    p->i_add( item( *guided_id, calendar::turn, 1 ) );
+    p->practice( skill_launcher, 10 );
+    p->mod_moves( -to_moves<int>( 20_seconds ) );
+    p->add_msg_if_player( _( "You fit the OKSI guidance kit to the %s." ), round_name );
     return 1;
 }
 

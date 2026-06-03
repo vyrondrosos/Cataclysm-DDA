@@ -4,8 +4,10 @@
 #include <cmath>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "character.h"
@@ -29,10 +31,12 @@
 #include "map_scale_constants.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "monster.h"
 #include "mortar.h"
 #include "mtype.h"
+#include "npc.h"
 #include "output.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
@@ -46,6 +50,8 @@
 static const activity_id ACT_MORTAR_AIMING( "ACT_MORTAR_AIMING" );
 
 static const itype_id itype_81mm_shell_acerm( "81mm_shell_acerm" );
+static const itype_id itype_81mm_shell_m821a2_oksi( "81mm_shell_m821a2_oksi" );
+static const itype_id itype_81mm_shell_m889a1_oksi( "81mm_shell_m889a1_oksi" );
 
 static const skill_id skill_launcher( "launcher" );
 
@@ -61,6 +67,49 @@ constexpr int mortar_acerm_max_range = 20000;
 bool mortar_round_is_acerm( const item &round )
 {
     return round.typeId() == itype_81mm_shell_acerm;
+}
+
+bool mortar_round_is_oksi_guided( const item &round )
+{
+    return round.typeId() == itype_81mm_shell_m821a2_oksi ||
+           round.typeId() == itype_81mm_shell_m889a1_oksi;
+}
+
+bool mortar_round_is_guided( const item &round )
+{
+    return mortar_round_is_acerm( round ) || mortar_round_is_oksi_guided( round );
+}
+
+std::string npc_value_string( const npc &who, const std::string &key )
+{
+    const diag_value &value = who.get_value( key );
+    return value.is_empty() ? std::string() : value.str();
+}
+
+int npc_value_int( const npc &who, const std::string &key )
+{
+    const diag_value &value = who.get_value( key );
+    return value.is_dbl() ? static_cast<int>( value.dbl() ) : 0;
+}
+
+std::optional<tripoint_abs_ms> active_fpv_mortar_designation_target()
+{
+    std::vector<npc *> drone_operators = g->get_npcs_if( []( const npc & guy ) {
+        return guy.is_player_ally() && !npc_value_string( guy, "fpv_assignment" ).empty();
+    } );
+    for( npc *operator_npc : drone_operators ) {
+        const std::string drone_type = npc_value_string( *operator_npc, "fpv_drone_type" );
+        if( npc_value_string( *operator_npc, "fpv_status" ) != "on_station" ||
+            ( drone_type != "scout" && drone_type != "baba_yaga" ) ||
+            npc_value_string( *operator_npc, "fpv_designation_active" ) != "yes" ||
+            npc_value_string( *operator_npc, "fpv_designation_type" ) != "mortar" ) {
+            continue;
+        }
+        return tripoint_abs_ms( npc_value_int( *operator_npc, "fpv_designation_x" ),
+                                npc_value_int( *operator_npc, "fpv_designation_y" ),
+                                npc_value_int( *operator_npc, "fpv_designation_z" ) );
+    }
+    return std::nullopt;
 }
 
 int mortar_round_max_range( const mortar_type &mortar, const item &round )
@@ -422,21 +471,31 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     }
     const item &round = *selected_round;
     const int mortar_range = mortar_round_max_range( *mortar, round );
-    const int aim_range = mortar_range / 24;
-    const tripoint_abs_omt pos_omt = project_to<coords::omt>( here.get_abs( examp ) );
-    tripoint_abs_omt target = ui::omap::choose_point( "Pick a target.", pos_omt, false, aim_range );
+    tripoint_abs_ms target_abs_ms = tripoint_abs_ms::invalid;
+    if( mortar_round_is_oksi_guided( round ) ) {
+        const std::optional<tripoint_abs_ms> drone_target = active_fpv_mortar_designation_target();
+        if( !drone_target ) {
+            add_msg( _( "The OKSI-guided round needs a drone-designated fixed target." ) );
+            return;
+        }
+        target_abs_ms = *drone_target;
+    } else {
+        const int aim_range = mortar_range / 24;
+        const tripoint_abs_omt pos_omt = project_to<coords::omt>( here.get_abs( examp ) );
+        tripoint_abs_omt target = ui::omap::choose_point( "Pick a target.", pos_omt, false, aim_range );
 
-    if( target == tripoint_abs_omt::invalid ) {
-        return;
+        if( target == tripoint_abs_omt::invalid ) {
+            return;
+        }
+
+        target_abs_ms = project_to<coords::ms>( target );
+
+        // Aim at the center of OMT, then apply indirect-fire dispersion.
+        target_abs_ms.x() += SEEX;
+        target_abs_ms.y() += SEEY;
+        // we can have edge cases with it if, for example, we target radio tower (high building, but with small profile)
+        target_abs_ms.z() = overmap_buffer.highest_omt_point( project_to<coords::omt>( target_abs_ms ) );
     }
-
-    tripoint_abs_ms target_abs_ms = project_to<coords::ms>( target );
-
-    // Aim at the center of OMT, then apply indirect-fire dispersion.
-    target_abs_ms.x() += SEEX;
-    target_abs_ms.y() += SEEY;
-    // we can have edge cases with it if, for example, we target radio tower (high building, but with small profile)
-    target_abs_ms.z() = overmap_buffer.highest_omt_point( project_to<coords::omt>( target_abs_ms ) );
     const int launcher_skill = you.get_skill_level( skill_launcher );
     const tripoint_abs_ms mortar_abs = here.get_abs( examp );
     const int target_distance = rl_dist( mortar_abs, target_abs_ms );
@@ -509,7 +568,7 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     const time_duration impact_delay = mortar_round_player_flight_time( *mortar, round,
                                       target_distance );
     const time_point impact_time = calendar::turn + impact_delay + aim_dur;
-    if( mortar_round_is_acerm( round ) ) {
+    if( mortar_round_is_guided( round ) ) {
         mortar_schedule_guided_impact_payload( round, target_abs_ms, designated_target_abs_ms,
                                                impact_time, 0, "" );
     } else {

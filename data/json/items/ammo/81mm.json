@@ -68,6 +68,42 @@
     "delete": { "effects": [ "EXPLOSIVE_81mmHE" ] }
   },
   {
+    "id": "81mm_shell_m821a2_oksi",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "guided high-explosive mortar shell" },
+    "description": "An M821A2 81mm high-explosive mortar cartridge fitted with an OKSI precision guidance kit.  It retains the base round's ballistic performance, but can correct onto drone-designated targets.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m821a2_oksi",
+        "name": { "str": "OKSI-guided M821A2 81mm mortar shell (HE)", "str_pl": "OKSI-guided M821A2 81mm mortar shells (HE)" },
+        "description": "An M821A2 81mm high-explosive mortar cartridge fitted with an OKSI precision guidance kit.  It retains the base round's ballistic performance, but can correct onto drone-designated targets."
+      }
+    ],
+    "price": "4900 USD",
+    "price_postapoc": "120 USD"
+  },
+  {
+    "id": "81mm_shell_m889a1_oksi",
+    "copy-from": "81mm_shell_m889a1",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "guided high-explosive mortar shell" },
+    "description": "An M889A1 81mm high-explosive mortar cartridge fitted with an OKSI precision guidance kit.  It retains the base round's ballistic performance, but can correct onto drone-designated targets.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m889a1_oksi",
+        "name": { "str": "OKSI-guided M889A1 81mm mortar shell (HE)", "str_pl": "OKSI-guided M889A1 81mm mortar shells (HE)" },
+        "description": "An M889A1 81mm high-explosive mortar cartridge fitted with an OKSI precision guidance kit.  It retains the base round's ballistic performance, but can correct onto drone-designated targets."
+      }
+    ],
+    "price": "4850 USD",
+    "price_postapoc": "120 USD"
+  },
+  {
     "id": "81mm_shell_acerm",
     "copy-from": "81mm_shell_m821a2",
     "type": "ITEM",
