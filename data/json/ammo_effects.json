@@ -440,7 +440,7 @@
   {
     "id": "EXPLOSIVE_81mmHE",
     "type": "ammo_effect",
-    "explosion": { "power": 900, "shrapnel": 1200 }
+    "explosion": { "power": 900, "shrapnel": { "casing_mass": 1200, "fragment_mass": 0.12 } }
   },
   {
     "id": "MORTAR_81mm_SMOKE",
