@@ -74,6 +74,7 @@
     "type": "item_group",
     "id": "fpv_drone_hardcase_full",
     "container-item": "laptop_hard_case",
+    "on_overflow": "spill",
     "items": [
       { "item": "fpv_suicide_drone", "count": 3 },
       { "item": "fpv_military_suicide_drone", "prob": 30 },
