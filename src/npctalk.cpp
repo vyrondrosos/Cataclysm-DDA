@@ -7347,6 +7347,7 @@ void assign_mortar_support_impl( npc &gunner )
     }
 
     gunner.clear_fpv_support( true );
+
     if( gunner.has_player_activity() ) {
         gunner.revert_after_activity();
     }
