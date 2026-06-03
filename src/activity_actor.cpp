@@ -13546,6 +13546,7 @@ namespace
 
 constexpr int laser_designator_charges_per_interval = 5;
 constexpr time_duration laser_designator_charge_interval = 10_seconds;
+constexpr time_duration laser_designator_activity_interval = 1_seconds;
 
 void clear_laser_designation( Character &who )
 {
@@ -13647,8 +13648,8 @@ bool can_use_mounted_laser_designator( const Character &who, map &here,
 
 void laser_designator_activity_actor::start( player_activity &act, Character & )
 {
-    act.moves_total = calendar::INDEFINITELY_LONG;
-    act.moves_left = calendar::INDEFINITELY_LONG;
+    act.moves_total = to_moves<int>( laser_designator_activity_interval );
+    act.moves_left = act.moves_total;
     next_charge = calendar::turn;
 }
 
@@ -13707,8 +13708,8 @@ void laser_designator_activity_actor::do_turn( player_activity &act, Character &
     write_laser_designation( who, current_target->pos, success );
     last_target_pos = current_target->pos;
     target_pos = current_target->pos;
-    who.pause();
-    act.moves_left = calendar::INDEFINITELY_LONG;
+    act.moves_total = to_moves<int>( laser_designator_activity_interval );
+    act.moves_left = act.moves_total;
 }
 
 void laser_designator_activity_actor::finish( player_activity &, Character &who )
