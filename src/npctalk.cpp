@@ -9604,8 +9604,8 @@ talk_effect_fun_t::func f_request_fpv_attack()
         const bool military_explosive_drone =
             active_fpv_drone_type( *operator_npc ) == "military_suicide";
         const explosion_data drone_explosion = military_explosive_drone ?
-                                               explosion_data( 920.0f, 0.8f, false, shrapnel_data( 400, 0.4f ) ) :
-                                               explosion_data( 300.0f, 0.8f, false, shrapnel_data( 400 ) );
+                                               explosion_data( 920.0f, 0.75f, false, shrapnel_data( 400, 0.4f ) ) :
+                                               explosion_data( 300.0f, 0.75f, false, shrapnel_data( 400, 0.4f ) );
 
         get_timed_events().add( timed_event_type::EXPLOSION,
                                 calendar::turn + time_duration::from_seconds( time_to_target ),
