@@ -1148,7 +1148,7 @@
     "id": "ACT_DESIGNATE_TARGET",
     "type": "activity_type",
     "activity_level": "NO_EXERCISE",
-    "based_on": "neither",
+    "based_on": "time",
     "rooted": true,
     "can_resume": false,
     "interruptable_with_kb": true,
