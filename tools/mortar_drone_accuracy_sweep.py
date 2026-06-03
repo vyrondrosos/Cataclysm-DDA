@@ -40,10 +40,10 @@ MORTAR_LASER_RANGEFINDER_RANGE = 2000
 MORTAR_ACERM_MAX_RANGE = 20000
 MORTAR_CREW_SECONDARY_SKILL_WEIGHT = 0.35
 MORTAR_CREW_SECONDARY_SKILL_CAP_MULTIPLIER = 1.3
-MORTAR_GUIDED_NEAR_THRESHOLD_M = 100.0
+MORTAR_GUIDED_NEAR_THRESHOLD_TILES = 100.0
 MORTAR_GUIDED_NEAR_MULTIPLIER = 0.2
 MORTAR_GUIDED_FAR_MULTIPLIER = 0.5
-MORTAR_GUIDED_MIN_AXIS_M = 1.0
+MORTAR_GUIDED_MIN_AXIS_TILES = 1.0
 
 FPV_RESERVE_SECONDS = 20
 FPV_STATION_BATTERY_RATE = 0.6
@@ -54,7 +54,7 @@ class FeedbackObserver:
     sensor_multiplier: float
     detection_range_multiplier: float = 1.0
     repeat_location_multiplier: float = 0.5
-    spotter_distance_m: float | None = None
+    spotter_distance_tiles: float | None = None
 
 
 @dataclass(frozen=True)
@@ -67,26 +67,26 @@ class SpotterProfile:
     drone: bool = False
     detection_range_multiplier: float = 1.0
     repeat_location_multiplier: float = 0.5
-    spotter_distance_m: float | None = None
+    spotter_distance_tiles: float | None = None
     feedback_observers: tuple[FeedbackObserver, ...] = ()
 
 
 @dataclass(frozen=True)
 class MortarRow:
     profile: str
-    range_m: int
+    range_tiles: int
     launcher_skill: int
     perception: int
     shot_index: int
     fixed_multiplier: float
     current_skill_multiplier: float
     total_multiplier: float
-    ballistic_range_m: float
-    ballistic_deflection_m: float
-    location_range_m: float
-    location_deflection_m: float
-    total_range_m: float
-    total_deflection_m: float
+    ballistic_range_tiles: float
+    ballistic_deflection_tiles: float
+    location_range_tiles: float
+    location_deflection_tiles: float
+    total_range_tiles: float
+    total_deflection_tiles: float
     shot_lost_pct: float
     feedback_accuracy_multiplier: float
     feedback_location_multiplier: float
@@ -95,17 +95,17 @@ class MortarRow:
 @dataclass(frozen=True)
 class CreepingRow:
     profile: str
-    range_m: int
+    range_tiles: int
     launcher_skill: int
     perception: int
     shot_index: int
-    total_range_m: float
-    total_deflection_m: float
-    player_offset_x_m: float
-    player_offset_y_m: float
-    creep_offset_x_m: int
-    creep_offset_y_m: int
-    creep_distance_m: float
+    total_range_tiles: float
+    total_deflection_tiles: float
+    player_offset_x_tiles: float
+    player_offset_y_tiles: float
+    creep_offset_x_tiles: int
+    creep_offset_y_tiles: int
+    creep_distance_tiles: float
     heading_degrees: int
     danger_close: bool
     offset_multiplier: float
@@ -114,7 +114,7 @@ class CreepingRow:
 @dataclass(frozen=True)
 class DroneRow:
     drone_type: str
-    distance_m: int
+    distance_tiles: int
     driving_skill: int
     light: str
     launchable: str
@@ -123,12 +123,12 @@ class DroneRow:
     return_s: int
     one_way_station_s: int
     scout_delay_s: int | str
-    attack_fixed_cep_m: float | str
-    attack_creature_cep_m: float | str
+    attack_fixed_cep_tiles: float | str
+    attack_creature_cep_tiles: float | str
     attack_time_s: int | str
-    drop_cep_m: float | str
+    drop_cep_tiles: float | str
     drop_delay_s: str
-    mortar_spotter_location_cep_m: float | str
+    mortar_spotter_location_cep_tiles: float | str
     mortar_spotter_lost_pct: float | str
 
 
@@ -137,7 +137,7 @@ class MortarSpec:
     key: str
     label: str
     ammo_type: str
-    range_m: int
+    range_tiles: int
     fire_delay_s: int
     deflection_error_mils: float
     max_secondary_crew: int
@@ -149,7 +149,7 @@ class RoundSpec:
     label: str
     mortar_key: str
     guidance: str
-    max_range_m: int | None = None
+    max_range_tiles: int | None = None
     requirement: str = "none"
     target_rule: str = "tile or creature"
     mass_kg: float | None = None
@@ -202,7 +202,7 @@ ROUND_SPECS: dict[str, RoundSpec] = {
     ),
     "81mm_acerm": RoundSpec(
         "81mm_acerm", "ACERM 81mm HE", "m252", "acerm",
-        max_range_m=MORTAR_ACERM_MAX_RANGE,
+        max_range_tiles=MORTAR_ACERM_MAX_RANGE,
         requirement="active successful SOFLAM laser designation",
         target_rule="tile, immobile, or tracked creature",
         mass_kg=4.600, volume_l=2.200, price_usd=18000,
@@ -335,7 +335,7 @@ def compatible_rounds_for_mortar(rounds: Sequence[RoundSpec], mortar: MortarSpec
 
 def round_max_range(round_spec: RoundSpec) -> int:
     mortar = MORTAR_SPECS[round_spec.mortar_key]
-    return round_spec.max_range_m if round_spec.max_range_m is not None else mortar.range_m
+    return round_spec.max_range_tiles if round_spec.max_range_tiles is not None else mortar.range_tiles
 
 
 def mortar_60mm_flight_time_bounds(distance: int) -> tuple[int, int]:
@@ -361,18 +361,18 @@ def mortar_60mm_flight_time_bounds(distance: int) -> tuple[int, int]:
 
 
 def expected_base_flight_seconds(mortar: MortarSpec, distance: int) -> float:
-    range_scale = max(0.1, mortar.range_m / 3500.0)
+    range_scale = max(0.1, mortar.range_tiles / 3500.0)
     equivalent_60mm_distance = round(distance / range_scale)
     lower, upper = mortar_60mm_flight_time_bounds(equivalent_60mm_distance)
     return ((lower + upper) / 2.0) * math.sqrt(range_scale)
 
 
 def expected_round_flight_seconds(mortar: MortarSpec, round_spec: RoundSpec, distance: int) -> float:
-    if round_spec.guidance != "acerm" or distance <= mortar.range_m:
+    if round_spec.guidance != "acerm" or distance <= mortar.range_tiles:
         return expected_base_flight_seconds(mortar, distance)
-    extra_range = max(1, MORTAR_ACERM_MAX_RANGE - mortar.range_m)
-    fraction = clamp((distance - mortar.range_m) / extra_range, 0.0, 1.0)
-    return expected_base_flight_seconds(mortar, mortar.range_m) + 60.0 * fraction * fraction
+    extra_range = max(1, MORTAR_ACERM_MAX_RANGE - mortar.range_tiles)
+    fraction = clamp((distance - mortar.range_tiles) / extra_range, 0.0, 1.0)
+    return expected_base_flight_seconds(mortar, mortar.range_tiles) + 60.0 * fraction * fraction
 
 
 def secondary_skills_for_count(count: int, secondary_skill: int) -> tuple[int, ...]:
@@ -388,19 +388,27 @@ def crew_effective_launcher_skill(primary_skill: int, secondary_skills: Sequence
 
 
 def crew_adjusted_fire_delay(mortar: MortarSpec, crew_count: int) -> int:
-    return max(1, mortar.fire_delay_s // (1 << crew_count))
+    return max(1, mortar.fire_delay_s // (1 << crew_count) - crew_count * 2)
+
+
+def round_accuracy_distance(mortar: MortarSpec, round_spec: RoundSpec, distance: int) -> int:
+    if round_spec.guidance != "acerm" or distance <= mortar.range_tiles:
+        return distance
+    extra_range = max(1, round_max_range(round_spec) - mortar.range_tiles)
+    fraction = clamp((distance - mortar.range_tiles) / extra_range, 0.0, 1.0)
+    return round(mortar.range_tiles * (1.0 + 0.5 * fraction))
 
 
 def guided_axis_error(axis_error: float) -> float:
     if axis_error <= 0.0:
         return 0.0
-    if axis_error <= MORTAR_GUIDED_NEAR_THRESHOLD_M:
-        return max(MORTAR_GUIDED_MIN_AXIS_M, axis_error * MORTAR_GUIDED_NEAR_MULTIPLIER)
+    if axis_error <= MORTAR_GUIDED_NEAR_THRESHOLD_TILES:
+        return max(MORTAR_GUIDED_MIN_AXIS_TILES, axis_error * MORTAR_GUIDED_NEAR_MULTIPLIER)
     guided = (
-        MORTAR_GUIDED_NEAR_THRESHOLD_M * MORTAR_GUIDED_NEAR_MULTIPLIER
-        + (axis_error - MORTAR_GUIDED_NEAR_THRESHOLD_M) * MORTAR_GUIDED_FAR_MULTIPLIER
+        MORTAR_GUIDED_NEAR_THRESHOLD_TILES * MORTAR_GUIDED_NEAR_MULTIPLIER
+        + (axis_error - MORTAR_GUIDED_NEAR_THRESHOLD_TILES) * MORTAR_GUIDED_FAR_MULTIPLIER
     )
-    return max(MORTAR_GUIDED_MIN_AXIS_M, guided)
+    return max(MORTAR_GUIDED_MIN_AXIS_TILES, guided)
 
 
 def designation_success_probability(perception: int, dexterity: int, target_speed: int, moving: bool, tile: bool) -> float:
@@ -537,7 +545,7 @@ def creeping_adjustment(
 def shot_lost_chance(
     perception: int,
     sensor_multiplier: float,
-    spotter_distance_m: float,
+    spotter_distance_tiles: float,
     detection_range_multiplier: float,
 ) -> float:
     per = clamp(float(perception), 1.0, 10.0)
@@ -545,7 +553,7 @@ def shot_lost_chance(
         chance = 0.20 - (per - 1.0) * (0.10 / 4.0)
     else:
         chance = 0.10 - (per - 5.0) * (0.07 / 5.0)
-    chance += 0.10 * spotter_distance_m / (1000.0 * max(0.1, detection_range_multiplier))
+    chance += 0.10 * spotter_distance_tiles / (1000.0 * max(0.1, detection_range_multiplier))
     chance /= sensor_multiplier
     return clamp(chance, 0.0, 0.95)
 
@@ -561,7 +569,7 @@ def feedback_observers_for_profile(profile: SpotterProfile) -> tuple[FeedbackObs
             sensor_multiplier=profile.sensor_multiplier,
             detection_range_multiplier=profile.detection_range_multiplier,
             repeat_location_multiplier=repeat_location_multiplier,
-            spotter_distance_m=profile.spotter_distance_m,
+            spotter_distance_tiles=profile.spotter_distance_tiles,
         ),
     )
 
@@ -653,7 +661,7 @@ def spotter_profiles(keys: Sequence[str]) -> list[SpotterProfile]:
             drone_sensor,
             drone=True,
             detection_range_multiplier=MORTAR_DRONE_DETECTION_RANGE_MULTIPLIER,
-            spotter_distance_m=0.0,
+            spotter_distance_tiles=0.0,
         ),
         "drone_eplrs": SpotterProfile(
             "drone_eplrs",
@@ -662,7 +670,7 @@ def spotter_profiles(keys: Sequence[str]) -> list[SpotterProfile]:
             eplrs_net=True,
             drone=True,
             detection_range_multiplier=MORTAR_DRONE_DETECTION_RANGE_MULTIPLIER,
-            spotter_distance_m=0.0,
+            spotter_distance_tiles=0.0,
         ),
         "full_gucci": SpotterProfile(
             "full_gucci",
@@ -680,7 +688,7 @@ def spotter_profiles(keys: Sequence[str]) -> list[SpotterProfile]:
                     sensor_multiplier=drone_sensor,
                     detection_range_multiplier=MORTAR_DRONE_DETECTION_RANGE_MULTIPLIER,
                     repeat_location_multiplier=drone_eplrs_repeat,
-                    spotter_distance_m=0.0,
+                    spotter_distance_tiles=0.0,
                 ),
             ),
         ),
@@ -732,8 +740,8 @@ def mortar_rows(args: argparse.Namespace) -> list[MortarRow]:
                             lost = shot_lost_chance(
                                 perception,
                                 observer.sensor_multiplier,
-                                observer.spotter_distance_m
-                                if observer.spotter_distance_m is not None
+                                observer.spotter_distance_tiles
+                                if observer.spotter_distance_tiles is not None
                                 else distance,
                                 observer.detection_range_multiplier,
                             )
@@ -771,19 +779,19 @@ def mortar_rows(args: argparse.Namespace) -> list[MortarRow]:
                         rows.append(
                             MortarRow(
                                 profile=profile.label,
-                                range_m=distance,
+                                range_tiles=distance,
                                 launcher_skill=launcher_skill,
                                 perception=perception,
                                 shot_index=shot_index,
                                 fixed_multiplier=fixed_multiplier,
                                 current_skill_multiplier=current_skill_multiplier,
                                 total_multiplier=total_multiplier,
-                                ballistic_range_m=ballistic_range,
-                                ballistic_deflection_m=ballistic_deflection,
-                                location_range_m=projected_range,
-                                location_deflection_m=projected_deflection,
-                                total_range_m=ballistic_range + projected_range,
-                                total_deflection_m=ballistic_deflection
+                                ballistic_range_tiles=ballistic_range,
+                                ballistic_deflection_tiles=ballistic_deflection,
+                                location_range_tiles=projected_range,
+                                location_deflection_tiles=projected_deflection,
+                                total_range_tiles=ballistic_range + projected_range,
+                                total_deflection_tiles=ballistic_deflection
                                 + projected_deflection,
                                 shot_lost_pct=combined_lost * 100.0,
                                 feedback_accuracy_multiplier=display_accuracy_factor,
@@ -810,9 +818,9 @@ def creeping_rows(args: argparse.Namespace) -> list[CreepingRow]:
             continue
         offset_x, offset_y, offset_distance, heading, danger_close, offset_multiplier = (
             creeping_adjustment(
-                row.range_m,
-                row.total_range_m,
-                row.total_deflection_m,
+                row.range_tiles,
+                row.total_range_tiles,
+                row.total_deflection_tiles,
                 args.player_offset_x,
                 args.player_offset_y,
             )
@@ -820,17 +828,17 @@ def creeping_rows(args: argparse.Namespace) -> list[CreepingRow]:
         rows.append(
             CreepingRow(
                 profile=row.profile,
-                range_m=row.range_m,
+                range_tiles=row.range_tiles,
                 launcher_skill=row.launcher_skill,
                 perception=row.perception,
                 shot_index=row.shot_index,
-                total_range_m=row.total_range_m,
-                total_deflection_m=row.total_deflection_m,
-                player_offset_x_m=args.player_offset_x,
-                player_offset_y_m=args.player_offset_y,
-                creep_offset_x_m=offset_x,
-                creep_offset_y_m=offset_y,
-                creep_distance_m=offset_distance,
+                total_range_tiles=row.total_range_tiles,
+                total_deflection_tiles=row.total_deflection_tiles,
+                player_offset_x_tiles=args.player_offset_x,
+                player_offset_y_tiles=args.player_offset_y,
+                creep_offset_x_tiles=offset_x,
+                creep_offset_y_tiles=offset_y,
+                creep_distance_tiles=offset_distance,
                 heading_degrees=heading,
                 danger_close=danger_close,
                 offset_multiplier=offset_multiplier,
@@ -839,7 +847,7 @@ def creeping_rows(args: argparse.Namespace) -> list[CreepingRow]:
     return rows
 
 
-def fpv_max_range_meters(drone_type: str) -> int:
+def fpv_max_range_tiles(drone_type: str) -> int:
     if drone_type == "scout":
         return 15000
     if drone_type == "baba_yaga":
@@ -855,7 +863,7 @@ def fpv_battery_seconds(drone_type: str) -> int:
     return 6 * 60
 
 
-def fpv_cruise_speed_mph(drone_type: str) -> float:
+def fpv_cruise_speed_tiles_per_hour(drone_type: str) -> float:
     if drone_type == "baba_yaga":
         return 70000.0
     return 150000.0
@@ -885,9 +893,9 @@ def drone_rows(args: argparse.Namespace) -> list[DroneRow]:
     for drone_type in drone_types:
         for distance in distances:
             for driving_skill in driving_skills:
-                max_range = fpv_max_range_meters(drone_type)
+                max_range = fpv_max_range_tiles(drone_type)
                 cruise_seconds = max(
-                    1, math.ceil(distance * 3600.0 / fpv_cruise_speed_mph(drone_type))
+                    1, math.ceil(distance * 3600.0 / fpv_cruise_speed_tiles_per_hour(drone_type))
                 )
                 outbound_seconds = cruise_seconds + fpv_launch_delay_seconds(
                     driving_skill, drone_type
@@ -959,7 +967,7 @@ def drone_rows(args: argparse.Namespace) -> list[DroneRow]:
                     rows.append(
                         DroneRow(
                             drone_type=drone_type,
-                            distance_m=distance,
+                            distance_tiles=distance,
                             driving_skill=driving_skill,
                             light=light,
                             launchable="yes" if launchable else "no",
@@ -968,12 +976,12 @@ def drone_rows(args: argparse.Namespace) -> list[DroneRow]:
                             return_s=return_seconds if launchable else 0,
                             one_way_station_s=one_way_station_seconds,
                             scout_delay_s=scout_delay,
-                            attack_fixed_cep_m=fixed_cep,
-                            attack_creature_cep_m=creature_cep,
+                            attack_fixed_cep_tiles=fixed_cep,
+                            attack_creature_cep_tiles=creature_cep,
                             attack_time_s=attack_time,
-                            drop_cep_m=drop_cep,
+                            drop_cep_tiles=drop_cep,
                             drop_delay_s=drop_delay,
-                            mortar_spotter_location_cep_m=mortar_loc,
+                            mortar_spotter_location_cep_tiles=mortar_loc,
                             mortar_spotter_lost_pct=mortar_lost,
                         )
                     )
@@ -993,6 +1001,7 @@ def stack_accuracy_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
             for distance in parse_int_list(args.ranges):
                 if distance > max_range:
                     continue
+                accuracy_distance = round_accuracy_distance(mortar, round_spec, distance)
                 for primary_skill in parse_int_list(args.launcher_skills):
                     for crew_count in crew_counts:
                         if crew_count > mortar.max_secondary_crew:
@@ -1021,10 +1030,13 @@ def stack_accuracy_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                                         total_multiplier = effective_ballistic_multiplier(
                                             current_skill_multiplier * fixed_multiplier
                                         )
-                                        ballistic_range = minimum_range_error(distance) * total_multiplier
+                                        ballistic_range = (
+                                            minimum_range_error(accuracy_distance)
+                                            * total_multiplier
+                                        )
                                         ballistic_deflection = (
                                             minimum_deflection_error(
-                                                distance, mortar.deflection_error_mils
+                                                accuracy_distance, mortar.deflection_error_mils
                                             )
                                             * total_multiplier
                                         )
@@ -1057,8 +1069,8 @@ def stack_accuracy_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                                                 mortar=mortar.label,
                                                 round=round_spec.label,
                                                 guidance=round_spec.guidance,
-                                                range_m=distance,
-                                                max_range_m=max_range,
+                                                range_tiles=distance,
+                                                max_range_tiles=max_range,
                                                 crew=crew_count,
                                                 secondary_skill=secondary_skill if crew_count else "",
                                                 effective_skill=effective_skill,
@@ -1069,8 +1081,8 @@ def stack_accuracy_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                                                 profile=profile.label,
                                                 perception=perception,
                                                 shot_index=shot_index,
-                                                total_range_m=ballistic_range + projected_range,
-                                                total_deflection_m=ballistic_deflection + projected_deflection,
+                                                total_range_tiles=ballistic_range + projected_range,
+                                                total_deflection_tiles=ballistic_deflection + projected_deflection,
                                                 shot_lost_pct=lost * 100.0,
                                                 feedback_accuracy_multiplier=feedback_accuracy,
                                                 feedback_location_multiplier=feedback_location,
@@ -1115,6 +1127,7 @@ def guided_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
         for distance in parse_int_list(args.guided_ranges):
             if distance > round_max_range(round_spec):
                 continue
+            accuracy_distance = round_accuracy_distance(mortar, round_spec, distance)
             for primary_skill in parse_int_list(args.guided_launcher_skills):
                 for crew_count in parse_int_list(args.crew_counts):
                     if crew_count > mortar.max_secondary_crew:
@@ -1146,9 +1159,15 @@ def guided_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                             skill_accuracy_multiplier(effective_skill)
                             * fixed_accuracy_multiplier(args.proficiency, args.tactical_data, True)
                         )
-                        base_range = minimum_range_error(distance) * ballistic_multiplier + location_range
+                        base_range = (
+                            minimum_range_error(accuracy_distance)
+                            * ballistic_multiplier
+                            + location_range
+                        )
                         base_deflection = (
-                            minimum_deflection_error(distance, mortar.deflection_error_mils)
+                            minimum_deflection_error(
+                                accuracy_distance, mortar.deflection_error_mils
+                            )
                             * ballistic_multiplier
                             + location_cep
                         )
@@ -1176,16 +1195,16 @@ def guided_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                         rows.append(
                             ns(
                                 round=round_spec.label,
-                                range_m=distance,
+                                range_tiles=distance,
                                 scenario=label,
                                 requirement=round_spec.requirement,
                                 crew=crew_count,
                                 effective_skill=effective_skill,
                                 designation_success_pct=success_probability * 100.0,
-                                base_range_m=base_range,
-                                base_deflection_m=base_deflection,
-                                expected_guided_range_m=expected_range,
-                                expected_guided_deflection_m=expected_deflection,
+                                base_range_tiles=base_range,
+                                base_deflection_tiles=base_deflection,
+                                expected_guided_range_tiles=expected_range,
+                                expected_guided_deflection_tiles=expected_deflection,
                                 range_reduction_pct=(1.0 - expected_range / base_range) * 100.0,
                                 deflection_reduction_pct=(1.0 - expected_deflection / base_deflection) * 100.0,
                             )
@@ -1233,8 +1252,8 @@ def flight_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                     mortar=mortar.label,
                     round=round_spec.label,
                     guidance=round_spec.guidance,
-                    range_m=distance,
-                    max_range_m=max_range,
+                    range_tiles=distance,
+                    max_range_tiles=max_range,
                     in_range="yes" if in_range else "no",
                     expected_flight_s=expected_round_flight_seconds(
                         mortar, round_spec, min(distance, max_range)
@@ -1263,15 +1282,15 @@ def equipment_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
             rows.append(
                 ns(
                     profile=profile.label,
-                    range_m=distance,
+                    range_tiles=distance,
                     sensor_multiplier=sensor,
                     rangefinder_axis="yes"
                     if profile.rangefinder and distance <= MORTAR_LASER_RANGEFINDER_RANGE
                     else "no",
                     eplrs="yes" if profile.eplrs_net else "no",
                     drone="yes" if profile.drone or profile.feedback_observers else "no",
-                    location_cep_p6=base_location_error(6, sensor),
-                    location_cep_p8=base_location_error(8, sensor),
+                    location_cep_p6_tiles=base_location_error(6, sensor),
+                    location_cep_p8_tiles=base_location_error(8, sensor),
                     repeat_location_multiplier=effective_repeat_location_multiplier(
                         profile, distance
                     ),
@@ -1300,13 +1319,13 @@ def designation_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
         ("no live designator", "guided mortar", "none", "falls back unguided / invalid OKSI", "", "no"),
     )
     for name, use, target, condition, burn, valid in capabilities:
-        for range_m in parse_int_list(args.designation_ranges):
+        for range_tiles in parse_int_list(args.designation_ranges):
             rows.append(
                 ns(
                     designator=name,
                     use=use,
                     target=target,
-                    range_m=range_m,
+                    range_tiles=range_tiles,
                     condition=condition,
                     battery_burn=burn,
                     valid=valid,
@@ -1325,9 +1344,9 @@ def stack_creeping_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
             continue
         offset_x, offset_y, offset_distance, heading, danger_close, offset_multiplier = (
             creeping_adjustment(
-                row.range_m,
-                row.total_range_m,
-                row.total_deflection_m,
+                row.range_tiles,
+                row.total_range_tiles,
+                row.total_deflection_tiles,
                 args.player_offset_x,
                 args.player_offset_y,
             )
@@ -1336,16 +1355,16 @@ def stack_creeping_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
             ns(
                 mortar=row.mortar,
                 round=row.round,
-                range_m=row.range_m,
+                range_tiles=row.range_tiles,
                 crew=row.crew,
                 profile=row.profile,
                 shot_index=row.shot_index,
-                total_range_m=row.total_range_m,
-                total_deflection_m=row.total_deflection_m,
-                player_offset_x_m=args.player_offset_x,
-                creep_offset_x_m=offset_x,
-                creep_offset_y_m=offset_y,
-                creep_distance_m=offset_distance,
+                total_range_tiles=row.total_range_tiles,
+                total_deflection_tiles=row.total_deflection_tiles,
+                player_offset_x_tiles=args.player_offset_x,
+                creep_offset_x_tiles=offset_x,
+                creep_offset_y_tiles=offset_y,
+                creep_distance_tiles=offset_distance,
                 heading_degrees=heading,
                 danger_close=danger_close,
                 offset_multiplier=offset_multiplier,
@@ -1371,6 +1390,7 @@ def scenario_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
         mortar = MORTAR_SPECS[mortar_key]
         round_spec = ROUND_SPECS[round_key]
         profile = spotter_profiles([profile_key])[0]
+        accuracy_distance = round_accuracy_distance(mortar, round_spec, distance)
         for primary_skill in parse_int_list(args.scenario_launcher_skills):
             for perception in parse_int_list(args.scenario_perceptions):
                 effective = crew_effective_launcher_skill(
@@ -1385,9 +1405,14 @@ def scenario_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                 location_range = location
                 if profile.rangefinder and distance <= MORTAR_LASER_RANGEFINDER_RANGE:
                     location_range *= MORTAR_LASER_RANGEFINDER_AXIS_MULTIPLIER
-                base_range = minimum_range_error(distance) * total_multiplier + location_range
+                base_range = (
+                    minimum_range_error(accuracy_distance) * total_multiplier
+                    + location_range
+                )
                 base_deflection = (
-                    minimum_deflection_error(distance, mortar.deflection_error_mils)
+                    minimum_deflection_error(
+                        accuracy_distance, mortar.deflection_error_mils
+                    )
                     * total_multiplier
                     + location
                 )
@@ -1399,7 +1424,7 @@ def scenario_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                         scenario=name,
                         mortar=mortar.label,
                         round=round_spec.label,
-                        range_m=distance,
+                        range_tiles=distance,
                         primary_skill=primary_skill,
                         perception=perception,
                         crew=crew,
@@ -1407,10 +1432,10 @@ def scenario_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
                         fire_delay_s=crew_adjusted_fire_delay(mortar, crew),
                         flight_time_s=expected_round_flight_seconds(mortar, round_spec, distance),
                         profile=profile.label,
-                        base_range_m=base_range,
-                        base_deflection_m=base_deflection,
-                        final_range_m=final_range,
-                        final_deflection_m=final_deflection,
+                        base_range_tiles=base_range,
+                        base_deflection_tiles=base_deflection,
+                        final_range_tiles=final_range,
+                        final_deflection_tiles=final_deflection,
                     )
                 )
     return rows
@@ -1427,9 +1452,9 @@ def cache_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
         ("OKSI kit", "M821A2 81mm HE -> OKSI M821A2", "manual use", "guided fixed-tile round", "drone designation required"),
         ("OKSI kit", "M889A1 81mm HE -> OKSI M889A1", "manual use", "guided fixed-tile round", "drone designation required"),
         ("SOFLAM", "medium battery", "magazine well", "field-rugged designator", "also acts as binocular/rangefinder"),
-        ("laser rangefinder", "light/ultralight battery", "magazine well", "rangefinder only", "2000 m rangefinder regime"),
-        ("M252 crew", "primary + up to 2 assistants", "activity state", "half fire delay per assistant", "primary owns mortar assignment"),
-        ("M224 crew", "primary + up to 1 assistant", "activity state", "half fire delay with assistant", "primary owns mortar assignment"),
+        ("laser rangefinder", "light/ultralight battery", "magazine well", "rangefinder only", "2000 tile rangefinder regime"),
+        ("M252 crew", "primary + up to 2 assistants", "activity state", "half fire delay, then -2 s per assistant", "primary owns mortar assignment"),
+        ("M224 crew", "primary + up to 1 assistant", "activity state", "half fire delay, then -2 s with assistant", "primary owns mortar assignment"),
         ("drone designation", "scout or baba yaga", "after scout feed", "fixed tile designation", "OKSI/alternate mortar/FPV/drop target"),
     )
     for category, item, availability, role, notes in entries:
@@ -1447,6 +1472,46 @@ def cache_rows(args: argparse.Namespace) -> list[SimpleNamespace]:
     return rows
 
 
+HUMANIZED_TILE_BUCKETS = (5, 10, 15, 20, 30, 40, 50, 70, 100, 150, 200)
+
+HUMANIZED_FIELDS = {
+    "attack_creature_cep_tiles",
+    "attack_fixed_cep_tiles",
+    "ballistic_deflection_tiles",
+    "ballistic_range_tiles",
+    "base_deflection_tiles",
+    "base_range_tiles",
+    "drop_cep_tiles",
+    "expected_guided_deflection_tiles",
+    "expected_guided_range_tiles",
+    "final_deflection_tiles",
+    "final_range_tiles",
+    "location_deflection_tiles",
+    "location_range_tiles",
+    "mortar_spotter_location_cep_tiles",
+    "total_deflection_tiles",
+    "total_range_tiles",
+}
+
+
+def humanized_tiles(value: object) -> object:
+    if value == "" or value is None:
+        return value
+    numeric = float(value)
+    if numeric <= 0.0:
+        return 0
+    for bucket in HUMANIZED_TILE_BUCKETS:
+        if numeric <= bucket:
+            return bucket
+    return int(math.ceil(numeric / 300.0) * 300)
+
+
+def report_value(field: str, value: object) -> object:
+    if field in HUMANIZED_FIELDS:
+        return humanized_tiles(value)
+    return value
+
+
 def format_value(value: object) -> str:
     if isinstance(value, float):
         return f"{value:.2f}"
@@ -1457,7 +1522,7 @@ def write_csv(rows: Iterable[object], fieldnames: Sequence[str], out) -> None:
     writer = csv.DictWriter(out, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
     for row in rows:
-        writer.writerow({field: getattr(row, field) for field in fieldnames})
+        writer.writerow({field: report_value(field, getattr(row, field)) for field in fieldnames})
 
 
 def write_markdown(
@@ -1469,7 +1534,7 @@ def write_markdown(
     for row in rows:
         print(
             "| "
-            + " | ".join(format_value(getattr(row, field)) for field in fieldnames)
+            + " | ".join(format_value(report_value(field, getattr(row, field))) for field in fieldnames)
             + " |",
             file=out,
         )
@@ -1572,13 +1637,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--player-offset-x",
         type=float,
         default=-100.0,
-        help="player X offset from target, in meters, for creeping adjustment",
+        help="player X offset from target, in tiles, for creeping adjustment",
     )
     parser.add_argument(
         "--player-offset-y",
         type=float,
         default=0.0,
-        help="player Y offset from target, in meters, for creeping adjustment",
+        help="player Y offset from target, in tiles, for creeping adjustment",
     )
     parser.add_argument(
         "--drone-types",
@@ -1609,19 +1674,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 MORTAR_FIELDS = (
     "profile",
-    "range_m",
+    "range_tiles",
     "launcher_skill",
     "perception",
     "shot_index",
     "fixed_multiplier",
     "current_skill_multiplier",
     "total_multiplier",
-    "ballistic_range_m",
-    "ballistic_deflection_m",
-    "location_range_m",
-    "location_deflection_m",
-    "total_range_m",
-    "total_deflection_m",
+    "ballistic_range_tiles",
+    "ballistic_deflection_tiles",
+    "location_range_tiles",
+    "location_deflection_tiles",
+    "total_range_tiles",
+    "total_deflection_tiles",
     "shot_lost_pct",
     "feedback_accuracy_multiplier",
     "feedback_location_multiplier",
@@ -1629,7 +1694,7 @@ MORTAR_FIELDS = (
 
 DRONE_FIELDS = (
     "drone_type",
-    "distance_m",
+    "distance_tiles",
     "driving_skill",
     "light",
     "launchable",
@@ -1638,28 +1703,28 @@ DRONE_FIELDS = (
     "return_s",
     "one_way_station_s",
     "scout_delay_s",
-    "attack_fixed_cep_m",
-    "attack_creature_cep_m",
+    "attack_fixed_cep_tiles",
+    "attack_creature_cep_tiles",
     "attack_time_s",
-    "drop_cep_m",
+    "drop_cep_tiles",
     "drop_delay_s",
-    "mortar_spotter_location_cep_m",
+    "mortar_spotter_location_cep_tiles",
     "mortar_spotter_lost_pct",
 )
 
 CREEPING_FIELDS = (
     "profile",
-    "range_m",
+    "range_tiles",
     "launcher_skill",
     "perception",
     "shot_index",
-    "total_range_m",
-    "total_deflection_m",
-    "player_offset_x_m",
-    "player_offset_y_m",
-    "creep_offset_x_m",
-    "creep_offset_y_m",
-    "creep_distance_m",
+    "total_range_tiles",
+    "total_deflection_tiles",
+    "player_offset_x_tiles",
+    "player_offset_y_tiles",
+    "creep_offset_x_tiles",
+    "creep_offset_y_tiles",
+    "creep_distance_tiles",
     "heading_degrees",
     "danger_close",
     "offset_multiplier",
@@ -1669,8 +1734,8 @@ STACK_ACCURACY_FIELDS = (
     "mortar",
     "round",
     "guidance",
-    "range_m",
-    "max_range_m",
+    "range_tiles",
+    "max_range_tiles",
     "crew",
     "secondary_skill",
     "effective_skill",
@@ -1679,8 +1744,8 @@ STACK_ACCURACY_FIELDS = (
     "profile",
     "perception",
     "shot_index",
-    "total_range_m",
-    "total_deflection_m",
+    "total_range_tiles",
+    "total_deflection_tiles",
     "shot_lost_pct",
     "feedback_accuracy_multiplier",
     "feedback_location_multiplier",
@@ -1688,16 +1753,16 @@ STACK_ACCURACY_FIELDS = (
 
 GUIDED_FIELDS = (
     "round",
-    "range_m",
+    "range_tiles",
     "scenario",
     "requirement",
     "crew",
     "effective_skill",
     "designation_success_pct",
-    "base_range_m",
-    "base_deflection_m",
-    "expected_guided_range_m",
-    "expected_guided_deflection_m",
+    "base_range_tiles",
+    "base_deflection_tiles",
+    "expected_guided_range_tiles",
+    "expected_guided_deflection_tiles",
     "range_reduction_pct",
     "deflection_reduction_pct",
 )
@@ -1718,8 +1783,8 @@ FLIGHT_FIELDS = (
     "mortar",
     "round",
     "guidance",
-    "range_m",
-    "max_range_m",
+    "range_tiles",
+    "max_range_tiles",
     "in_range",
     "expected_flight_s",
     "single_gunner_fire_delay_s",
@@ -1729,13 +1794,13 @@ FLIGHT_FIELDS = (
 
 EQUIPMENT_FIELDS = (
     "profile",
-    "range_m",
+    "range_tiles",
     "sensor_multiplier",
     "rangefinder_axis",
     "eplrs",
     "drone",
-    "location_cep_p6",
-    "location_cep_p8",
+    "location_cep_p6_tiles",
+    "location_cep_p8_tiles",
     "repeat_location_multiplier",
     "notes",
 )
@@ -1744,7 +1809,7 @@ DESIGNATION_FIELDS = (
     "designator",
     "use",
     "target",
-    "range_m",
+    "range_tiles",
     "condition",
     "battery_burn",
     "valid",
@@ -1754,16 +1819,16 @@ DESIGNATION_FIELDS = (
 STACK_CREEPING_FIELDS = (
     "mortar",
     "round",
-    "range_m",
+    "range_tiles",
     "crew",
     "profile",
     "shot_index",
-    "total_range_m",
-    "total_deflection_m",
-    "player_offset_x_m",
-    "creep_offset_x_m",
-    "creep_offset_y_m",
-    "creep_distance_m",
+    "total_range_tiles",
+    "total_deflection_tiles",
+    "player_offset_x_tiles",
+    "creep_offset_x_tiles",
+    "creep_offset_y_tiles",
+    "creep_distance_tiles",
     "heading_degrees",
     "danger_close",
     "offset_multiplier",
@@ -1773,7 +1838,7 @@ SCENARIO_FIELDS = (
     "scenario",
     "mortar",
     "round",
-    "range_m",
+    "range_tiles",
     "primary_skill",
     "perception",
     "crew",
@@ -1781,10 +1846,10 @@ SCENARIO_FIELDS = (
     "fire_delay_s",
     "flight_time_s",
     "profile",
-    "base_range_m",
-    "base_deflection_m",
-    "final_range_m",
-    "final_deflection_m",
+    "base_range_tiles",
+    "base_deflection_tiles",
+    "final_range_tiles",
+    "final_deflection_tiles",
 )
 
 CACHE_FIELDS = (
