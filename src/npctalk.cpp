@@ -7761,10 +7761,12 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
                                     -1, impact_abs_ms, impact_message_strength,
                                     gunner.disp_name(), *target_abs_ms );
         }
-        get_timed_events().add_mortar_feedback( impact_message_time, gunner.getID(),
-                                                *target_abs_ms, correction_reported,
-                                                feedback_accuracy_multiplier,
-                                                feedback_location_multiplier );
+        if( !guided_impact_scheduled ) {
+            get_timed_events().add_mortar_feedback( impact_message_time, gunner.getID(),
+                                                    *target_abs_ms, correction_reported,
+                                                    feedback_accuracy_multiplier,
+                                                    feedback_location_multiplier );
+        }
         any_scheduled = true;
         ++scheduled_rounds;
     }
