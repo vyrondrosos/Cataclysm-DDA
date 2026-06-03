@@ -731,6 +731,11 @@
   },
   {
     "type": "item_action",
+    "id": "SOFLAM",
+    "name": { "str": "Designate target" }
+  },
+  {
+    "type": "item_action",
     "id": "SPRAY_CAN",
     "name": { "str": "Write something" }
   },
