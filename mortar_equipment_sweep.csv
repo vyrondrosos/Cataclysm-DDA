@@ -1,4 +1,4 @@
-profile,range_m,sensor_multiplier,rangefinder_axis,eplrs,drone,location_cep_p6,location_cep_p8,repeat_location_multiplier,notes
+profile,range_tiles,sensor_multiplier,rangefinder_axis,eplrs,drone,location_cep_p6_tiles,location_cep_p8_tiles,repeat_location_multiplier,notes
 plain spotter,500,1.0,no,no,no,345.0,285.0,0.5,
 plain spotter,1500,1.0,no,no,no,345.0,285.0,0.5,
 plain spotter,2500,1.0,no,no,no,345.0,285.0,0.5,

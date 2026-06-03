@@ -1,4 +1,4 @@
-designator,use,target,range_m,condition,battery_burn,valid,turn_based_activity
+designator,use,target,range_tiles,condition,battery_burn,valid,turn_based_activity
 SOFLAM handheld,ACERM,tile/creature,500,line of sight every turn,5/10 s,yes,yes
 SOFLAM handheld,ACERM,tile/creature,2000,line of sight every turn,5/10 s,yes,yes
 SOFLAM handheld,ACERM,tile/creature,5900,line of sight every turn,5/10 s,yes,yes
