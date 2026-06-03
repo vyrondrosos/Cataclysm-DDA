@@ -4,7 +4,7 @@
     "id": "mil_site_outpost",
     "name": "military outpost",
     "overmap_terrain": "outpost",
-    "overmap_match_type": "type",
+    "overmap_match_type": "TYPE",
     "entries": [
       { "label": "small arms and ammunition", "loot_group": "mil_site_spec_small_arms", "weight": 55 },
       { "label": "machine guns and heavy gun ammunition", "loot_group": "mil_site_spec_heavy_guns", "weight": 25 },
@@ -17,7 +17,7 @@
     "id": "mil_site_bunker",
     "name": "military bunker",
     "overmap_terrain": "bunker",
-    "overmap_match_type": "type",
+    "overmap_match_type": "TYPE",
     "entries": [
       { "label": "small arms and ammunition", "loot_group": "mil_site_spec_small_arms", "weight": 45 },
       { "label": "machine guns and heavy gun ammunition", "loot_group": "mil_site_spec_heavy_guns", "weight": 30 },
@@ -30,7 +30,7 @@
     "id": "mil_site_base_armory",
     "name": "military base armory",
     "overmap_terrain": "mil_base_5e",
-    "overmap_match_type": "type",
+    "overmap_match_type": "TYPE",
     "entries": [
       { "label": "small arms and ammunition", "loot_group": "mil_site_spec_small_arms", "weight": 35 },
       { "label": "machine guns and heavy gun ammunition", "loot_group": "mil_site_spec_heavy_guns", "weight": 35 },
