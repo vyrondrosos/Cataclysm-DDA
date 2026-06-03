@@ -43,7 +43,7 @@
     "description": "A first-person-view quadcopter with an improvised fragmentation charge and high-gain control link.  It is intended for remote piloting, loitering near a forward observer, and terminal attack.",
     "weight": "5 kg",
     "volume": "4 L",
-    "longest_side": "50 cm",
+    "longest_side": "48 cm",
     "price": "600 USD",
     "price_postapoc": "30 USD",
     "material": [ "aluminum", "plastic" ],
