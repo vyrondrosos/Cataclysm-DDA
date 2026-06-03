@@ -15,11 +15,11 @@ OKSI kit,M889A1 81mm HE -> OKSI M889A1,manual use,guided fixed-tile round,drone 
 OKSI kit,M889A1 81mm HE -> OKSI M889A1,manual use,guided fixed-tile round,drone designation required,stack-drones merged
 SOFLAM,medium battery,magazine well,field-rugged designator,also acts as binocular/rangefinder,81mm branch
 SOFLAM,medium battery,magazine well,field-rugged designator,also acts as binocular/rangefinder,stack-drones merged
-laser rangefinder,light/ultralight battery,magazine well,rangefinder only,2000 m rangefinder regime,81mm branch
-laser rangefinder,light/ultralight battery,magazine well,rangefinder only,2000 m rangefinder regime,stack-drones merged
-M252 crew,primary + up to 2 assistants,activity state,half fire delay per assistant,primary owns mortar assignment,81mm branch
-M252 crew,primary + up to 2 assistants,activity state,half fire delay per assistant,primary owns mortar assignment,stack-drones merged
-M224 crew,primary + up to 1 assistant,activity state,half fire delay with assistant,primary owns mortar assignment,81mm branch
-M224 crew,primary + up to 1 assistant,activity state,half fire delay with assistant,primary owns mortar assignment,stack-drones merged
+laser rangefinder,light/ultralight battery,magazine well,rangefinder only,2000 tile rangefinder regime,81mm branch
+laser rangefinder,light/ultralight battery,magazine well,rangefinder only,2000 tile rangefinder regime,stack-drones merged
+M252 crew,primary + up to 2 assistants,activity state,"half fire delay, then -2 s per assistant",primary owns mortar assignment,81mm branch
+M252 crew,primary + up to 2 assistants,activity state,"half fire delay, then -2 s per assistant",primary owns mortar assignment,stack-drones merged
+M224 crew,primary + up to 1 assistant,activity state,"half fire delay, then -2 s with assistant",primary owns mortar assignment,81mm branch
+M224 crew,primary + up to 1 assistant,activity state,"half fire delay, then -2 s with assistant",primary owns mortar assignment,stack-drones merged
 drone designation,scout or baba yaga,after scout feed,fixed tile designation,OKSI/alternate mortar/FPV/drop target,81mm branch
 drone designation,scout or baba yaga,after scout feed,fixed tile designation,OKSI/alternate mortar/FPV/drop target,stack-drones merged

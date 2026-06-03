@@ -8289,7 +8289,7 @@ static bool active_fpv_drone_has_scout_package( const npc &operator_npc )
     return active_fpv_drone_is_scout( operator_npc ) || active_fpv_drone_is_baba_yaga( operator_npc );
 }
 
-static int fpv_drone_max_range_meters( const std::string &drone_type )
+static int fpv_drone_max_range_tiles( const std::string &drone_type )
 {
     if( drone_type == "scout" ) {
         return 15000;
@@ -8311,7 +8311,7 @@ static int fpv_drone_battery_seconds( const std::string &drone_type )
     return 6 * 60;
 }
 
-static double fpv_drone_cruise_speed_meters_per_hour( const std::string &drone_type )
+static double fpv_drone_cruise_speed_tiles_per_hour( const std::string &drone_type )
 {
     if( drone_type == "baba_yaga" ) {
         return 70000.0;
@@ -9158,27 +9158,27 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     const int distance = rl_dist( operator_npc->pos_abs(), you.pos_abs() );
     const bool scout_drone = drone_type == "scout";
     const bool baba_yaga_drone = drone_type == "baba_yaga";
-    const int max_range_meters = fpv_drone_max_range_meters( drone_type );
-    if( distance > max_range_meters ) {
+    const int max_range_tiles = fpv_drone_max_range_tiles( drone_type );
+    if( distance > max_range_tiles ) {
         add_support_items( *operator_npc, fpv_drone_item_id( drone_type ), 1 );
         if( scout_drone ) {
-            add_msg( _( "%s reports that you are outside the 15 km scout drone control range." ),
+            add_msg( _( "%s reports that you are outside the 15000 tile scout drone control range." ),
                      operator_npc->disp_name() );
         } else if( baba_yaga_drone ) {
-            add_msg( _( "%s reports that you are outside the 20 km bomber drone control range." ),
+            add_msg( _( "%s reports that you are outside the 20000 tile bomber drone control range." ),
                      operator_npc->disp_name() );
         } else if( drone_type == "military_suicide" ) {
-            add_msg( _( "%s reports that you are outside the 7 km military explosive FPV control range." ),
+            add_msg( _( "%s reports that you are outside the 7000 tile military explosive FPV control range." ),
                      operator_npc->disp_name() );
         } else {
-            add_msg( _( "%s reports that you are outside the 7 km FPV control range." ),
+            add_msg( _( "%s reports that you are outside the 7000 tile FPV control range." ),
                      operator_npc->disp_name() );
         }
         return;
     }
 
     const int cruise_seconds = std::max( 1, static_cast<int>( std::ceil( distance * 3600.0 /
-                                      fpv_drone_cruise_speed_meters_per_hour( drone_type ) ) ) );
+                                      fpv_drone_cruise_speed_tiles_per_hour( drone_type ) ) ) );
     const int outbound_seconds = cruise_seconds + fpv_drone_launch_delay_seconds( *operator_npc,
                                  drone_type );
     const int return_seconds = cruise_seconds;
@@ -9616,14 +9616,15 @@ talk_effect_fun_t::func f_request_fpv_attack()
 
         practice_fpv_expenditure( *operator_npc );
         clear_fpv_mission( *operator_npc );
+        const int reported_cep = static_cast<int>( std::round( cep ) );
         if( light_multiplier > 1.0 ) {
-            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s, probable hit area %3$d meters, and notes the camera package is not built for this light." ),
+            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s, probable hit area about %3$d tiles, and notes the camera package is not built for this light." ),
                      operator_npc->disp_name(), format_fpv_duration( time_to_target ),
-                     static_cast<int>( std::round( cep ) ) );
+                     reported_cep );
         } else {
-            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s and probable hit area %3$d meters." ),
+            add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s and probable hit area about %3$d tiles." ),
                      operator_npc->disp_name(), format_fpv_duration( time_to_target ),
-                     static_cast<int>( std::round( cep ) ) );
+                     reported_cep );
         }
     };
 }
@@ -9724,9 +9725,10 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
                                 -1, impact_abs, -1, make_fpv_payload_drop_string_id( payload_id->str(),
                                         operator_npc->disp_name() ),
                                 support_value_string( *operator_npc, "fpv_mission_key" ) );
-        add_msg( _( "You command bomber drone payload release.  %1$s reports drop in %2$s, probable hit area %3$d meters, %4$d payload remaining." ),
+        add_msg( _( "You command bomber drone payload release.  %1$s reports drop in %2$s, probable hit area about %3$d tiles, %4$d payload remaining." ),
                  operator_npc->disp_name(), format_fpv_duration( delay_seconds ),
-                 static_cast<int>( std::round( cep ) ), loaded_fpv_payload_count( *operator_npc ) );
+                 static_cast<int>( std::round( cep ) ),
+                 loaded_fpv_payload_count( *operator_npc ) );
     };
 }
 
