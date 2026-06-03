@@ -297,6 +297,17 @@
         "effect": "request_fpv_thermal_scout_report"
       },
       {
+        "text": "Designate a target from the drone scout feed.",
+        "condition": {
+          "or": [
+            { "compare_string": [ "yes", { "npc_val": "fpv_scout_active" } ] },
+            { "compare_string": [ "yes", { "npc_val": "fpv_scout_report_active" } ] }
+          ]
+        },
+        "topic": "TALK_DONE",
+        "effect": "request_fpv_designation"
+      },
+      {
         "text": "Manage drone support equipment.",
         "condition": { "and": [ { "not": "is_by_radio" }, { "math": [ "has_var(n_fpv_assignment)" ] } ] },
         "topic": "TALK_DONE",

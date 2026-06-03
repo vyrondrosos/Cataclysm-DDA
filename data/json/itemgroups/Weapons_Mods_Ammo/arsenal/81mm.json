@@ -57,6 +57,7 @@
       { "group": "ammo_can_81mm_acerm_full", "prob": 100 },
       { "group": "ammo_tube_81mm_acerm_full", "prob": 60, "count": [ 1, 2 ] },
       { "item": "soflam", "prob": 100, "charges": [ 80, 250 ] },
+      { "item": "oksi_81mm_pgk", "prob": 80, "count": [ 1, 3 ] },
       { "item": "medium_battery_cell", "prob": 70, "count": [ 1, 3 ] }
     ]
   }

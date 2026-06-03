@@ -4149,6 +4149,11 @@ int npc::clear_fpv_support( const bool notify )
     remove_value( "fpv_scout_report_x" );
     remove_value( "fpv_scout_report_y" );
     remove_value( "fpv_scout_report_z" );
+    remove_value( "fpv_designation_active" );
+    remove_value( "fpv_designation_type" );
+    remove_value( "fpv_designation_x" );
+    remove_value( "fpv_designation_y" );
+    remove_value( "fpv_designation_z" );
     remove_value( "fpv_payload_type" );
 
     if( notify ) {

@@ -196,6 +196,8 @@ static const ammotype ammotype_40x53mm( "40x53mm" );
 static const ammotype ammotype_mortar_60mm( "mortar_60mm" );
 static const itype_id fuel_type_animal( "animal" );
 static const itype_id itype_81mm_shell_acerm( "81mm_shell_acerm" );
+static const itype_id itype_81mm_shell_m821a2_oksi( "81mm_shell_m821a2_oksi" );
+static const itype_id itype_81mm_shell_m889a1_oksi( "81mm_shell_m889a1_oksi" );
 static const itype_id itype_eplrs_net_control_station( "eplrs_net_control_station" );
 static const itype_id itype_foodperson_mask( "foodperson_mask" );
 static const itype_id itype_foodperson_mask_on( "foodperson_mask_on" );
@@ -6460,6 +6462,12 @@ bool mortar_round_is_acerm( const item &round )
     return round.typeId() == itype_81mm_shell_acerm;
 }
 
+bool mortar_round_is_oksi_guided( const item &round )
+{
+    return round.typeId() == itype_81mm_shell_m821a2_oksi ||
+           round.typeId() == itype_81mm_shell_m889a1_oksi;
+}
+
 int mortar_round_max_range( const mortar_type &mortar, const item &round )
 {
     return mortar_round_is_acerm( round ) ? mortar_acerm_max_range : mortar.range();
@@ -7008,6 +7016,26 @@ bool mortar_drone_spotting_disabled( const npc &operator_npc )
 {
     return active_fpv_drone_is_baba_yaga( operator_npc ) &&
            current_turn_number() < support_value_int( operator_npc, "fpv_payload_drop_busy_until" );
+}
+
+std::optional<tripoint_abs_ms> active_fpv_designation_target( const std::string &designation_type )
+{
+    std::vector<npc *> drone_operators = g->get_npcs_if( []( const npc & guy ) {
+        return guy.is_player_ally() && !support_value_string( guy, "fpv_assignment" ).empty();
+    } );
+    for( npc *operator_npc : drone_operators ) {
+        reconcile_fpv_mission( *operator_npc );
+        if( support_value_string( *operator_npc, "fpv_status" ) != "on_station" ||
+            !active_fpv_drone_has_scout_package( *operator_npc ) ||
+            support_value_string( *operator_npc, "fpv_designation_active" ) != "yes" ||
+            support_value_string( *operator_npc, "fpv_designation_type" ) != designation_type ) {
+            continue;
+        }
+        return tripoint_abs_ms( support_value_int( *operator_npc, "fpv_designation_x" ),
+                                support_value_int( *operator_npc, "fpv_designation_y" ),
+                                support_value_int( *operator_npc, "fpv_designation_z" ) );
+    }
+    return std::nullopt;
 }
 
 std::vector<mortar_spotter_context> mortar_spotters_for_fire_mission( npc &gunner,
@@ -7617,6 +7645,16 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
     const int max_range_ms = selected_round_sample ?
                              mortar_round_max_range( mortar_data, *selected_round_sample ) :
                              mortar_data.range();
+    const bool selected_round_needs_drone_designation = selected_round_sample &&
+            mortar_round_is_oksi_guided( *selected_round_sample );
+    const std::optional<tripoint_abs_ms> drone_designated_mortar_target =
+        active_fpv_designation_target( "mortar" );
+    if( selected_round_needs_drone_designation && !drone_designated_mortar_target ) {
+        add_msg( _( "%s reports that the selected OKSI-guided round needs a drone-designated fixed target." ),
+                 gunner.disp_name() );
+        return;
+    }
+    map &here = get_map();
     std::optional<tripoint_abs_ms> target_abs_ms;
     const std::optional<tripoint_abs_ms> previous_target = get_mortar_last_target( gunner );
     const int primary_launcher_skill = gunner.get_skill_level( skill_launcher );
@@ -7629,6 +7667,8 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
 
     if( forced_target ) {
         target_abs_ms = forced_target;
+    } else if( selected_round_needs_drone_designation ) {
+        target_abs_ms = drone_designated_mortar_target;
     } else if( repeat_target ) {
         if( !previous_target ) {
             add_msg( _( "%s reports they do not have a previous mortar target to repeat." ),
@@ -7637,17 +7677,45 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         }
         target_abs_ms = previous_target;
     } else {
-        const int max_range_omt = max_range_ms / ( 2 * SEEX );
-        const tripoint_abs_omt mortar_omt = project_to<coords::omt>( mortar_abs );
-        const tripoint_abs_omt target_omt = ui::omap::choose_point( _( "Pick a mortar target." ),
-                                            mortar_omt, false, max_range_omt );
-        if( target_omt == tripoint_abs_omt::invalid ) {
+        uilist target_menu;
+        target_menu.text = _( "Designate mortar target how?" );
+        target_menu.addentry( 0, true, 'v', _( "Visible local square" ) );
+        target_menu.addentry( 1, true, 'o', _( "Overmap tile" ) );
+        target_menu.addentry( 2, drone_designated_mortar_target.has_value(), 'd',
+                              drone_designated_mortar_target ? _( "Drone-designated square" ) :
+                              _( "No drone-designated square" ) );
+        target_menu.query();
+        const int targeting_method = target_menu.ret;
+        if( targeting_method < 0 ) {
             return;
         }
-        target_abs_ms = project_to<coords::ms>( target_omt );
-        target_abs_ms->x() += SEEX;
-        target_abs_ms->y() += SEEY;
-        target_abs_ms->z() = overmap_buffer.highest_omt_point( target_omt );
+
+        if( targeting_method == 2 ) {
+            target_abs_ms = drone_designated_mortar_target;
+        } else if( targeting_method == 0 ) {
+            add_msg( m_info, _( "Designate a visible square for the mortar strike." ) );
+            const std::optional<tripoint_bub_ms> target_bub = g->look_around();
+            if( !target_bub ) {
+                return;
+            }
+            if( !you.sees( here, *target_bub ) ) {
+                add_msg( _( "You need line of sight to designate that square." ) );
+                return;
+            }
+            target_abs_ms = here.get_abs( *target_bub );
+        } else {
+            const int max_range_omt = max_range_ms / ( 2 * SEEX );
+            const tripoint_abs_omt mortar_omt = project_to<coords::omt>( mortar_abs );
+            const tripoint_abs_omt target_omt = ui::omap::choose_point( _( "Pick a mortar target." ),
+                                                mortar_omt, false, max_range_omt );
+            if( target_omt == tripoint_abs_omt::invalid ) {
+                return;
+            }
+            target_abs_ms = project_to<coords::ms>( target_omt );
+            target_abs_ms->x() += SEEX;
+            target_abs_ms->y() += SEEY;
+            target_abs_ms->z() = overmap_buffer.highest_omt_point( target_omt );
+        }
     }
 
     const int target_distance = rl_dist( mortar_abs, *target_abs_ms );
@@ -8426,6 +8494,15 @@ static int load_baba_yaga_payload( npc &operator_npc )
     return loaded;
 }
 
+static void clear_fpv_designation( npc &operator_npc )
+{
+    operator_npc.set_value( "fpv_designation_active", "no" );
+    operator_npc.set_value( "fpv_designation_type", "" );
+    operator_npc.set_value( "fpv_designation_x", 0 );
+    operator_npc.set_value( "fpv_designation_y", 0 );
+    operator_npc.set_value( "fpv_designation_z", 0 );
+}
+
 static void clear_fpv_scout( npc &operator_npc )
 {
     operator_npc.set_value( "fpv_scout_active", "no" );
@@ -8437,6 +8514,7 @@ static void clear_fpv_scout( npc &operator_npc )
     operator_npc.set_value( "fpv_scout_report_x", 0 );
     operator_npc.set_value( "fpv_scout_report_y", 0 );
     operator_npc.set_value( "fpv_scout_report_z", 0 );
+    clear_fpv_designation( operator_npc );
 }
 
 static bool fpv_scout_task_ready( const npc &operator_npc )
@@ -8765,14 +8843,15 @@ static void reveal_fpv_scout_overmap_vision( const tripoint_abs_ms &scout_abs )
     }
 }
 
-static bool show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool thermal )
+static std::optional<tripoint_abs_ms> select_fpv_scout_view( const tripoint_abs_ms &scout_abs,
+        const bool thermal, const bool select_target )
 {
     map &here = get_map();
     avatar &you = get_avatar();
     const tripoint_bub_ms scout_bub = here.get_bub( scout_abs );
     if( !here.inbounds( scout_bub ) ) {
         add_msg( _( "The drone scout feed is no longer within the local control bubble." ) );
-        return false;
+        return std::nullopt;
     }
 
     const tripoint_bub_ms previous_pos = you.pos_bub( here );
@@ -8804,7 +8883,9 @@ static bool show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool th
     tripoint_bub_ms center = scout_bub;
     here.build_map_cache( scout_bub.z() );
     here.update_visibility_cache( scout_bub.z() );
-    g->look_around( true, center, scout_bub, false, true, false );
+    const look_around_result result = g->look_around( true, center, scout_bub, false, true, false );
+    const bool selected_visible = !select_target || ( result.position &&
+                                  you.sees( here, *result.position ) );
 
     you.setpos( here, previous_pos, false );
     you.view_offset = previous_offset;
@@ -8822,7 +8903,22 @@ static bool show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool th
     here.invalidate_visibility_cache();
     here.build_map_cache( previous_pos.z() );
     here.update_visibility_cache( previous_pos.z() );
-    return true;
+    if( !select_target ) {
+        return scout_abs;
+    }
+    if( !result.position || !here.inbounds( *result.position ) ) {
+        return std::nullopt;
+    }
+    if( !selected_visible ) {
+        add_msg( _( "The selected target is not visible from the drone scout feed." ) );
+        return std::nullopt;
+    }
+    return here.get_abs( *result.position );
+}
+
+static bool show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool thermal )
+{
+    return select_fpv_scout_view( scout_abs, thermal, false ).has_value();
 }
 
 static void practice_fpv_operation( npc &operator_npc )
@@ -9450,26 +9546,40 @@ talk_effect_fun_t::func f_request_fpv_attack()
 
         map &here = get_map();
         avatar &you = get_avatar();
-        const int target_mode = uilist( _( "Command FPV drone to attack what?" ), {
-            _( "Fixed visible square" ), _( "Visible creature" )
-        } );
+        const std::optional<tripoint_abs_ms> drone_designated_target =
+            active_fpv_designation_target( "fpv_attack" );
+        uilist target_menu;
+        target_menu.text = _( "Command FPV drone to attack what?" );
+        target_menu.addentry( 0, true, 'f', _( "Fixed visible square" ) );
+        target_menu.addentry( 1, true, 'c', _( "Visible creature" ) );
+        target_menu.addentry( 2, drone_designated_target.has_value(), 'd',
+                              drone_designated_target ? _( "Drone-designated fixed point" ) :
+                              _( "No drone-designated fixed point" ) );
+        target_menu.query();
+        const int target_mode = target_menu.ret;
         if( target_mode < 0 ) {
             return;
         }
 
-        const std::optional<tripoint_bub_ms> target_bub = target_mode == 0 ?
-                select_fixed_fpv_target( _( "Designate a fixed FPV attack point." ) ) :
-                select_visible_fpv_target( _( "Designate a visible FPV attack target." ) );
-        if( !target_bub ) {
-            return;
+        const bool fixed_point_attack = target_mode != 1;
+        std::optional<tripoint_bub_ms> target_bub;
+        tripoint_abs_ms target_abs = tripoint_abs_ms::invalid;
+        if( target_mode == 2 ) {
+            target_abs = *drone_designated_target;
+            target_bub = here.get_bub( target_abs );
+        } else {
+            target_bub = target_mode == 0 ?
+                         select_fixed_fpv_target( _( "Designate a fixed FPV attack point." ) ) :
+                         select_visible_fpv_target( _( "Designate a visible FPV attack target." ) );
+            if( !target_bub ) {
+                return;
+            }
+            if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
+                add_msg( _( "You need line of sight to designate that target." ) );
+                return;
+            }
+            target_abs = here.get_abs( *target_bub );
         }
-        if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
-            add_msg( _( "You need line of sight to designate that target." ) );
-            return;
-        }
-
-        const bool fixed_point_attack = target_mode == 0;
-        tripoint_abs_ms target_abs = here.get_abs( *target_bub );
         if( target_mode == 1 ) {
             Creature *const target = get_creature_tracker().creature_at<Creature>( *target_bub, true );
             if( target == nullptr || target == &you ) {
@@ -9485,7 +9595,8 @@ talk_effect_fun_t::func f_request_fpv_attack()
 
         const int vehicle_skill = operator_npc->get_skill_level( skill_driving );
         const int time_to_target = std::max( 5, 40 - vehicle_skill * 2 );
-        const double light_multiplier = fpv_light_cep_multiplier( here, *target_bub );
+        const double light_multiplier = target_bub && here.inbounds( *target_bub ) ?
+                                        fpv_light_cep_multiplier( here, *target_bub ) : 1.0;
         const double cep = std::max( 1.0, 15.0 - vehicle_skill ) *
                            ( fixed_point_attack ? 0.4 : 1.0 ) * light_multiplier;
         const tripoint_abs_ms impact_abs = apply_circular_cep( target_abs, cep );
@@ -9539,28 +9650,43 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
             return;
         }
         preserve_ready_fpv_scout_report( *operator_npc );
+        clear_fpv_designation( *operator_npc );
 
         map &here = get_map();
         avatar &you = get_avatar();
-        const int target_mode = uilist( _( "Command bomber drone to drop payload where?" ), {
-            _( "Fixed local square" ), _( "Local creature" )
-        } );
+        const std::optional<tripoint_abs_ms> drone_designated_target =
+            active_fpv_designation_target( "payload_drop" );
+        uilist target_menu;
+        target_menu.text = _( "Command bomber drone to drop payload where?" );
+        target_menu.addentry( 0, true, 'f', _( "Fixed local square" ) );
+        target_menu.addentry( 1, true, 'c', _( "Local creature" ) );
+        target_menu.addentry( 2, drone_designated_target.has_value(), 'd',
+                              drone_designated_target ? _( "Drone-designated drop point" ) :
+                              _( "No drone-designated drop point" ) );
+        target_menu.query();
+        const int target_mode = target_menu.ret;
         if( target_mode < 0 ) {
             return;
         }
 
-        const std::optional<tripoint_bub_ms> target_bub = target_mode == 0 ?
-                select_fixed_fpv_target( _( "Designate a fixed bomber drone payload drop point." ) ) :
-                select_visible_fpv_target( _( "Designate a local bomber drone payload drop target." ) );
-        if( !target_bub ) {
-            return;
+        std::optional<tripoint_bub_ms> target_bub;
+        tripoint_abs_ms target_abs = tripoint_abs_ms::invalid;
+        if( target_mode == 2 ) {
+            target_abs = *drone_designated_target;
+            target_bub = here.get_bub( target_abs );
+        } else {
+            target_bub = target_mode == 0 ?
+                         select_fixed_fpv_target( _( "Designate a fixed bomber drone payload drop point." ) ) :
+                         select_visible_fpv_target( _( "Designate a local bomber drone payload drop target." ) );
+            if( !target_bub ) {
+                return;
+            }
+            if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
+                add_msg( _( "You need line of sight to designate that drop target." ) );
+                return;
+            }
+            target_abs = here.get_abs( *target_bub );
         }
-        if( target_mode == 1 && !you.sees( here, *target_bub ) ) {
-            add_msg( _( "You need line of sight to designate that drop target." ) );
-            return;
-        }
-
-        tripoint_abs_ms target_abs = here.get_abs( *target_bub );
         if( target_mode == 1 ) {
             Creature *const target = get_creature_tracker().creature_at<Creature>( *target_bub, true );
             if( target == nullptr || target == &you ) {
@@ -9698,6 +9824,87 @@ talk_effect_fun_t::func f_request_fpv_scout_report( const bool thermal )
             reveal_fpv_scout_overmap_vision( scout_abs );
         }
         show_fpv_scout_view( scout_abs, thermal );
+    };
+}
+
+talk_effect_fun_t::func f_request_fpv_designation()
+{
+    return []( dialogue const & d ) {
+        npc *operator_npc = d.actor( true )->get_npc();
+        if( operator_npc == nullptr ) {
+            debugmsg( "Trying to request drone target designation, but beta talker is not an NPC.  %s",
+                      d.get_callstack() );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ||
+            !require_fpv_on_station( *operator_npc ) ) {
+            return;
+        }
+        if( !active_fpv_drone_has_scout_package( *operator_npc ) ) {
+            add_msg( _( "%s reports the active drone has no scout camera package." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        preserve_ready_fpv_scout_report( *operator_npc );
+        const bool has_pending_scout = support_value_string( *operator_npc, "fpv_scout_active" ) == "yes";
+        const bool has_saved_report = support_value_string( *operator_npc, "fpv_scout_report_active" ) == "yes";
+        if( !has_pending_scout && !has_saved_report ) {
+            add_msg( _( "%s reports no drone scout feed has been tasked." ),
+                     operator_npc->disp_name() );
+            return;
+        }
+
+        const int now = current_turn_number();
+        const int ready_turn = get_fpv_turn_value( *operator_npc, "fpv_scout_ready_turn" );
+        if( has_pending_scout && now < ready_turn && !has_saved_report ) {
+            add_msg( _( "%1$s reports the drone scout feed is still stabilizing, ETA %2$s." ),
+                     operator_npc->disp_name(), format_fpv_duration( ready_turn - now ) );
+            return;
+        }
+
+        enum {
+            designate_mortar,
+            designate_fpv_attack,
+            designate_payload_drop
+        };
+        uilist menu;
+        menu.text = _( "Designate drone scout target for what?" );
+        menu.addentry( designate_mortar, true, 'm', _( "Mortar fire" ) );
+        menu.addentry( designate_fpv_attack, true, 'f', _( "FPV drone attack" ) );
+        menu.addentry( designate_payload_drop, active_fpv_drone_is_baba_yaga( *operator_npc ), 'b',
+                       active_fpv_drone_is_baba_yaga( *operator_npc ) ?
+                       _( "Bomber drone payload drop" ) :
+                       _( "Bomber drone payload drop unavailable" ) );
+        menu.query();
+        if( menu.ret < 0 ) {
+            return;
+        }
+
+        const bool use_current_scout = has_pending_scout && now >= ready_turn;
+        const tripoint_abs_ms scout_abs(
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_x" : "fpv_scout_report_x" ),
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_y" : "fpv_scout_report_y" ),
+            get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_z" : "fpv_scout_report_z" ) );
+        const std::optional<tripoint_abs_ms> target_abs =
+            select_fpv_scout_view( scout_abs, false, true );
+        if( !target_abs ) {
+            return;
+        }
+
+        std::string designation_type = "mortar";
+        if( menu.ret == designate_fpv_attack ) {
+            designation_type = "fpv_attack";
+        } else if( menu.ret == designate_payload_drop ) {
+            designation_type = "payload_drop";
+        }
+        operator_npc->set_value( "fpv_designation_active", "yes" );
+        operator_npc->set_value( "fpv_designation_type", designation_type );
+        operator_npc->set_value( "fpv_designation_x", target_abs->x() );
+        operator_npc->set_value( "fpv_designation_y", target_abs->y() );
+        operator_npc->set_value( "fpv_designation_z", target_abs->z() );
+        add_msg( _( "%s marks a fixed target from the drone scout feed." ),
+                 operator_npc->disp_name() );
     };
 }
 
@@ -12930,6 +13137,10 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     }
     if( effect_id == "request_fpv_thermal_scout_report" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_scout_report( true ) ) );
+        return;
+    }
+    if( effect_id == "request_fpv_designation" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_fpv_designation() ) );
         return;
     }
     if( effect_id == "u_make_radio_representative" ) {
