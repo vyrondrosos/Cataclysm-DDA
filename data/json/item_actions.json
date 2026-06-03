@@ -701,6 +701,11 @@
   },
   {
     "type": "item_action",
+    "id": "OKSI_PGK",
+    "name": { "str": "Fit guidance kit" }
+  },
+  {
+    "type": "item_action",
     "id": "REMOTEVEH",
     "name": { "str": "Control a vehicle" }
   },
