@@ -1061,7 +1061,6 @@
     "max_charges": 1,
     "use_action": "OKSI_PGK",
     "to_hit": { "grip": "solid", "length": "hand", "surface": "any", "balance": "neutral" },
-    "material_thickness": 1,
     "melee_damage": { "bash": 2 }
   },
   {
