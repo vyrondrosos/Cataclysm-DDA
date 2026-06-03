@@ -50,7 +50,7 @@
     "symbol": ";",
     "color": "dark_gray",
     "explode_in_fire": true,
-    "explosion": { "power": 300, "shrapnel": 400 },
+    "explosion": { "power": 300, "shrapnel": { "casing_mass": 400, "fragment_mass": 0.4 } },
     "flags": [ "WATER_BREAK", "ELECTRONIC", "BOMB", "DANGEROUS", "TRADER_AVOID" ],
     "faults": [ { "fault_group": "electronic_general" } ],
     "melee_damage": { "bash": 4 }
