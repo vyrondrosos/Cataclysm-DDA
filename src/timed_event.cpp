@@ -184,8 +184,12 @@ static int guided_mortar_error_component( const int delta )
     if( magnitude == 0 ) {
         return 0;
     }
-    const double reduced = magnitude <= 100 ? magnitude * 0.2 :
-                           20.0 + ( magnitude - 100 ) * 0.5;
+    double reduced = magnitude * 0.15;
+    if( magnitude > 200 ) {
+        reduced = 45.0 + ( magnitude - 200 ) * 0.5;
+    } else if( magnitude > 100 ) {
+        reduced = 15.0 + ( magnitude - 100 ) * 0.3;
+    }
     const int rounded = std::max( 1, static_cast<int>( std::round( reduced ) ) );
     return delta < 0 ? -rounded : rounded;
 }
