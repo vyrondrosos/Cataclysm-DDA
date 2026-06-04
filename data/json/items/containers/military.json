@@ -355,6 +355,12 @@
         "description": "A long metal ammo box with handles on each end.  Front side has printed:\n<color_yellow>3 CARTRIDGE, 81 MM, HE, M889A1\nW/FUZE PD M935\nFOR M252 MORTAR</color>"
       },
       {
+        "id": "ammunition_can_pa156_81mm_m879_3",
+        "name": { "str": "3 81mm ammo can" },
+        "weight": 0,
+        "description": "A long metal ammo box with handles on each end.  Front side has printed:\n<color_yellow>3 CARTRIDGE, 81 MM, PRACTICE, M879\nFULL RANGE FOR\nM252 MORTAR</color>"
+      },
+      {
         "id": "ammunition_can_pa156_81mm_acerm_3",
         "name": { "str": "3 81mm ammo can" },
         "weight": 0,
@@ -464,6 +470,12 @@
         "name": { "str": "mortar container" },
         "weight": 0,
         "description": "A long, thick cylindrical fiber container.  Its olive-drab surface has printed:\nCARTRIDGE 81MM HE\nM889A1\nW/FUZE PD M935\nFOR M252 MORTAR"
+      },
+      {
+        "id": "ammunition_tube_mortar_81mm_m879",
+        "name": { "str": "mortar container" },
+        "weight": 0,
+        "description": "A long, thick cylindrical fiber container.  Its olive-drab surface has printed:\nCARTRIDGE 81MM PRACTICE\nM879\nFULL RANGE\nFOR M252 MORTAR"
       },
       {
         "id": "ammunition_tube_mortar_81mm_acerm",

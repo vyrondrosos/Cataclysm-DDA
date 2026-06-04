@@ -5,6 +5,7 @@
     "items": [
       { "group": "ammo_can_81mm_m821a2_full", "prob": 100 },
       { "group": "ammo_can_81mm_m889a1_full", "prob": 80 },
+      { "group": "ammo_can_81mm_m879_full", "prob": 70 },
       { "group": "ammo_can_81mm_acerm_full", "prob": 8 },
       { "group": "ammo_can_81mm_m819_full", "prob": 40 },
       { "group": "ammo_can_81mm_m853a1_full", "prob": 30 }
@@ -21,6 +22,12 @@
     "id": "ammo_can_81mm_m889a1_full",
     "container-item": { "item": "ammunition_can_pa156", "variant": "ammunition_can_pa156_81mm_m889a1_3" },
     "items": [ { "group": "ammo_tube_81mm_m889a1_full", "count": 3 } ]
+  },
+  {
+    "type": "item_group",
+    "id": "ammo_can_81mm_m879_full",
+    "container-item": { "item": "ammunition_can_pa156", "variant": "ammunition_can_pa156_81mm_m879_3" },
+    "items": [ { "group": "ammo_tube_81mm_m879_full", "count": 3 } ]
   },
   {
     "type": "item_group",
@@ -51,6 +58,12 @@
     "id": "ammo_tube_81mm_m889a1_full",
     "container-item": { "item": "ammunition_tube_mortar_81mm", "variant": "ammunition_tube_mortar_81mm_m889a1" },
     "items": [ { "item": "81mm_shell_m889a1", "charges": 1 } ]
+  },
+  {
+    "type": "item_group",
+    "id": "ammo_tube_81mm_m879_full",
+    "container-item": { "item": "ammunition_tube_mortar_81mm", "variant": "ammunition_tube_mortar_81mm_m879" },
+    "items": [ { "item": "81mm_shell_m879", "charges": 1 } ]
   },
   {
     "type": "item_group",
