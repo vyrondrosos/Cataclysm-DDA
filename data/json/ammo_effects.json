@@ -443,6 +443,12 @@
     "explosion": { "power": 900, "shrapnel": { "casing_mass": 1200, "fragment_mass": 0.12 } }
   },
   {
+    "id": "EXPLOSIVE_81mm_PRACTICE",
+    "type": "ammo_effect",
+    "explosion": { "power": 30, "distance_factor": 0.5 },
+    "aoe": [ { "field_type": "fd_smoke", "intensity_min": 1, "intensity_max": 1, "radius": 1 } ]
+  },
+  {
     "id": "MORTAR_81mm_SMOKE",
     "type": "ammo_effect",
     "//": "Generates a very large cloud of smoke at the target",
