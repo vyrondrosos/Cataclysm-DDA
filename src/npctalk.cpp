@@ -6479,7 +6479,8 @@ time_duration mortar_crew_adjusted_fire_delay( const mortar_type &mortar, const 
     const int divisor = 1 << active_secondaries;
     const int base_seconds = to_seconds<int>( mortar.npc_fire_message_delay() );
     const int crew_reduced_delay = std::max( 1, base_seconds - active_secondaries * 2 );
-    const int seconds = std::max( 1, crew_reduced_delay / divisor );
+    const int seconds = std::max( 1,
+                                  crew_reduced_delay / divisor );
     return time_duration::from_seconds( seconds );
 }
 
