@@ -46,6 +46,28 @@
     "price": "850 USD"
   },
   {
+    "id": "81mm_shell_m879",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "practice mortar shell" },
+    "description": "A full-range 81mm M879 practice mortar cartridge, ballistically matched to M821 and M889 high-explosive rounds but fitted with an M751 practice fuze that produces only a spotting flash, bang, and smoke.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m879",
+        "name": { "str": "M879 81mm mortar shell (practice)", "str_pl": "M879 81mm mortar shells (practice)" },
+        "description": "A full-range 81mm M879 practice mortar cartridge, ballistically matched to M821 and M889 high-explosive rounds but fitted with an M751 practice fuze that produces only a spotting flash, bang, and smoke."
+      }
+    ],
+    "weight": "4140 g",
+    "//": "M879 Full Range Practice Cartridge: 9.1 lb, ballistically matched to M821A1/M889A1, type-classified standard in 1986.",
+    "price": "180 USD",
+    "price_postapoc": "5 USD",
+    "extend": { "effects": [ "EXPLOSIVE_81mm_PRACTICE" ] },
+    "delete": { "effects": [ "EXPLOSIVE_81mmHE" ] }
+  },
+  {
     "id": "81mm_shell_acerm",
     "copy-from": "81mm_shell_m821a2",
     "type": "ITEM",

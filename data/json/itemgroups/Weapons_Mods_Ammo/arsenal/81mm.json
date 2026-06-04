@@ -16,6 +16,12 @@
             "variant": "ammunition_can_pa156_81mm_m889a1_3",
             "count": [ 0, 2 ],
             "prob": 100
+          },
+          {
+            "item": "ammunition_can_pa156",
+            "variant": "ammunition_can_pa156_81mm_m879_3",
+            "count": [ 0, 2 ],
+            "prob": 70
           }
         ]
       }
