@@ -655,7 +655,8 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
         return;
     }
     const item &selected_round = *selected_round_ptr;
-    const int mortar_range = mortar != nullptr ? mortar_round_max_range( *mortar, selected_round ) : range;
+    const int mortar_range = mortar != nullptr ? mortar_round_max_range( *mortar,
+                             selected_round ) : range;
     if( mortar_range <= 0 ) {
         debugmsg( "Mortar examine action for %s has invalid range %d.",
                   here.furn( examp ).id().c_str(), mortar_range );
