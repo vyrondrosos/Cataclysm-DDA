@@ -3976,7 +3976,7 @@ int npc::clear_mortar_support( const bool notify )
     if( !assignment.is_empty() ) {
         const int gunner_id = getID().get_value();
         for( npc *crew : g->get_npcs_if( [gunner_id]( const npc & guy ) {
-            const diag_value stored_gunner = guy.get_value( "mortar_crew_gunner_id" );
+        const diag_value stored_gunner = guy.get_value( "mortar_crew_gunner_id" );
             return !stored_gunner.is_empty() && stored_gunner.is_dbl() &&
                    static_cast<int>( stored_gunner.dbl() ) == gunner_id;
         } ) ) {

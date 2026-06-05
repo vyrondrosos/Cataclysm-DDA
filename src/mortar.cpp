@@ -73,11 +73,11 @@ time_duration mortar_flight_time( const int distance, const int range )
     const double range_scale = std::max( 0.1,
                                          static_cast<double>( range ) / mortar_60mm_reference_range );
     const int equivalent_60mm_distance = static_cast<int>(
-                                             std::round( distance / range_scale ) );
+            std::round( distance / range_scale ) );
     const std::pair<int, int> bounds = mortar_60mm_flight_time_bounds(
                                            equivalent_60mm_distance );
     const int seconds = static_cast<int>( std::round(
-                            rng( bounds.first, bounds.second ) * std::sqrt( range_scale ) ) );
+            rng( bounds.first, bounds.second ) * std::sqrt( range_scale ) ) );
     return time_duration::from_seconds( seconds );
 }
 

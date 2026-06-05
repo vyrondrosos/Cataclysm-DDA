@@ -6347,7 +6347,7 @@ std::optional<assigned_mortar> get_assigned_mortar( const npc &gunner )
 npc *mortar_primary_operator_at( const npc &requester, const tripoint_abs_ms &mortar_pos )
 {
     for( npc *candidate : g->get_npcs_if( [&requester]( const npc & guy ) {
-        return guy.getID() != requester.getID() && guy.is_player_ally() &&
+    return guy.getID() != requester.getID() && guy.is_player_ally() &&
                !guy.get_value( "mortar_assignment" ).is_empty();
     } ) ) {
         const std::optional<assigned_mortar> assignment = get_assigned_mortar( *candidate );
@@ -6475,7 +6475,7 @@ time_duration mortar_crew_adjusted_fire_delay( const mortar_type &mortar, const 
         const assigned_mortar &assignment )
 {
     const int active_secondaries = static_cast<int>(
-                                      mortar_active_crew_members( gunner, assignment ).size() );
+                                       mortar_active_crew_members( gunner, assignment ).size() );
     const int divisor = 1 << active_secondaries;
     const int base_seconds = to_seconds<int>( mortar.npc_fire_message_delay() );
     const int crew_reduced_delay = std::max( 1, base_seconds - active_secondaries * 2 );
@@ -7264,7 +7264,7 @@ void assign_mortar_crew_impl( npc &gunner )
     } );
 
     const int npcselect = npc_select_menu( candidates, _( "Who should join the mortar crew?" ),
-                                          false );
+                                           false );
     if( npcselect < 0 || static_cast<size_t>( npcselect ) >= candidates.size() ) {
         return;
     }
