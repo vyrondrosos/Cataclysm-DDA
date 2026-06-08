@@ -81,6 +81,7 @@
 #include "worldfactory.h"
 
 static const activity_id ACT_AUTODRIVE( "ACT_AUTODRIVE" );
+static const activity_id ACT_DESIGNATE_TARGET( "ACT_DESIGNATE_TARGET" );
 static const activity_id ACT_FIRSTAID( "ACT_FIRSTAID" );
 static const activity_id ACT_MIGRATION_CANCEL( "ACT_MIGRATION_CANCEL" );
 static const activity_id ACT_OPERATION( "ACT_OPERATION" );
@@ -480,7 +481,7 @@ void game::handle_progress_ui()
         if( u.activity.is_interruptible() && u.activity.interruptable_with_kb ) {
             wait_message += string_format( _( "\n%s to interrupt" ), press_x( ACTION_PAUSE ) );
         }
-        if( u.activity.id() == ACT_AUTODRIVE ) {
+        if( u.activity.id() == ACT_AUTODRIVE || u.activity.id() == ACT_DESIGNATE_TARGET ) {
             wait_refresh_rate = 1_turns;
         } else if( u.activity.id() == ACT_FIRSTAID ) {
             wait_refresh_rate = 5_turns;

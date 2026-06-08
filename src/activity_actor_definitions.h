@@ -4087,10 +4087,12 @@ class laser_designator_activity_actor : public activity_actor
         tripoint_abs_ms target_pos = tripoint_abs_ms::invalid;
         tripoint_abs_ms mounted_pos = tripoint_abs_ms::invalid;
         tripoint_abs_ms last_target_pos = tripoint_abs_ms::invalid;
+        tripoint_rel_ms initial_view_offset = tripoint_rel_ms::zero;
         character_id target_character;
         int target_monster = -1;
         target_type target = target_type::tile;
         bool mounted = false;
+        bool final_impact_view_pending = false;
         time_point next_charge = calendar::turn_zero;
 };
 
