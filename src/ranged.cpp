@@ -3021,12 +3021,14 @@ target_handler::trajectory target_ui::run()
                 loop_exit_code = ExitCode::Reload;
                 break;
             }
-        } else if( action == "FIRE" ) {
+        } else if( action == "FIRE" || ( mode == TargetMode::SelectOnly && action == "SELECT" ) ) {
             if( status != Status::Good ) {
                 continue;
             }
-            bool can_skip_confirm = mode == TargetMode::Spell && ( casting->damage( player_character ) <= 0 ||
-                                    casting->effect() == "pickup" );
+            bool can_skip_confirm = mode == TargetMode::SelectOnly ||
+                                    ( mode == TargetMode::Spell &&
+                                      ( casting->damage( player_character ) <= 0 ||
+                                        casting->effect() == "pickup" ) );
             if( !can_skip_confirm && !confirm_non_enemy_target() ) {
                 continue;
             }
@@ -4145,6 +4147,8 @@ std::string target_ui::uitext_title() const
             return string_format( _( "Throwing %s" ), relevant->tname() );
         case TargetMode::ThrowBlind:
             return string_format( _( "Blind throwing %s" ), relevant->tname() );
+        case TargetMode::SelectOnly:
+            return _( "Select target" );
         default:
             return _( "Set target" );
     }
@@ -4158,6 +4162,8 @@ std::string target_ui::uitext_fire() const
         return to_translation( "[Hotkey] to attack", "to attack" ).translated();
     } else if( mode == TargetMode::Spell ) {
         return to_translation( "[Hotkey] to cast the spell", "to cast" ).translated();
+    } else if( mode == TargetMode::SelectOnly ) {
+        return to_translation( "[Hotkey] to select target", "to select" ).translated();
     } else {
         return to_translation( "[Hotkey] to fire", "to fire" ).translated();
     }
@@ -4221,7 +4227,7 @@ void target_ui::draw_controls_list( int text_y )
     }
     if( is_mouse_enabled() ) {
         std::string move = _( "Mouse: LMB: Target, Wheel: Cycle," );
-        std::string fire = _( "RMB: Fire" );
+        std::string fire = mode == TargetMode::SelectOnly ? _( "RMB: Select" ) : _( "RMB: Fire" );
         lines.push_back( {7, colored( col_move, move ) + " " + colored( col_fire, fire )} );
     }
     {
