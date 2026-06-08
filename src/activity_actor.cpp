@@ -13682,9 +13682,46 @@ void write_laser_designation( Character &who, const tripoint_abs_ms &target, con
     who.set_value( "laser_designation_turn", laser_designation_turn() );
 }
 
-void stop_laser_designation( player_activity &act, Character &who, const std::string &reason )
+void restore_laser_designation_view( Character &who, const tripoint_rel_ms &initial_view_offset )
+{
+    if( !who.is_avatar() ) {
+        return;
+    }
+
+    avatar &player_character = get_avatar();
+    const bool changed_z = player_character.view_offset.z() != initial_view_offset.z();
+    player_character.view_offset = initial_view_offset;
+    if( changed_z ) {
+        get_map().invalidate_map_cache( player_character.posz() + player_character.view_offset.z() );
+    }
+    g->invalidate_main_ui_adaptor();
+}
+
+void center_laser_designation_view( Character &who, map &here, const tripoint_bub_ms &target_bub )
+{
+    if( !who.is_avatar() ) {
+        return;
+    }
+
+    avatar &player_character = get_avatar();
+    const tripoint_bub_ms player_pos = player_character.pos_bub( here );
+    tripoint center = ( target_bub.raw() * 7 + player_pos.raw() * 3 ) / 10;
+    center.z = target_bub.raw().z;
+
+    tripoint_rel_ms new_offset( center - player_pos.raw() );
+    const bool changed_z = player_character.view_offset.z() != new_offset.z();
+    player_character.view_offset = new_offset;
+    if( changed_z ) {
+        here.invalidate_map_cache( player_character.posz() + new_offset.z() );
+    }
+    g->invalidate_main_ui_adaptor();
+}
+
+void stop_laser_designation( player_activity &act, Character &who, const std::string &reason,
+                             const tripoint_rel_ms &initial_view_offset )
 {
     clear_laser_designation( who );
+    restore_laser_designation_view( who, initial_view_offset );
     if( !reason.empty() ) {
         who.add_msg_if_player( m_info, "%s", reason.c_str() );
     }
@@ -13704,33 +13741,54 @@ bool can_use_mounted_laser_designator( const Character &who, map &here,
 
 } // namespace
 
-void laser_designator_activity_actor::start( player_activity &act, Character & )
+void laser_designator_activity_actor::start( player_activity &act, Character &who )
 {
     act.moves_total = to_moves<int>( laser_designator_activity_interval );
     act.moves_left = act.moves_total;
     next_charge = calendar::turn;
+    if( who.is_avatar() ) {
+        initial_view_offset = get_avatar().view_offset;
+    }
 }
 
 void laser_designator_activity_actor::do_turn( player_activity &act, Character &who )
 {
     map &here = get_map();
     if( !designator || designator.get_item() == nullptr ) {
-        stop_laser_designation( act, who, _( "You no longer have the laser designator." ) );
+        stop_laser_designation( act, who, _( "You no longer have the laser designator." ),
+                                initial_view_offset );
         return;
     }
     if( !get_timed_events().queued( timed_event_type::MORTAR_GUIDED_IMPACT ) ) {
-        stop_laser_designation( act, who, _( "No guided mortar rounds remain in flight." ) );
+        if( !final_impact_view_pending ) {
+            clear_laser_designation( who );
+            if( !target_pos.is_invalid() ) {
+                const tripoint_bub_ms target_bub = here.get_bub( target_pos );
+                if( here.inbounds( target_bub ) ) {
+                    center_laser_designation_view( who, here, target_bub );
+                }
+            }
+            final_impact_view_pending = true;
+            act.moves_total = to_moves<int>( laser_designator_activity_interval );
+            act.moves_left = act.moves_total;
+            return;
+        }
+        stop_laser_designation( act, who, _( "No guided mortar rounds remain in flight." ),
+                                initial_view_offset );
         return;
     }
+    final_impact_view_pending = false;
     if( mounted ) {
         if( target != target_type::tile ) {
             stop_laser_designation( act, who,
-                                    _( "The mounted laser designator can only designate fixed points." ) );
+                                    _( "The mounted laser designator can only designate fixed points." ),
+                                    initial_view_offset );
             return;
         }
         if( !can_use_mounted_laser_designator( who, here, mounted_pos ) ) {
             stop_laser_designation( act, who,
-                                    _( "You are no longer positioned at the mounted laser designator." ) );
+                                    _( "You are no longer positioned at the mounted laser designator." ),
+                                    initial_view_offset );
             return;
         }
     }
@@ -13740,21 +13798,23 @@ void laser_designator_activity_actor::do_turn( player_activity &act, Character &
                                          last_target_pos, who, here );
     if( !current_target ) {
         stop_laser_designation( act, who,
-                                _( "You lose the target and stop designating." ) );
+                                _( "You lose the target and stop designating." ), initial_view_offset );
         return;
     }
 
     const tripoint_bub_ms target_bub = here.get_bub( current_target->pos );
     if( !here.inbounds( target_bub ) || !who.sees( here, target_bub ) ) {
         stop_laser_designation( act, who,
-                                _( "You no longer have line of sight to the target." ) );
+                                _( "You no longer have line of sight to the target." ), initial_view_offset );
         return;
     }
+    center_laser_designation_view( who, here, target_bub );
 
     if( calendar::turn >= next_charge ) {
         if( !designator->ammo_sufficient( &who, laser_designator_charges_per_interval ) ) {
             stop_laser_designation( act, who,
-                                    _( "The laser designator does not have enough battery power." ) );
+                                    _( "The laser designator does not have enough battery power." ),
+                                    initial_view_offset );
             return;
         }
         designator->ammo_consume( laser_designator_charges_per_interval,
@@ -13773,11 +13833,13 @@ void laser_designator_activity_actor::do_turn( player_activity &act, Character &
 void laser_designator_activity_actor::finish( player_activity &, Character &who )
 {
     clear_laser_designation( who );
+    restore_laser_designation_view( who, initial_view_offset );
 }
 
 void laser_designator_activity_actor::canceled( player_activity &, Character &who )
 {
     clear_laser_designation( who );
+    restore_laser_designation_view( who, initial_view_offset );
 }
 
 void laser_designator_activity_actor::serialize( JsonOut &jsout ) const
@@ -13792,6 +13854,8 @@ void laser_designator_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "target", static_cast<int>( target ) );
     jsout.member( "mounted", mounted );
     jsout.member( "next_charge", next_charge );
+    jsout.member( "initial_view_offset", initial_view_offset );
+    jsout.member( "final_impact_view_pending", final_impact_view_pending );
     jsout.end_object();
 }
 
@@ -13809,6 +13873,8 @@ std::unique_ptr<activity_actor> laser_designator_activity_actor::deserialize( Js
     data.read( "target", target );
     data.read( "mounted", actor.mounted );
     data.read( "next_charge", actor.next_charge );
+    data.read( "initial_view_offset", actor.initial_view_offset, false );
+    data.read( "final_impact_view_pending", actor.final_impact_view_pending, false );
     actor.target = static_cast<laser_designator_activity_actor::target_type>( target );
     return actor.clone();
 }
