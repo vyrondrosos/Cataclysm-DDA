@@ -187,6 +187,10 @@ class pixel_minimap::shared_texture_pool
             }
         }
 
+        bool has_available() const {
+            return !inactive_index.empty();
+        }
+
     private:
         std::vector<SDL_Texture_Ptr> texture_pool;
         std::vector<size_t> inactive_index;
@@ -383,6 +387,11 @@ pixel_minimap::submap_cache &pixel_minimap::get_cache_at( const tripoint_abs_sm 
     auto it = cache.find( abs_sm_pos );
 
     if( it == cache.end() ) {
+        if( !tex_pool->has_available() ) {
+            // A large view-center jump can temporarily leave too many stale submap
+            // textures cached until clear_unused_cache() runs at the end of the draw.
+            cache.clear();
+        }
         it = cache.emplace( abs_sm_pos, submap_cache( *tex_pool ) ).first;
     }
 
