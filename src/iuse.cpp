@@ -109,6 +109,7 @@
 #include "proficiency.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
+#include "ranged.h"
 #include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
@@ -6897,18 +6898,26 @@ std::optional<int> iuse::soflam( Character *p, item *it, const tripoint_bub_ms &
         return std::nullopt;
     }
 
+    avatar *const targeter = p->as_avatar();
+    if( targeter == nullptr ) {
+        p->add_msg_if_player( _( "Only the player can use the SOFLAM targeting interface." ) );
+        return std::nullopt;
+    }
+
     p->add_msg_if_player( _( "Choose a target." ) );
-    const std::optional<tripoint_bub_ms> target_bub = g->look_around();
-    if( !target_bub ) {
+    const target_handler::trajectory traj =
+        target_handler::mode_select_only( *targeter, MAX_VIEW_DISTANCE );
+    if( traj.empty() ) {
         p->add_msg_if_player( _( "Never mind." ) );
         return std::nullopt;
     }
-    if( !here.inbounds( *target_bub ) || !p->sees( here, *target_bub ) ) {
+    const tripoint_bub_ms target_bub = traj.back();
+    if( !here.inbounds( target_bub ) || !p->sees( here, target_bub ) ) {
         p->add_msg_if_player( _( "You need line of sight to the target." ) );
         return std::nullopt;
     }
 
-    const tripoint_abs_ms target_abs = here.get_abs( *target_bub );
+    const tripoint_abs_ms target_abs = here.get_abs( target_bub );
     if( menu.ret == c_rangefind ) {
         const int distance = rl_dist( p->pos_abs(), target_abs );
         p->add_msg_if_player( _( "Range: %d tiles." ), distance );
@@ -6922,7 +6931,7 @@ std::optional<int> iuse::soflam( Character *p, item *it, const tripoint_bub_ms &
     int target_monster = -1;
 
     if( menu.ret != c_mounted_designate ) {
-        Creature *const target_creature = get_creature_tracker().creature_at<Creature>( *target_bub );
+        Creature *const target_creature = get_creature_tracker().creature_at<Creature>( target_bub );
         if( target_creature != nullptr && target_creature != p &&
             !target_creature->is_hallucination() ) {
             if( Character *const target_as_character = dynamic_cast<Character *>( target_creature ) ) {
