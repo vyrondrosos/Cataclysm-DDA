@@ -112,6 +112,7 @@
 #include "ranged.h"
 #include "requirements.h"
 #include "ret_val.h"
+#include "ranged.h"
 #include "rng.h"
 #include "safe_reference.h"
 #include "sounds.h"
