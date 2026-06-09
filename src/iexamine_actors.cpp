@@ -31,12 +31,11 @@
 #include "map_scale_constants.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
-#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "monster.h"
 #include "mortar.h"
 #include "mtype.h"
-#include "npc.h"
+#include "npctalk.h"
 #include "output.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
@@ -78,38 +77,6 @@ bool mortar_round_is_oksi_guided( const item &round )
 bool mortar_round_is_guided( const item &round )
 {
     return mortar_round_is_acerm( round ) || mortar_round_is_oksi_guided( round );
-}
-
-std::string npc_value_string( const npc &who, const std::string &key )
-{
-    const diag_value &value = who.get_value( key );
-    return value.is_empty() ? std::string() : value.str();
-}
-
-int npc_value_int( const npc &who, const std::string &key )
-{
-    const diag_value &value = who.get_value( key );
-    return value.is_dbl() ? static_cast<int>( value.dbl() ) : 0;
-}
-
-std::optional<tripoint_abs_ms> active_fpv_mortar_designation_target()
-{
-    std::vector<npc *> drone_operators = g->get_npcs_if( []( const npc & guy ) {
-        return guy.is_player_ally() && !npc_value_string( guy, "fpv_assignment" ).empty();
-    } );
-    for( npc *operator_npc : drone_operators ) {
-        const std::string drone_type = npc_value_string( *operator_npc, "fpv_drone_type" );
-        if( npc_value_string( *operator_npc, "fpv_status" ) != "on_station" ||
-            ( drone_type != "scout" && drone_type != "baba_yaga" ) ||
-            npc_value_string( *operator_npc, "fpv_designation_active" ) != "yes" ||
-            npc_value_string( *operator_npc, "fpv_designation_type" ) != "mortar" ) {
-            continue;
-        }
-        return tripoint_abs_ms( npc_value_int( *operator_npc, "fpv_designation_x" ),
-                                npc_value_int( *operator_npc, "fpv_designation_y" ),
-                                npc_value_int( *operator_npc, "fpv_designation_z" ) );
-    }
-    return std::nullopt;
 }
 
 int mortar_round_max_range( const mortar_type &mortar, const item &round )
@@ -473,9 +440,10 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     const int mortar_range = mortar_round_max_range( *mortar, round );
     tripoint_abs_ms target_abs_ms = tripoint_abs_ms::invalid;
     if( mortar_round_is_oksi_guided( round ) ) {
-        const std::optional<tripoint_abs_ms> drone_target = active_fpv_mortar_designation_target();
+        const std::optional<tripoint_abs_ms> drone_target =
+            talk_effect_fun::active_fpv_designation_target( "mortar" );
         if( !drone_target ) {
-            add_msg( _( "The OKSI-guided round needs a drone-designated fixed target." ) );
+            add_msg( _( "The OKSI-guided round needs a drone-designated target." ) );
             return;
         }
         target_abs_ms = *drone_target;

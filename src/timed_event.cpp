@@ -220,42 +220,10 @@ static std::optional<tripoint_abs_ms> active_laser_designation_target( const ava
     return target.tripoint();
 }
 
-static std::string npc_value_string( const npc &who, const std::string &key )
-{
-    const diag_value &value = who.get_value( key );
-    return value.is_empty() ? std::string() : value.str();
-}
-
-static int npc_value_int( const npc &who, const std::string &key )
-{
-    const diag_value &value = who.get_value( key );
-    return value.is_dbl() ? static_cast<int>( value.dbl() ) : 0;
-}
-
 static bool guided_round_uses_drone_designation( const std::string &round_id )
 {
     return round_id == itype_81mm_shell_m821a2_oksi.str() ||
            round_id == itype_81mm_shell_m889a1_oksi.str();
-}
-
-static std::optional<tripoint_abs_ms> active_fpv_mortar_designation_target()
-{
-    std::vector<npc *> drone_operators = g->get_npcs_if( []( const npc & guy ) {
-        return guy.is_player_ally() && !npc_value_string( guy, "fpv_assignment" ).empty();
-    } );
-    for( npc *operator_npc : drone_operators ) {
-        const std::string drone_type = npc_value_string( *operator_npc, "fpv_drone_type" );
-        if( npc_value_string( *operator_npc, "fpv_status" ) != "on_station" ||
-            ( drone_type != "scout" && drone_type != "baba_yaga" ) ||
-            npc_value_string( *operator_npc, "fpv_designation_active" ) != "yes" ||
-            npc_value_string( *operator_npc, "fpv_designation_type" ) != "mortar" ) {
-            continue;
-        }
-        return tripoint_abs_ms( npc_value_int( *operator_npc, "fpv_designation_x" ),
-                                npc_value_int( *operator_npc, "fpv_designation_y" ),
-                                npc_value_int( *operator_npc, "fpv_designation_z" ) );
-    }
-    return std::nullopt;
 }
 
 static int guided_mortar_error_component( const int delta )
@@ -749,7 +717,7 @@ void timed_event::actualize()
         case timed_event_type::MORTAR_GUIDED_IMPACT: {
             const std::optional<tripoint_abs_ms> designation =
                 guided_round_uses_drone_designation( key ) ?
-                active_fpv_mortar_designation_target() :
+                talk_effect_fun::active_fpv_designation_target( "mortar" ) :
                 active_laser_designation_target( player_character );
             const timed_event_target_data *target_data = get_data<timed_event_target_data>();
             const tripoint_abs_ms original_target = target_data == nullptr ||
