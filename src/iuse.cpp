@@ -109,6 +109,7 @@
 #include "proficiency.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
+#include "ranged.h"
 #include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
@@ -122,6 +123,7 @@
 #include "translation.h"
 #include "translations.h"
 #include "trap.h"
+#include "timed_event.h"
 #include "try_parse_integer.h"
 #include "type_id.h"
 #include "uilist.h"
@@ -6869,6 +6871,104 @@ std::optional<int> iuse::camera( Character *p, item *it, const tripoint_bub_ms &
         return 1;
     }
     return 1;
+}
+
+std::optional<int> iuse::soflam( Character *p, item *it, const tripoint_bub_ms &pos )
+{
+    if( p == nullptr ) {
+        debugmsg( "%s called action SOFLAM that requires character but no character is present",
+                  it->typeId().str() );
+        return std::nullopt;
+    }
+
+    map &here = get_map();
+    const bool guided_round_pending =
+        get_timed_events().queued( timed_event_type::MORTAR_GUIDED_IMPACT );
+    const bool mounted_available =
+        here.has_flag_ter_or_furn( ter_furn_flag::TFLAG_MOUNTABLE, p->pos_bub( here ) );
+
+    enum {
+        c_rangefind,
+        c_designate,
+        c_mounted_designate
+    };
+
+    uilist menu;
+    menu.text = _( "Use SOFLAM how?" );
+    menu.addentry( c_rangefind, true, 'r', _( "Use laser rangefinder" ) );
+    menu.addentry( c_designate, guided_round_pending, 'd',
+                   guided_round_pending ? _( "Designate target" ) :
+                   _( "No guided mortar rounds in flight" ) );
+    menu.addentry( c_mounted_designate, guided_round_pending && mounted_available, 'm',
+                   mounted_available ? _( "Designate fixed point from support" ) :
+                   _( "Need stable support for mounted designation" ) );
+    menu.query();
+    if( menu.ret < 0 ) {
+        return std::nullopt;
+    }
+
+    if( menu.ret == c_rangefind && !it->ammo_sufficient( p, 1 ) ) {
+        p->add_msg_if_player( _( "The SOFLAM does not have enough battery power." ) );
+        return std::nullopt;
+    }
+    if( menu.ret != c_rangefind && !it->ammo_sufficient( p, 5 ) ) {
+        p->add_msg_if_player( _( "The SOFLAM needs at least 5 battery charges to begin designating." ) );
+        return std::nullopt;
+    }
+
+    avatar *const targeter = p->as_avatar();
+    if( targeter == nullptr ) {
+        p->add_msg_if_player( _( "Only the player can use the SOFLAM targeting interface." ) );
+        return std::nullopt;
+    }
+
+    p->add_msg_if_player( _( "Choose a target." ) );
+    const target_handler::trajectory traj =
+        target_handler::mode_select_only( *targeter, MAX_VIEW_DISTANCE );
+    if( traj.empty() ) {
+        p->add_msg_if_player( _( "Never mind." ) );
+        return std::nullopt;
+    }
+    const tripoint_bub_ms target_bub = traj.back();
+    if( !here.inbounds( target_bub ) || !p->sees( here, target_bub ) ) {
+        p->add_msg_if_player( _( "You need line of sight to the target." ) );
+        return std::nullopt;
+    }
+
+    const tripoint_abs_ms target_abs = here.get_abs( target_bub );
+    if( menu.ret == c_rangefind ) {
+        const int distance = rl_dist( p->pos_abs(), target_abs );
+        p->add_msg_if_player( _( "Range: %d tiles." ), distance );
+        it->ammo_consume( 1, pos, p );
+        return 0;
+    }
+
+    using target_type = laser_designator_activity_actor::target_type;
+    target_type selected_target = target_type::tile;
+    character_id target_character;
+    int target_monster = -1;
+
+    if( menu.ret != c_mounted_designate ) {
+        Creature *const target_creature = get_creature_tracker().creature_at<Creature>( target_bub );
+        if( target_creature != nullptr && target_creature != p &&
+            !target_creature->is_hallucination() ) {
+            if( Character *const target_as_character = dynamic_cast<Character *>( target_creature ) ) {
+                selected_target = target_type::character;
+                target_character = target_as_character->getID();
+            } else if( monster *const target_as_monster = dynamic_cast<monster *>( target_creature ) ) {
+                selected_target = target_type::monster;
+                target_monster = get_creature_tracker().temporary_id( *target_as_monster );
+            }
+        }
+    }
+
+    const bool mounted = menu.ret == c_mounted_designate;
+    p->assign_activity( laser_designator_activity_actor(
+                            item_location( *p, it ), target_abs, selected_target, mounted,
+                            mounted ? p->pos_abs() : tripoint_abs_ms::invalid,
+                            target_character, target_monster ) );
+    p->add_msg_if_player( _( "You begin designating the target." ) );
+    return 0;
 }
 
 std::optional<int> iuse::view_photos( Character *p, item *it, const tripoint_bub_ms & )

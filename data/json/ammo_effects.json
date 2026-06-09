@@ -438,6 +438,23 @@
     "explosion": { "power": 20, "distance_factor": 0.5 }
   },
   {
+    "id": "EXPLOSIVE_81mmHE",
+    "type": "ammo_effect",
+    "explosion": { "power": 900, "shrapnel": { "casing_mass": 1200, "fragment_mass": 0.12 } }
+  },
+  {
+    "id": "EXPLOSIVE_81mm_PRACTICE",
+    "type": "ammo_effect",
+    "explosion": { "power": 30, "distance_factor": 0.5 },
+    "aoe": [ { "field_type": "fd_smoke", "intensity_min": 1, "intensity_max": 1, "radius": 1 } ]
+  },
+  {
+    "id": "MORTAR_81mm_SMOKE",
+    "type": "ammo_effect",
+    "//": "Generates a very large cloud of smoke at the target",
+    "aoe": [ { "field_type": "fd_smoke", "intensity_min": 3, "intensity_max": 3, "radius": 9 } ]
+  },
+  {
     "id": "FLASHBANG",
     "type": "ammo_effect",
     "//": "Blinds and deafens nearby targets",

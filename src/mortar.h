@@ -65,7 +65,7 @@ class mortar_type
         static const mortar_type *from_furniture( const furn_str_id &furn );
         static bool is_mortar_round( const item &it );
         static int minimum_launcher_skill();
-        static double skill_accuracy_multiplier( int launcher_skill );
+        static double skill_accuracy_multiplier( double launcher_skill );
         static double effective_ballistic_multiplier( double raw_multiplier );
 
         void load( const JsonObject &jo, std::string_view src );
@@ -94,16 +94,18 @@ class mortar_type
                 const tripoint_abs_ms &location_axis_to,
                 const mortar_location_error &location_error,
                 double total_multiplier, bool round_is_high_explosive,
-                bool use_creeping_adjustment ) const;
+                bool use_creeping_adjustment,
+                int accuracy_distance = -1 ) const;
         tripoint_abs_ms clamp_fire_center_to_range( const tripoint_abs_ms &mortar_pos,
                 const tripoint_abs_ms &fire_center, const tripoint_abs_ms &fallback_axis_to,
                 int minimum_target_distance ) const;
-        double repeat_cep_multiplier( int launcher_skill ) const;
+        double repeat_cep_multiplier( double launcher_skill ) const;
         tripoint_abs_ms apply_dispersion( const tripoint_abs_ms &target,
                                           const tripoint_abs_ms &axis_from,
                                           const tripoint_abs_ms &axis_to,
                                           const mortar_error &error,
-                                          double *deflection_error = nullptr ) const;
+                                          double *deflection_error = nullptr,
+                                          int max_range = -1 ) const;
         tripoint_abs_ms apply_location_error( const tripoint_abs_ms &target,
                                               const tripoint_abs_ms &axis_from,
                                               const tripoint_abs_ms &axis_to,

@@ -57,5 +57,64 @@
     "npc_fire_message_delay": "10 seconds",
     "range_error_ratio": 0.015,
     "deflection_error_mils": 2.0
+  },
+  {
+    "type": "furniture",
+    "id": "f_m252_mortar",
+    "name": "M252 mortar",
+    "description": "Deployed and ready to be used 81 mm mortar.  It can only be used for indirect fire, and accurate fire missions depend on training, observation, and fire-control data.",
+    "symbol": "#",
+    "color": "dark_gray",
+    "move_cost_mod": 2,
+    "coverage": 20,
+    "required_str": 12,
+    "flags": [ "SHORT", "FLAT_SURF" ],
+    "bash": { "str_min": 50, "str_max": 90 },
+    "item": "mortar_m252",
+    "//range": [
+      "charge; muzzle velocity; min range, max range",
+      "0, 66,  70,  425 ",
+      "1, 149, 300, 1900",
+      "2, 208, 550, 3300",
+      "3, 259, 750, 4600",
+      "4, 305, 950, 5900",
+      "published probable error: range 1.5%, deflection 1% at all ranges",
+      "single-operator shot delay is doubled from the 60mm mortar"
+    ],
+    "examine_action": {
+      "type": "mortar",
+      "condition": { "math": [ "u_skill('launcher') >= 1" ] },
+      "condition_fail_msg": "You have absolutely no idea how to use this mortar.",
+      "aim_duration": {
+        "math": [
+          "u_effect_duration('aimed_81mm') > 1",
+          " ? max(10, 32 / u_skill('launcher'))",
+          " : max(120, 380 / u_skill('launcher'))"
+        ]
+      },
+      "effect_on_conditions": [
+        {
+          "id": "EOC_81MM_SHOT",
+          "effect": [
+            { "u_add_effect": "aimed_81mm", "duration": "3 minutes" },
+            { "math": [ "u_skill_exp('launcher', 'format': 'percentage')++" ] },
+            { "if": { "math": [ "distance('u', _target) <= 425 " ] }, "then": { "u_spawn_item": "81mm_propellant" } },
+            { "if": { "math": [ "distance('u', _target) <= 1900" ] }, "then": { "u_spawn_item": "81mm_propellant" } },
+            { "if": { "math": [ "distance('u', _target) <= 3300" ] }, "then": { "u_spawn_item": "81mm_propellant" } },
+            { "if": { "math": [ "distance('u', _target) <= 4600" ] }, "then": { "u_spawn_item": "81mm_propellant" } }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "type": "mortar_type",
+    "id": "m252",
+    "furniture": "f_m252_mortar",
+    "ammo": "mortar_81mm",
+    "range": 5900,
+    "npc_fire_message_delay": "20 seconds",
+    "range_error_ratio": 0.015,
+    "deflection_error_mils": 10.0
   }
 ]

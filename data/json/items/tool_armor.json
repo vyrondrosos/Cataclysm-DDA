@@ -1044,6 +1044,40 @@
     "melee_damage": { "bash": 5 }
   },
   {
+    "id": "soflam",
+    "type": "ITEM",
+    "subtypes": [ "TOOL", "ARMOR" ],
+    "category": "tools",
+    "symbol": ";",
+    "color": "dark_gray",
+    "looks_like": "laser_rangefinder",
+    "name": { "str": "AN/PEQ-1C SOFLAM" },
+    "description": "A rugged AN/PEQ-1C Ground Laser Target Designator, also known as SOFLAM or GLTD III.  It combines binocular optics, laser rangefinding, target designation, and coordinate generation for precision-guided support fires under field conditions.",
+    "price": "12 kUSD",
+    "price_postapoc": "400 USD",
+    "material": [ { "type": "plastic", "portion": 5 }, { "type": "glass", "portion": 2 }, { "type": "aluminum", "portion": 2 } ],
+    "flags": [ "ZOOM", "OVERSIZE", "BELTED", "ALLOWS_NATURAL_ATTACKS", "WATER_BREAK", "ELECTRONIC" ],
+    "weight": "5200 g",
+    "volume": "12400 ml",
+    "longest_side": "34 cm",
+    "charges_per_use": 1,
+    "use_action": "SOFLAM",
+    "pocket_data": [
+      {
+        "pocket_type": "MAGAZINE_WELL",
+        "rigid": true,
+        "flag_restriction": [ "BATTERY_MEDIUM" ],
+        "default_magazine": "medium_battery_cell"
+      }
+    ],
+    "tool_ammo": [ "battery" ],
+    "faults": [ { "fault_group": "electronic_general" } ],
+    "to_hit": { "grip": "solid", "length": "short", "surface": "any", "balance": "uneven" },
+    "material_thickness": 2,
+    "armor": [ { "encumbrance": 8, "coverage": 25, "covers": [ "torso" ], "specifically_covers": [ "torso_hanging_front" ] } ],
+    "melee_damage": { "bash": 7 }
+  },
+  {
     "id": "wearable_light",
     "type": "ITEM",
     "subtypes": [ "TOOL", "ARMOR" ],

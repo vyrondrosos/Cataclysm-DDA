@@ -125,6 +125,7 @@
 #include "string_formatter.h"
 #include "talker.h"
 #include "text_snippets.h"
+#include "timed_event.h"
 #include "translation.h"
 #include "translations.h"
 #include "trap.h"
@@ -167,6 +168,7 @@ static const activity_id ACT_CONSUME( "ACT_CONSUME" );
 static const activity_id ACT_CRACKING( "ACT_CRACKING" );
 static const activity_id ACT_CRAFT( "ACT_CRAFT" );
 static const activity_id ACT_CRAFT_WAIT( "ACT_CRAFT_WAIT" );
+static const activity_id ACT_DESIGNATE_TARGET( "ACT_DESIGNATE_TARGET" );
 static const activity_id ACT_DISABLE( "ACT_DISABLE" );
 static const activity_id ACT_DISASSEMBLE( "ACT_DISASSEMBLE" );
 static const activity_id ACT_DISMEMBER( "ACT_DISMEMBER" );
@@ -294,6 +296,7 @@ static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_social_dissatisfied( "social_dissatisfied" );
 static const efftype_id effect_social_satisfied( "social_satisfied" );
 static const efftype_id effect_socialized_recently( "socialized_recently" );
+static const efftype_id effect_stunned( "stunned" );
 static const efftype_id effect_tied( "tied" );
 static const efftype_id effect_under_operation( "under_operation" );
 static const efftype_id effect_worked_on( "worked_on" );
@@ -13460,6 +13463,56 @@ std::unique_ptr<activity_actor> find_mount_activity_actor::deserialize( JsonValu
     return find_mount_activity_actor().clone();
 }
 
+namespace
+{
+
+bool mortar_npc_can_crew( const npc &guy )
+{
+    return !guy.is_dead() && !guy.in_sleep_state() && !guy.has_effect( effect_narcosis ) &&
+           !guy.has_effect( effect_downed ) && !guy.has_effect( effect_stunned ) &&
+           guy.get_working_arm_count() > 0;
+}
+
+std::optional<tripoint_abs_ms> mortar_assignment_pos( const npc &guy )
+{
+    const diag_value assignment_pos = guy.get_value( "mortar_assignment_pos" );
+    if( assignment_pos.is_empty() || !assignment_pos.is_tripoint() ) {
+        return std::nullopt;
+    }
+    return assignment_pos.tripoint();
+}
+
+bool mortar_primary_assignment_matches( const npc &gunner,
+                                        const tripoint_abs_ms &assigned_mortar_pos,
+                                        const mortar_type_id &assigned_mortar_type )
+{
+    const diag_value assignment = gunner.get_value( "mortar_assignment" );
+    if( assignment.is_empty() || assignment.str() != assigned_mortar_type.str() ) {
+        return false;
+    }
+    const std::optional<tripoint_abs_ms> assigned_pos = mortar_assignment_pos( gunner );
+    return assigned_pos && *assigned_pos == assigned_mortar_pos;
+}
+
+bool mortar_crew_assignment_matches( const npc &assistant, const character_id &primary_gunner_id,
+                                     const tripoint_abs_ms &assigned_mortar_pos,
+                                     const mortar_type_id &assigned_mortar_type )
+{
+    const diag_value stored_gunner_id = assistant.get_value( "mortar_crew_gunner_id" );
+    if( stored_gunner_id.is_empty() || !stored_gunner_id.is_dbl() ||
+        static_cast<int>( stored_gunner_id.dbl() ) != primary_gunner_id.get_value() ) {
+        return false;
+    }
+    const diag_value stored_mortar_type = assistant.get_value( "mortar_crew_mortar_type" );
+    if( stored_mortar_type.is_empty() || stored_mortar_type.str() != assigned_mortar_type.str() ) {
+        return false;
+    }
+    const std::optional<tripoint_abs_ms> assigned_pos = mortar_assignment_pos( assistant );
+    return assigned_pos && *assigned_pos == assigned_mortar_pos;
+}
+
+} // namespace
+
 void man_mortar_activity_actor::start( player_activity &act, Character &who )
 {
     if( !who.is_npc() ) {
@@ -13477,25 +13530,30 @@ void man_mortar_activity_actor::do_turn( player_activity &act, Character &who )
         return;
     }
     npc &gunner = dynamic_cast<npc &>( who );
-    if( gunner.get_value( "mortar_assignment" ).is_empty() ) {
+    if( !mortar_npc_can_crew( gunner ) ) {
         act.set_to_null();
         gunner.revert_after_activity();
         return;
     }
+
     map &here = get_map();
-    const diag_value assignment_pos = gunner.get_value( "mortar_assignment_pos" );
-    if( assignment_pos.is_empty() ) {
+    const bool is_assistant = gunner_id.is_valid();
+    const tripoint_abs_ms assigned_mortar_pos = mortar_pos;
+    if( is_assistant ) {
+        npc *primary_gunner = g->find_npc( gunner_id );
+        if( primary_gunner == nullptr || !mortar_npc_can_crew( *primary_gunner ) ||
+            !mortar_primary_assignment_matches( *primary_gunner, assigned_mortar_pos, mortar_type ) ||
+            !mortar_crew_assignment_matches( gunner, gunner_id, assigned_mortar_pos, mortar_type ) ) {
+            act.set_to_null();
+            gunner.revert_after_activity();
+            return;
+        }
+    } else if( !mortar_primary_assignment_matches( gunner, assigned_mortar_pos, mortar_type ) ) {
         act.set_to_null();
         gunner.revert_after_activity();
         return;
     }
-    const tripoint_abs_ms assigned_mortar_pos = assignment_pos.tripoint();
-    if( !assignment_pos.is_tripoint() ) {
-        act.set_to_null();
-        gunner.revert_after_activity();
-        return;
-    }
-    mortar_pos = assigned_mortar_pos;
+
     const tripoint_bub_ms mortar_bub = here.get_bub( assigned_mortar_pos );
     if( rl_dist( gunner.pos_bub( here ), mortar_bub ) > 1 ) {
         const std::vector<tripoint_bub_ms> route = route_adjacent( who, mortar_bub );
@@ -13506,7 +13564,7 @@ void man_mortar_activity_actor::do_turn( player_activity &act, Character &who )
         }
         who.activity = player_activity();
         who.set_destination( route, player_activity( man_mortar_activity_actor( assigned_mortar_pos,
-                             mortar_type ) ) );
+                             mortar_type, gunner_id ) ) );
         return;
     }
     gunner.pause();
@@ -13525,6 +13583,7 @@ void man_mortar_activity_actor::serialize( JsonOut &jsout ) const
     jsout.start_object();
     jsout.member( "mortar_type", mortar_type.str() );
     jsout.member( "mortar_pos", mortar_pos );
+    jsout.member( "gunner_id", gunner_id.get_value() );
     jsout.end_object();
 }
 
@@ -13534,6 +13593,286 @@ std::unique_ptr<activity_actor> man_mortar_activity_actor::deserialize( JsonValu
     man_mortar_activity_actor actor;
     actor.mortar_type = mortar_type_id( data.get_string( "mortar_type" ) );
     data.read( "mortar_pos", actor.mortar_pos );
+    if( data.has_int( "gunner_id" ) ) {
+        actor.gunner_id = character_id( data.get_int( "gunner_id" ) );
+    }
+    return actor.clone();
+}
+
+namespace
+{
+
+constexpr int laser_designator_charges_per_interval = 5;
+constexpr time_duration laser_designator_charge_interval = 10_seconds;
+constexpr time_duration laser_designator_activity_interval = 1_seconds;
+
+void clear_laser_designation( Character &who )
+{
+    who.remove_value( "laser_designation_active" );
+    who.remove_value( "laser_designation_target" );
+    who.remove_value( "laser_designation_success" );
+    who.remove_value( "laser_designation_turn" );
+}
+
+int laser_designation_turn()
+{
+    return to_turn<int>( calendar::turn );
+}
+
+struct laser_designator_target_state {
+    tripoint_abs_ms pos = tripoint_abs_ms::invalid;
+    int speed = 0;
+    bool moved = false;
+    bool immobile = false;
+};
+
+std::optional<laser_designator_target_state> resolve_laser_designator_target(
+    const laser_designator_activity_actor::target_type target,
+    const character_id &target_character, const int target_monster,
+    const tripoint_abs_ms &stored_target_pos, const tripoint_abs_ms &last_target_pos,
+    Character &who, map &here )
+{
+    if( target == laser_designator_activity_actor::target_type::tile ) {
+        return laser_designator_target_state{ stored_target_pos, 0, false, true };
+    }
+
+    Creature *target_creature = nullptr;
+    if( target == laser_designator_activity_actor::target_type::character ) {
+        if( target_character == who.getID() ) {
+            target_creature = &who;
+        } else if( target_character.is_valid() ) {
+            target_creature = g->find_npc( target_character );
+        }
+    } else if( target == laser_designator_activity_actor::target_type::monster ) {
+        shared_ptr_fast<monster> critter = get_creature_tracker().from_temporary_id( target_monster );
+        target_creature = critter.get();
+    }
+
+    if( target_creature == nullptr || target_creature->is_dead_state() ||
+        target_creature->is_hallucination() || !who.sees( here, *target_creature ) ) {
+        return std::nullopt;
+    }
+
+    const tripoint_abs_ms current_pos = target_creature->pos_abs();
+    return laser_designator_target_state{
+        current_pos,
+        std::max( 1, target_creature->get_speed() ),
+        last_target_pos.is_invalid() ? true : current_pos != last_target_pos,
+        target_creature->get_speed() <= 0
+    };
+}
+
+bool laser_designation_success( const Character &who,
+                                const laser_designator_target_state &target )
+{
+    if( target.immobile ) {
+        return true;
+    }
+    const double target_speed = std::max( 1.0, target.moved ? static_cast<double>( target.speed ) :
+                                          target.speed / 4.0 );
+    const double success_chance = ( who.get_per() * who.get_dex() / target_speed ) * 2.0;
+    return success_chance >= 1.0 || x_in_y( success_chance, 1.0 );
+}
+
+void write_laser_designation( Character &who, const tripoint_abs_ms &target, const bool success )
+{
+    who.set_value( "laser_designation_active", "yes" );
+    who.set_value( "laser_designation_target", target );
+    who.set_value( "laser_designation_success", success ? 1 : 0 );
+    who.set_value( "laser_designation_turn", laser_designation_turn() );
+}
+
+void restore_laser_designation_view( Character &who, const tripoint_rel_ms &initial_view_offset )
+{
+    if( !who.is_avatar() ) {
+        return;
+    }
+
+    avatar &player_character = get_avatar();
+    const bool changed_z = player_character.view_offset.z() != initial_view_offset.z();
+    player_character.view_offset = initial_view_offset;
+    if( changed_z ) {
+        get_map().invalidate_map_cache( player_character.posz() + player_character.view_offset.z() );
+    }
+    g->invalidate_main_ui_adaptor();
+}
+
+void center_laser_designation_view( Character &who, map &here, const tripoint_bub_ms &target_bub )
+{
+    if( !who.is_avatar() ) {
+        return;
+    }
+
+    avatar &player_character = get_avatar();
+    const tripoint_bub_ms player_pos = player_character.pos_bub( here );
+    tripoint_rel_ms new_offset( target_bub.raw() - player_pos.raw() );
+    const bool changed_z = player_character.view_offset.z() != new_offset.z();
+    player_character.view_offset = new_offset;
+    if( changed_z ) {
+        here.invalidate_map_cache( player_character.posz() + new_offset.z() );
+    }
+    g->invalidate_main_ui_adaptor();
+}
+
+void stop_laser_designation( player_activity &act, Character &who, const std::string &reason,
+                             const tripoint_rel_ms &initial_view_offset )
+{
+    clear_laser_designation( who );
+    restore_laser_designation_view( who, initial_view_offset );
+    if( !reason.empty() ) {
+        who.add_msg_if_player( m_info, "%s", reason.c_str() );
+    }
+    act.set_to_null();
+}
+
+bool can_use_mounted_laser_designator( const Character &who, map &here,
+                                       const tripoint_abs_ms &mounted_pos )
+{
+    if( mounted_pos.is_invalid() || who.pos_abs() != mounted_pos ) {
+        return false;
+    }
+    const tripoint_bub_ms mounted_bub = here.get_bub( mounted_pos );
+    return here.inbounds( mounted_bub ) &&
+           here.has_flag_ter_or_furn( ter_furn_flag::TFLAG_MOUNTABLE, mounted_bub );
+}
+
+} // namespace
+
+void laser_designator_activity_actor::start( player_activity &act, Character &who )
+{
+    act.moves_total = to_moves<int>( laser_designator_activity_interval );
+    act.moves_left = act.moves_total;
+    next_charge = calendar::turn;
+    if( who.is_avatar() ) {
+        initial_view_offset = get_avatar().view_offset;
+    }
+}
+
+void laser_designator_activity_actor::do_turn( player_activity &act, Character &who )
+{
+    map &here = get_map();
+    if( !designator || designator.get_item() == nullptr ) {
+        stop_laser_designation( act, who, _( "You no longer have the laser designator." ),
+                                initial_view_offset );
+        return;
+    }
+    if( !get_timed_events().queued( timed_event_type::MORTAR_GUIDED_IMPACT ) ) {
+        if( !final_impact_view_pending ) {
+            clear_laser_designation( who );
+            if( !target_pos.is_invalid() ) {
+                const tripoint_bub_ms target_bub = here.get_bub( target_pos );
+                if( here.inbounds( target_bub ) ) {
+                    center_laser_designation_view( who, here, target_bub );
+                }
+            }
+            final_impact_view_pending = true;
+            act.moves_total = to_moves<int>( laser_designator_activity_interval );
+            act.moves_left = act.moves_total;
+            return;
+        }
+        stop_laser_designation( act, who, _( "No guided mortar rounds remain in flight." ),
+                                initial_view_offset );
+        return;
+    }
+    final_impact_view_pending = false;
+    if( mounted ) {
+        if( target != target_type::tile ) {
+            stop_laser_designation( act, who,
+                                    _( "The mounted laser designator can only designate fixed points." ),
+                                    initial_view_offset );
+            return;
+        }
+        if( !can_use_mounted_laser_designator( who, here, mounted_pos ) ) {
+            stop_laser_designation( act, who,
+                                    _( "You are no longer positioned at the mounted laser designator." ),
+                                    initial_view_offset );
+            return;
+        }
+    }
+
+    const std::optional<laser_designator_target_state> current_target =
+        resolve_laser_designator_target( target, target_character, target_monster, target_pos,
+                                         last_target_pos, who, here );
+    if( !current_target ) {
+        stop_laser_designation( act, who,
+                                _( "You lose the target and stop designating." ), initial_view_offset );
+        return;
+    }
+
+    const tripoint_bub_ms target_bub = here.get_bub( current_target->pos );
+    if( !here.inbounds( target_bub ) || !who.sees( here, target_bub ) ) {
+        stop_laser_designation( act, who,
+                                _( "You no longer have line of sight to the target." ), initial_view_offset );
+        return;
+    }
+    center_laser_designation_view( who, here, target_bub );
+
+    if( calendar::turn >= next_charge ) {
+        if( !designator->ammo_sufficient( &who, laser_designator_charges_per_interval ) ) {
+            stop_laser_designation( act, who,
+                                    _( "The laser designator does not have enough battery power." ),
+                                    initial_view_offset );
+            return;
+        }
+        designator->ammo_consume( laser_designator_charges_per_interval,
+                                  designator.pos_bub( here ), &who );
+        next_charge = calendar::turn + laser_designator_charge_interval;
+    }
+
+    const bool success = laser_designation_success( who, *current_target );
+    write_laser_designation( who, current_target->pos, success );
+    last_target_pos = current_target->pos;
+    target_pos = current_target->pos;
+    act.moves_total = to_moves<int>( laser_designator_activity_interval );
+    act.moves_left = act.moves_total;
+}
+
+void laser_designator_activity_actor::finish( player_activity &, Character &who )
+{
+    clear_laser_designation( who );
+    restore_laser_designation_view( who, initial_view_offset );
+}
+
+void laser_designator_activity_actor::canceled( player_activity &, Character &who )
+{
+    clear_laser_designation( who );
+    restore_laser_designation_view( who, initial_view_offset );
+}
+
+void laser_designator_activity_actor::serialize( JsonOut &jsout ) const
+{
+    jsout.start_object();
+    jsout.member( "designator", designator );
+    jsout.member( "target_pos", target_pos );
+    jsout.member( "mounted_pos", mounted_pos );
+    jsout.member( "last_target_pos", last_target_pos );
+    jsout.member( "target_character", target_character );
+    jsout.member( "target_monster", target_monster );
+    jsout.member( "target", static_cast<int>( target ) );
+    jsout.member( "mounted", mounted );
+    jsout.member( "next_charge", next_charge );
+    jsout.member( "initial_view_offset", initial_view_offset );
+    jsout.member( "final_impact_view_pending", final_impact_view_pending );
+    jsout.end_object();
+}
+
+std::unique_ptr<activity_actor> laser_designator_activity_actor::deserialize( JsonValue &jsin )
+{
+    JsonObject data = jsin.get_object();
+    laser_designator_activity_actor actor;
+    int target = 0;
+    data.read( "designator", actor.designator );
+    data.read( "target_pos", actor.target_pos );
+    data.read( "mounted_pos", actor.mounted_pos );
+    data.read( "last_target_pos", actor.last_target_pos );
+    data.read( "target_character", actor.target_character, false );
+    data.read( "target_monster", actor.target_monster, false );
+    data.read( "target", target );
+    data.read( "mounted", actor.mounted );
+    data.read( "next_charge", actor.next_charge );
+    data.read( "initial_view_offset", actor.initial_view_offset, false );
+    data.read( "final_impact_view_pending", actor.final_impact_view_pending, false );
+    actor.target = static_cast<laser_designator_activity_actor::target_type>( target );
     return actor.clone();
 }
 
@@ -14997,6 +15336,7 @@ deserialize_functions = {
     { ACT_CRACKING, &safecracking_activity_actor::deserialize },
     { ACT_CRAFT, &craft_activity_actor::deserialize },
     { ACT_CRAFT_WAIT, &craft_activity_actor::deserialize },
+    { ACT_DESIGNATE_TARGET, &laser_designator_activity_actor::deserialize },
     { ACT_DISABLE, &disable_activity_actor::deserialize },
     { ACT_DISASSEMBLE, &disassemble_activity_actor::deserialize },
     { ACT_DISMEMBER, &butchery_activity_actor::deserialize },

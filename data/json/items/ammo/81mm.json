@@ -1,0 +1,137 @@
+[
+  {
+    "id": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "high-explosive mortar shell" },
+    "description": "High-explosive 81mm mortar cartridge, designed for use against personnel, bunkers, and light materiel targets.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m821a2",
+        "name": { "str": "M821A2 81mm mortar shell (HE)", "str_pl": "M821A2 81mm mortar shells (HE)" },
+        "description": "High-explosive 81mm mortar cartridge, designed for use against personnel, bunkers, and light materiel targets.  It uses a multi-option fuze."
+      }
+    ],
+    "weight": "4273 g",
+    "//": "9.42 lb cartridge, with about 1.5 lb explosive filler.  Explosion power follows the 60mm Comp B scaling; casing mass is about a third of non-filler mass.",
+    "volume": "1700 ml",
+    "longest_side": "498 mm",
+    "price": "900 USD",
+    "price_postapoc": "20 USD",
+    "flags": [ "IRREPLACEABLE_CONSUMABLE" ],
+    "material": [ { "type": "steel", "portion": 80 }, { "type": "powder", "portion": 20 } ],
+    "symbol": "=",
+    "color": "dark_gray",
+    "count": 1,
+    "stack_size": 1,
+    "ammo_type": "mortar_81mm",
+    "effects": [ "SPECIAL_COOKOFF", "EXPLOSIVE_81mmHE" ]
+  },
+  {
+    "id": "81mm_shell_m889a1",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "high-explosive mortar shell" },
+    "description": "High-explosive 81mm mortar cartridge, designed for use against personnel, bunkers, and light materiel targets.  This one uses an impact fuze.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m889a1",
+        "name": { "str": "M889A1 81mm mortar shell (HE)", "str_pl": "M889A1 81mm mortar shells (HE)" },
+        "description": "High-explosive 81mm mortar cartridge, designed for use against personnel, bunkers, and light materiel targets.  It is similar to the M821A2, but uses an impact fuze."
+      }
+    ],
+    "price": "850 USD"
+  },
+  {
+    "id": "81mm_shell_m879",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "practice mortar shell" },
+    "description": "A full-range 81mm M879 practice mortar cartridge, ballistically matched to M821 and M889 high-explosive rounds but fitted with an M751 practice fuze that produces only a spotting flash, bang, and smoke.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m879",
+        "name": { "str": "M879 81mm mortar shell (practice)", "str_pl": "M879 81mm mortar shells (practice)" },
+        "description": "A full-range 81mm M879 practice mortar cartridge, ballistically matched to M821 and M889 high-explosive rounds but fitted with an M751 practice fuze that produces only a spotting flash, bang, and smoke."
+      }
+    ],
+    "weight": "4140 g",
+    "//": "M879 Full Range Practice Cartridge: 9.1 lb, ballistically matched to M821A1/M889A1, type-classified standard in 1986.",
+    "price": "180 USD",
+    "price_postapoc": "5 USD",
+    "extend": { "effects": [ "EXPLOSIVE_81mm_PRACTICE" ] },
+    "delete": { "effects": [ "EXPLOSIVE_81mmHE" ] }
+  },
+  {
+    "id": "81mm_shell_acerm",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "guided mortar shell" },
+    "description": "An Advanced Capability Extended Range Mortar 81mm high-explosive cartridge with deployable glide surfaces and a semi-active laser guidance package, trading cost and complexity for a much longer winged flight profile.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_acerm",
+        "name": { "str": "ACERM 81mm guided mortar shell (HE)", "str_pl": "ACERM 81mm guided mortar shells (HE)" },
+        "description": "An Advanced Capability Extended Range Mortar 81mm high-explosive cartridge with deployable glide surfaces and a semi-active laser guidance package, trading cost and complexity for a much longer winged flight profile."
+      }
+    ],
+    "weight": "4600 g",
+    "//": "Extended-range guided 81mm cartridge; public ACERM dimensions are sparse, so this stays within the existing 81mm tube envelope while code handles 20k tile range and gliding flight time.",
+    "volume": "2200 ml",
+    "longest_side": "645 mm",
+    "price": "18 kUSD",
+    "price_postapoc": "450 USD"
+  },
+  {
+    "id": "81mm_shell_m819",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "smoke mortar shell" },
+    "description": "An 81mm M819 red phosphorus smoke mortar cartridge, used to produce an obscuring smoke screen.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m819",
+        "name": { "str": "M819 81mm mortar shell (smoke)", "str_pl": "M819 81mm mortar shells (smoke)" },
+        "description": "An 81mm M819 red phosphorus smoke mortar cartridge, used to produce an obscuring smoke screen."
+      }
+    ],
+    "weight": "4899 g",
+    "volume": "2200 ml",
+    "longest_side": "645 mm",
+    "price": "700 USD",
+    "price_postapoc": "16 USD",
+    "extend": { "effects": [ "MORTAR_81mm_SMOKE" ] },
+    "delete": { "effects": [ "EXPLOSIVE_81mmHE" ] }
+  },
+  {
+    "id": "81mm_shell_m853a1",
+    "copy-from": "81mm_shell_m821a2",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "illumination mortar shell" },
+    "description": "An 81mm M853A1 visible-light illumination mortar cartridge, deploying a parachute flare over the target area.",
+    "variant_type": "gun",
+    "variants": [
+      {
+        "id": "81mm_shell_m853a1",
+        "name": { "str": "M853A1 81mm mortar shell (illumination)", "str_pl": "M853A1 81mm mortar shells (illumination)" },
+        "description": "An 81mm M853A1 visible-light illumination mortar cartridge, deploying a parachute flare over the target area."
+      }
+    ],
+    "weight": "4277 g",
+    "volume": "2200 ml",
+    "longest_side": "648 mm",
+    "price": "750 USD",
+    "price_postapoc": "18 USD",
+    "delete": { "effects": [ "EXPLOSIVE_81mmHE" ] }
+  }
+]

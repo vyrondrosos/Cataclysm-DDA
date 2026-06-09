@@ -13,6 +13,7 @@
 #include "type_id.h"
 
 static const mortar_type_id mortar_m224( "m224" );
+static const mortar_type_id mortar_m252( "m252" );
 
 TEST_CASE( "mortar_minimum_range_and_deflection_error", "[mortar]" )
 {
@@ -25,6 +26,22 @@ TEST_CASE( "mortar_minimum_range_and_deflection_error", "[mortar]" )
     error = mortar.minimum_error( 3500 );
     CHECK( error.range == Approx( 52.5 ) );
     CHECK( error.deflection == Approx( 7.0 ) );
+}
+
+TEST_CASE( "mortar_81mm_type_uses_m252_performance_values", "[mortar]" )
+{
+    const mortar_type &mortar = mortar_m252.obj();
+
+    CHECK( mortar.range() == 5900 );
+    CHECK( to_seconds<int>( mortar.npc_fire_message_delay() ) == 20 );
+
+    mortar_error error = mortar.minimum_error( 1000 );
+    CHECK( error.range == Approx( 15.0 ) );
+    CHECK( error.deflection == Approx( 10.0 ) );
+
+    error = mortar.minimum_error( 5900 );
+    CHECK( error.range == Approx( 88.5 ) );
+    CHECK( error.deflection == Approx( 59.0 ) );
 }
 
 TEST_CASE( "mortar_ballistic_multiplier_caps", "[mortar]" )
@@ -60,6 +77,22 @@ TEST_CASE( "mortar_60mm_flight_time_scales_with_distance", "[mortar]" )
             CHECK( npc_seconds >= minimum_seconds );
             CHECK( npc_seconds <= maximum_seconds );
         }
+    }
+}
+
+TEST_CASE( "mortar_81mm_flight_time_scales_with_range", "[mortar]" )
+{
+    rng_set_engine_seed( 1 );
+    const mortar_type &mortar = mortar_m252.obj();
+
+    for( int i = 0; i < 20; ++i ) {
+        const int player_seconds = to_seconds<int>( mortar.player_flight_time( mortar.range() ) );
+        CHECK( player_seconds >= 45 );
+        CHECK( player_seconds <= 65 );
+
+        const int npc_seconds = to_seconds<int>( mortar.npc_flight_time( mortar.range() ) );
+        CHECK( npc_seconds >= 45 );
+        CHECK( npc_seconds <= 65 );
     }
 }
 
@@ -232,6 +265,31 @@ TEST_CASE( "mortar_fire_solution_without_creeping_uses_target_center", "[mortar]
     CHECK( solution.reported_error.deflection == Approx( solution.ballistic_error.deflection ) );
     CHECK( solution.fire_center == target );
     CHECK_FALSE( solution.creeping_solution );
+}
+
+TEST_CASE( "mortar_fire_solution_can_use_shorter_accuracy_distance", "[mortar]" )
+{
+    const mortar_type &mortar = mortar_m252.obj();
+    const tripoint_abs_ms mortar_pos( 0, 0, 0 );
+    const tripoint_abs_ms target( 10000, 0, 0 );
+    const tripoint_abs_ms spotter_pos( 0, 0, 0 );
+    const tripoint_abs_ms creeping_axis_to( 11000, 0, 0 );
+    const mortar_location_error location_error{ 0.0, 0.0 };
+    constexpr int accuracy_distance = 8850;
+
+    const mortar_fire_solution solution = mortar.make_fire_solution( mortar_pos, target,
+                                          spotter_pos, creeping_axis_to, spotter_pos, target,
+                                          location_error, 1.0, true, false,
+                                          accuracy_distance );
+
+    CHECK( solution.target_distance == 10000 );
+    CHECK( solution.minimum_target_distance ==
+           mortar.minimum_target_distance( solution.target_distance, 1.0 ) );
+    CHECK( solution.minimum_error.range ==
+           Approx( mortar.minimum_range_error( accuracy_distance ) ) );
+    CHECK( solution.minimum_error.deflection ==
+           Approx( mortar.minimum_deflection_error( accuracy_distance ) ) );
+    CHECK( solution.fire_center == target );
 }
 
 TEST_CASE( "mortar_fire_solution_clamps_creeping_center_to_valid_range", "[mortar]" )

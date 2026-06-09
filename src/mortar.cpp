@@ -29,6 +29,7 @@ constexpr double mortar_min_skill_error_multiplier = 3.0;
 constexpr double mortar_multiplier_soft_cap_threshold = 10.0;
 constexpr double mortar_multiplier_hard_cap = 70.0;
 constexpr double mortar_multiplier_above_soft_cap_scale = 0.5;
+constexpr int mortar_60mm_reference_range = 3500;
 
 int interpolate_flight_seconds( const int distance, const int lower_distance,
                                 const int lower_seconds, const int upper_distance,
@@ -67,10 +68,17 @@ std::pair<int, int> mortar_60mm_flight_time_bounds( const int distance )
     return { 35, 50 };
 }
 
-time_duration mortar_60mm_flight_time( const int distance )
+time_duration mortar_flight_time( const int distance, const int range )
 {
-    const std::pair<int, int> bounds = mortar_60mm_flight_time_bounds( distance );
-    return time_duration::from_seconds( rng( bounds.first, bounds.second ) );
+    const double range_scale = std::max( 0.1,
+                                         static_cast<double>( range ) / mortar_60mm_reference_range );
+    const int equivalent_60mm_distance = static_cast<int>(
+            std::round( distance / range_scale ) );
+    const std::pair<int, int> bounds = mortar_60mm_flight_time_bounds(
+                                           equivalent_60mm_distance );
+    const int seconds = static_cast<int>( std::round(
+            rng( bounds.first, bounds.second ) * std::sqrt( range_scale ) ) );
+    return time_duration::from_seconds( seconds );
 }
 
 std::pair<double, double> axis_unit( const tripoint_abs_ms &axis_from,
@@ -252,7 +260,7 @@ int mortar_type::minimum_launcher_skill()
     return mortar_minimum_launcher_skill;
 }
 
-double mortar_type::skill_accuracy_multiplier( const int launcher_skill )
+double mortar_type::skill_accuracy_multiplier( const double launcher_skill )
 {
     const double skill = clamp<double>( launcher_skill, mortar_minimum_launcher_skill, 10.0 );
     return 1.0 + ( 10.0 - skill ) *
@@ -364,7 +372,7 @@ int mortar_type::range() const
 
 time_duration mortar_type::player_flight_time( const int distance ) const
 {
-    return mortar_60mm_flight_time( distance );
+    return mortar_flight_time( distance, range_ );
 }
 
 time_duration mortar_type::npc_fire_message_delay() const
@@ -374,7 +382,7 @@ time_duration mortar_type::npc_fire_message_delay() const
 
 time_duration mortar_type::npc_flight_time( const int distance ) const
 {
-    return mortar_60mm_flight_time( distance );
+    return mortar_flight_time( distance, range_ );
 }
 
 double mortar_type::minimum_range_error( const int distance ) const
@@ -417,14 +425,17 @@ mortar_fire_solution mortar_type::make_fire_solution( const tripoint_abs_ms &mor
         const tripoint_abs_ms &location_axis_from,
         const tripoint_abs_ms &location_axis_to,
         const mortar_location_error &location_error, const double total_multiplier,
-        const bool round_is_high_explosive, const bool use_creeping_adjustment ) const
+        const bool round_is_high_explosive, const bool use_creeping_adjustment,
+        const int accuracy_distance ) const
 {
     mortar_fire_solution result;
     result.target_distance = rl_dist( mortar_pos, target );
+    const int ballistic_distance = accuracy_distance >= 0 ? accuracy_distance :
+                                   result.target_distance;
     result.minimum_target_distance = round_is_high_explosive ?
                                      minimum_target_distance( result.target_distance, total_multiplier ) :
                                      MAX_VIEW_DISTANCE;
-    result.minimum_error = minimum_error( result.target_distance );
+    result.minimum_error = minimum_error( ballistic_distance );
     result.ballistic_error = mortar_error{ result.minimum_error.range * total_multiplier,
                                            result.minimum_error.deflection * total_multiplier };
     result.reported_error = combined_error( mortar_pos, target, result.ballistic_error,
@@ -504,7 +515,7 @@ tripoint_abs_ms mortar_type::clamp_fire_center_to_range( const tripoint_abs_ms &
     return clamped;
 }
 
-double mortar_type::repeat_cep_multiplier( const int launcher_skill ) const
+double mortar_type::repeat_cep_multiplier( const double launcher_skill ) const
 {
     const double skill = clamp<double>( launcher_skill, 1.0, 10.0 );
     if( skill <= 2.0 ) {
@@ -518,7 +529,7 @@ double mortar_type::repeat_cep_multiplier( const int launcher_skill ) const
 
 tripoint_abs_ms mortar_type::apply_dispersion( const tripoint_abs_ms &target,
         const tripoint_abs_ms &axis_from, const tripoint_abs_ms &axis_to,
-        const mortar_error &error, double *deflection_error ) const
+        const mortar_error &error, double *deflection_error, const int max_range ) const
 {
     if( deflection_error != nullptr ) {
         *deflection_error = error.deflection;
@@ -527,7 +538,7 @@ tripoint_abs_ms mortar_type::apply_dispersion( const tripoint_abs_ms &target,
                                        target, axis_from, axis_to,
                                        error.range / one_dimensional_probable_error_sigma_factor,
                                        error.deflection / one_dimensional_probable_error_sigma_factor );
-    return clamp_to_max_range( axis_from, impact, range_ );
+    return clamp_to_max_range( axis_from, impact, max_range > 0 ? max_range : range_ );
 }
 
 tripoint_abs_ms mortar_type::apply_location_error( const tripoint_abs_ms &target,

@@ -1145,6 +1145,16 @@
     "verb": "aiming the artillery"
   },
   {
+    "id": "ACT_DESIGNATE_TARGET",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "based_on": "time",
+    "rooted": true,
+    "can_resume": false,
+    "interruptable_with_kb": true,
+    "verb": "designating a target"
+  },
+  {
     "id": "ACT_MAN_MORTAR",
     "type": "activity_type",
     "activity_level": "NO_EXERCISE",

@@ -14,6 +14,7 @@
 #include "activity_type.h"
 #include "butchery.h"
 #include "calendar.h"
+#include "character_id.h"
 #include "character.h"
 #include "clone_ptr.h"
 #include "contents_change_handler.h"
@@ -4013,8 +4014,10 @@ class man_mortar_activity_actor : public activity_actor
     public:
         man_mortar_activity_actor() = default;
         man_mortar_activity_actor( const tripoint_abs_ms &assigned_mortar_pos,
-                                   const mortar_type_id &mortar_type_id ) :
-            mortar_pos( assigned_mortar_pos ), mortar_type( mortar_type_id ) {}
+                                   const mortar_type_id &mortar_type_id,
+                                   const character_id &primary_gunner_id = character_id() ) :
+            mortar_pos( assigned_mortar_pos ), mortar_type( mortar_type_id ),
+            gunner_id( primary_gunner_id ) {}
 
         void start( player_activity &act, Character &who ) override;
         void do_turn( player_activity &act, Character &who ) override;
@@ -4036,6 +4039,61 @@ class man_mortar_activity_actor : public activity_actor
     private:
         tripoint_abs_ms mortar_pos = tripoint_abs_ms::zero;
         mortar_type_id mortar_type;
+        character_id gunner_id;
+};
+
+/**
+* Player activity for sustained laser target designation.
+*/
+class laser_designator_activity_actor : public activity_actor
+{
+    public:
+        enum class target_type : int {
+            tile = 0,
+            character = 1,
+            monster = 2
+        };
+
+        laser_designator_activity_actor() = default;
+        laser_designator_activity_actor( const item_location &designator,
+                                         const tripoint_abs_ms &target_pos,
+                                         target_type target, bool mounted,
+                                         const tripoint_abs_ms &mounted_pos = tripoint_abs_ms::invalid,
+                                         character_id target_character = character_id(),
+                                         int target_monster = -1 ) :
+            designator( designator ), target_pos( target_pos ), mounted_pos( mounted_pos ),
+            target_character( target_character ), target_monster( target_monster ),
+            target( target ), mounted( mounted ) {}
+
+        void start( player_activity &act, Character &who ) override;
+        void do_turn( player_activity &act, Character &who ) override;
+        void finish( player_activity &, Character &who ) override;
+        void canceled( player_activity &, Character &who ) override;
+
+        const activity_id &get_type() const override {
+            static const activity_id ACT_DESIGNATE_TARGET( "ACT_DESIGNATE_TARGET" );
+            return ACT_DESIGNATE_TARGET;
+        }
+
+        std::unique_ptr<activity_actor> clone() const override {
+            return std::make_unique<laser_designator_activity_actor>( *this );
+        }
+
+        void serialize( JsonOut &jsout ) const override;
+        static std::unique_ptr<activity_actor> deserialize( JsonValue &jsin );
+
+    private:
+        item_location designator;
+        tripoint_abs_ms target_pos = tripoint_abs_ms::invalid;
+        tripoint_abs_ms mounted_pos = tripoint_abs_ms::invalid;
+        tripoint_abs_ms last_target_pos = tripoint_abs_ms::invalid;
+        tripoint_rel_ms initial_view_offset = tripoint_rel_ms::zero;
+        character_id target_character;
+        int target_monster = -1;
+        target_type target = target_type::tile;
+        bool mounted = false;
+        bool final_impact_view_pending = false;
+        time_point next_charge = calendar::turn_zero;
 };
 
 /**
