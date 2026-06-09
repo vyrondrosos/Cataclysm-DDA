@@ -13705,10 +13705,7 @@ void center_laser_designation_view( Character &who, map &here, const tripoint_bu
 
     avatar &player_character = get_avatar();
     const tripoint_bub_ms player_pos = player_character.pos_bub( here );
-    tripoint center = ( target_bub.raw() * 7 + player_pos.raw() * 3 ) / 10;
-    center.z = target_bub.raw().z;
-
-    tripoint_rel_ms new_offset( center - player_pos.raw() );
+    tripoint_rel_ms new_offset( target_bub.raw() - player_pos.raw() );
     const bool changed_z = player_character.view_offset.z() != new_offset.z();
     player_character.view_offset = new_offset;
     if( changed_z ) {
