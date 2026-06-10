@@ -6222,6 +6222,18 @@ int mortar_round_max_range( const mortar_type &mortar, const item &round )
     return mortar_round_is_acerm( round ) ? mortar_acerm_max_range : mortar.range();
 }
 
+int mortar_round_accuracy_distance( const mortar_type &mortar, const item &round,
+                                    const int distance )
+{
+    if( !mortar_round_is_acerm( round ) || distance <= mortar.range() ) {
+        return distance;
+    }
+    const int extra_range = std::max( 1, mortar_round_max_range( mortar, round ) - mortar.range() );
+    const double fraction = clamp<double>(
+                                static_cast<double>( distance - mortar.range() ) / extra_range, 0.0, 1.0 );
+    return static_cast<int>( std::round( mortar.range() * ( 1.0 + 0.5 * fraction ) ) );
+}
+
 time_duration mortar_round_npc_flight_time( const mortar_type &mortar, const item &round,
         const int distance )
 {
@@ -7307,11 +7319,13 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         return;
     }
     const bool round_is_he = mortar_round_has_high_explosive_payload( round );
+    const int accuracy_distance = mortar_round_accuracy_distance( mortar_data, round,
+                                  target_distance );
     const mortar_fire_solution fire_solution = mortar_data.make_fire_solution(
                 mortar_abs, *target_abs_ms, you.pos_abs(), selected_creeping_axis_to,
                 location_axis_from, location_axis_to, location_error, total_multiplier,
                 get_mortar_adjustment_tactic( gunner ) == mortar_adjustment_tactic::creeping,
-                mortar_round_max_range( mortar_data, round ) );
+                mortar_round_max_range( mortar_data, round ), accuracy_distance );
     if( target_distance <= MAX_VIEW_DISTANCE ) {
         if( round_is_he ) {
             add_msg( _( "Target is too close to the mortar; minimum safe range is %d tiles." ),
@@ -7385,13 +7399,14 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         }
 
         add_msg_debug( debugmode::DF_NPC,
-                       "Mortar fire from %s round %d/%d: distance %d, minimum range %.2f, "
+                       "Mortar fire from %s round %d/%d: distance %d, accuracy distance %d, minimum range %.2f, "
                        "minimum deflection %.2f, skill multiplier %.2f, fixed multiplier %.2f, "
                        "raw total multiplier %.2f, effective total multiplier %.2f, "
                        "minimum target distance %d, location error %.2f:%.2f, HE %d, "
                        "rangefinder %d, EPLRS %d, no-wait adjustment %d, aimpoint offset %d:%d, "
                        "impact offset %d:%d.",
-                       gunner.disp_name(), i + 1, round_count, target_distance, minimum_error.range,
+                       gunner.disp_name(), i + 1, round_count, target_distance, accuracy_distance,
+                       minimum_error.range,
                        minimum_error.deflection, accuracy_multiplier, fixed_multiplier,
                        raw_total_multiplier, total_multiplier, MAX_VIEW_DISTANCE,
                        location_error.range, location_error.deflection,
