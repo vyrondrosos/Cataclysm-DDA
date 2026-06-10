@@ -34,6 +34,7 @@ TEST_CASE( "mortar_81mm_type_uses_m252_performance_values", "[mortar]" )
 {
     const mortar_type &mortar = mortar_m252.obj();
 
+    CHECK( mortar.max_assistants() == 2 );
     CHECK( mortar.range() == 5900 );
     CHECK( to_seconds<int>( mortar.npc_fire_message_delay() ) == 20 );
 

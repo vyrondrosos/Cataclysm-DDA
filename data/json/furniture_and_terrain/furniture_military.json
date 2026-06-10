@@ -114,6 +114,7 @@
     "furniture": "f_m252_mortar",
     "ammo": "mortar_81mm",
     "range": 5900,
+    "max_assistants": 2,
     "npc_fire_message_delay": "20 seconds",
     "range_error_ratio": 0.015,
     "deflection_error_mils": 10.0
