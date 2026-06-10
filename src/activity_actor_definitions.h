@@ -14,6 +14,7 @@
 #include "activity_type.h"
 #include "butchery.h"
 #include "calendar.h"
+#include "character_id.h"
 #include "character.h"
 #include "clone_ptr.h"
 #include "contents_change_handler.h"
@@ -4013,8 +4014,10 @@ class man_mortar_activity_actor : public activity_actor
     public:
         man_mortar_activity_actor() = default;
         man_mortar_activity_actor( const tripoint_abs_ms &assigned_mortar_pos,
-                                   const mortar_type_id &mortar_type_id ) :
-            mortar_pos( assigned_mortar_pos ), mortar_type( mortar_type_id ) {}
+                                   const mortar_type_id &mortar_type_id,
+                                   const character_id &primary_gunner_id = character_id() ) :
+            mortar_pos( assigned_mortar_pos ), mortar_type( mortar_type_id ),
+            gunner_id( primary_gunner_id ) {}
 
         void start( player_activity &act, Character &who ) override;
         void do_turn( player_activity &act, Character &who ) override;
@@ -4036,6 +4039,7 @@ class man_mortar_activity_actor : public activity_actor
     private:
         tripoint_abs_ms mortar_pos = tripoint_abs_ms::zero;
         mortar_type_id mortar_type;
+        character_id gunner_id;
 };
 
 /**

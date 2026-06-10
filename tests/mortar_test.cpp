@@ -62,6 +62,8 @@ TEST_CASE( "mortar_minimum_range_and_deflection_error", "[mortar]" )
 {
     const mortar_type &mortar = mortar_m224.obj();
 
+    CHECK( mortar.max_assistants() == 1 );
+
     mortar_error error = mortar.minimum_error( 1000 );
     CHECK( error.range == Approx( 15.0 ) );
     CHECK( error.deflection == Approx( 2.0 ) );
