@@ -192,9 +192,11 @@ static const flag_id json_flag_GRENADE( "GRENADE" );
 static const flag_id json_flag_NO_UNLOAD( "NO_UNLOAD" );
 static const flag_id json_flag_TWO_WAY_RADIO( "TWO_WAY_RADIO" );
 
+static const ammotype ammo_battery( "battery" );
 static const ammotype ammotype_40x46mm( "40x46mm" );
 static const ammotype ammotype_40x53mm( "40x53mm" );
 static const ammotype ammotype_mortar_60mm( "mortar_60mm" );
+static const itype_id itype_battery( "battery" );
 static const itype_id fuel_type_animal( "animal" );
 static const itype_id itype_81mm_shell_acerm( "81mm_shell_acerm" );
 static const itype_id itype_81mm_shell_m821a2_oksi( "81mm_shell_m821a2_oksi" );
@@ -8383,12 +8385,12 @@ static int fpv_drone_count( const npc &operator_npc, const std::string &drone_ty
     } );
 }
 
-static bool take_fpv_drone( npc &operator_npc, const std::string &drone_type )
+static std::optional<item> take_fpv_drone( npc &operator_npc, const std::string &drone_type )
 {
     const itype_id drone_id = fpv_drone_item_id( drone_type );
     return take_one_support_item( operator_npc, [&drone_id]( const item & it ) {
         return it.typeId() == drone_id;
-    } ).has_value();
+    } );
 }
 
 static std::string active_fpv_drone_type( const npc &operator_npc )
@@ -8421,6 +8423,8 @@ static bool active_fpv_drone_has_scout_package( const npc &operator_npc )
     return active_fpv_drone_is_scout( operator_npc ) || active_fpv_drone_is_baba_yaga( operator_npc );
 }
 
+static int get_fpv_turn_value( const npc &operator_npc, const std::string &key );
+
 static int fpv_drone_max_range_tiles( const std::string &drone_type )
 {
     if( drone_type == "scout" ) {
@@ -8432,7 +8436,7 @@ static int fpv_drone_max_range_tiles( const std::string &drone_type )
     return 7000;
 }
 
-static int fpv_drone_battery_seconds( const std::string &drone_type )
+static int fpv_drone_full_battery_seconds( const std::string &drone_type )
 {
     if( drone_type == "scout" ) {
         return 18 * 60;
@@ -8441,6 +8445,131 @@ static int fpv_drone_battery_seconds( const std::string &drone_type )
         return 24 * 60;
     }
     return 6 * 60;
+}
+
+static int fpv_drone_nominal_battery_capacity( const std::string &drone_type )
+{
+    if( drone_type == "scout" ) {
+        return 560;
+    }
+    if( drone_type == "baba_yaga" ) {
+        return 5000;
+    }
+    return 1000;
+}
+
+static int fpv_drone_battery_capacity( const item &drone, const std::string &drone_type )
+{
+    return std::max( fpv_drone_nominal_battery_capacity( drone_type ),
+                     drone.ammo_capacity( ammo_battery ) );
+}
+
+static int fpv_drone_charge_remaining( const item &drone, const std::string &drone_type )
+{
+    const int capacity = fpv_drone_battery_capacity( drone, drone_type );
+    return clamp( drone.ammo_remaining(), 0, capacity );
+}
+
+static int fpv_drone_battery_seconds_from_charge( const std::string &drone_type,
+        const int charge, const int capacity )
+{
+    if( charge <= 0 || capacity <= 0 ) {
+        return 0;
+    }
+    return static_cast<int>( std::floor( charge * fpv_drone_full_battery_seconds( drone_type ) /
+                                         static_cast<double>( capacity ) ) );
+}
+
+static int fpv_drone_charge_from_battery_seconds( const int battery_seconds,
+        const int capacity, const int full_battery_seconds )
+{
+    if( battery_seconds <= 0 || capacity <= 0 || full_battery_seconds <= 0 ) {
+        return 0;
+    }
+    return static_cast<int>( std::ceil( battery_seconds * capacity /
+                                        static_cast<double>( full_battery_seconds ) ) );
+}
+
+static void set_fpv_drone_charge( item &drone, const int charge, const int capacity )
+{
+    drone.ammo_set( itype_battery, clamp( charge, 0, capacity ) );
+}
+
+static int active_fpv_battery_capacity( const npc &operator_npc )
+{
+    const int stored = support_value_int( operator_npc, "fpv_battery_capacity" );
+    return stored > 0 ? stored : fpv_drone_nominal_battery_capacity( active_fpv_drone_type(
+                                    operator_npc ) );
+}
+
+static int active_fpv_battery_start_charges( const npc &operator_npc )
+{
+    const int capacity = active_fpv_battery_capacity( operator_npc );
+    const int stored = support_value_int( operator_npc, "fpv_battery_start_charges" );
+    return stored > 0 ? clamp( stored, 0, capacity ) : capacity;
+}
+
+static int active_fpv_full_battery_seconds( const npc &operator_npc )
+{
+    const int stored = support_value_int( operator_npc, "fpv_battery_full_seconds" );
+    return stored > 0 ? stored : fpv_drone_full_battery_seconds( active_fpv_drone_type(
+                                    operator_npc ) );
+}
+
+static int fpv_mission_used_battery_seconds( const npc &operator_npc, const int at_turn )
+{
+    const int arrival_turn = get_fpv_turn_value( operator_npc, "fpv_arrival_turn" );
+    const int station_end_turn = get_fpv_turn_value( operator_npc, "fpv_station_end_turn" );
+    const int return_end_turn = get_fpv_turn_value( operator_npc, "fpv_return_end_turn" );
+    const int outbound_seconds = std::max( 0, get_fpv_turn_value( operator_npc,
+                                            "fpv_outbound_seconds" ) );
+    const int launch_turn = get_fpv_turn_value( operator_npc, "fpv_launch_turn" ) > 0 ?
+                            get_fpv_turn_value( operator_npc, "fpv_launch_turn" ) :
+                            arrival_turn - outbound_seconds;
+    const int now = std::max( launch_turn, at_turn );
+
+    if( now <= arrival_turn ) {
+        return std::max( 0, now - launch_turn );
+    }
+
+    int used = outbound_seconds;
+    const int station_until = std::min( now, station_end_turn );
+    if( station_until > arrival_turn ) {
+        used += static_cast<int>( std::floor( ( station_until - arrival_turn ) * 0.6 ) );
+    }
+    if( now > station_end_turn ) {
+        used += std::max( 0, std::min( now, return_end_turn ) - station_end_turn );
+    }
+    return std::max( 0, used );
+}
+
+static int fpv_mission_remaining_charges( const npc &operator_npc, const int at_turn )
+{
+    const int capacity = active_fpv_battery_capacity( operator_npc );
+    const int start_charges = active_fpv_battery_start_charges( operator_npc );
+    const int full_battery_seconds = active_fpv_full_battery_seconds( operator_npc );
+    const int used_seconds = fpv_mission_used_battery_seconds( operator_npc, at_turn );
+    const int used_charges = fpv_drone_charge_from_battery_seconds( used_seconds, capacity,
+                             full_battery_seconds );
+    return clamp( start_charges - used_charges, 0, capacity );
+}
+
+static int fpv_mission_remaining_battery_seconds( const npc &operator_npc, const int at_turn )
+{
+    const int capacity = active_fpv_battery_capacity( operator_npc );
+    const int remaining_charges = fpv_mission_remaining_charges( operator_npc, at_turn );
+    return fpv_drone_battery_seconds_from_charge( active_fpv_drone_type( operator_npc ),
+            remaining_charges, capacity );
+}
+
+static void return_active_fpv_drone( npc &operator_npc, const int at_turn )
+{
+    const std::string drone_type = active_fpv_drone_type( operator_npc );
+    item drone( fpv_drone_item_id( drone_type ), calendar::turn );
+    const int capacity = std::max( active_fpv_battery_capacity( operator_npc ),
+                                   fpv_drone_battery_capacity( drone, drone_type ) );
+    set_fpv_drone_charge( drone, fpv_mission_remaining_charges( operator_npc, at_turn ), capacity );
+    operator_npc.support_inv.add_item( std::move( drone ) );
 }
 
 static double fpv_drone_cruise_speed_tiles_per_hour( const std::string &drone_type )
@@ -8700,8 +8829,12 @@ static void clear_fpv_mission( npc &operator_npc )
     operator_npc.remove_value( "fpv_arrival_turn" );
     operator_npc.remove_value( "fpv_station_end_turn" );
     operator_npc.remove_value( "fpv_return_end_turn" );
+    operator_npc.remove_value( "fpv_launch_turn" );
     operator_npc.remove_value( "fpv_outbound_seconds" );
     operator_npc.remove_value( "fpv_return_seconds" );
+    operator_npc.remove_value( "fpv_battery_start_charges" );
+    operator_npc.remove_value( "fpv_battery_capacity" );
+    operator_npc.remove_value( "fpv_battery_full_seconds" );
     operator_npc.remove_value( "fpv_one_way" );
     operator_npc.remove_value( "fpv_expend_practiced" );
     operator_npc.remove_value( "fpv_drone_type" );
@@ -8753,7 +8886,7 @@ static void reconcile_fpv_mission( npc &operator_npc )
     }
 
     return_loaded_fpv_payload( operator_npc );
-    add_support_items( operator_npc, fpv_drone_item_id( active_fpv_drone_type( operator_npc ) ), 1 );
+    return_active_fpv_drone( operator_npc, return_end_turn );
     clear_fpv_mission( operator_npc );
 }
 
@@ -9323,7 +9456,8 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
         return;
     }
     clear_fpv_mission( *operator_npc );
-    if( !take_fpv_drone( *operator_npc, drone_type ) ) {
+    std::optional<item> launched_drone = take_fpv_drone( *operator_npc, drone_type );
+    if( !launched_drone ) {
         if( drone_type == "scout" ) {
             add_msg( _( "%s reports that they have no scout drones." ), operator_npc->disp_name() );
         } else if( drone_type == "baba_yaga" ) {
@@ -9343,7 +9477,7 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     const bool baba_yaga_drone = drone_type == "baba_yaga";
     const int max_range_tiles = fpv_drone_max_range_tiles( drone_type );
     if( distance > max_range_tiles ) {
-        add_support_items( *operator_npc, fpv_drone_item_id( drone_type ), 1 );
+        operator_npc->support_inv.add_item( std::move( *launched_drone ) );
         if( scout_drone ) {
             add_msg( _( "%s reports that you are outside the 15000 tile scout drone control range." ),
                      operator_npc->disp_name() );
@@ -9365,11 +9499,14 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     const int outbound_seconds = cruise_seconds + fpv_drone_launch_delay_seconds( *operator_npc,
                                  drone_type );
     const int return_seconds = cruise_seconds;
-    const int battery_seconds = fpv_drone_battery_seconds( drone_type );
+    const int battery_capacity = fpv_drone_battery_capacity( *launched_drone, drone_type );
+    const int battery_charges = fpv_drone_charge_remaining( *launched_drone, drone_type );
+    const int battery_seconds = fpv_drone_battery_seconds_from_charge( drone_type, battery_charges,
+                                battery_capacity );
     const int reserve_seconds = 20;
     const int cruise_budget = battery_seconds - outbound_seconds - return_seconds - reserve_seconds;
     if( cruise_budget <= 0 ) {
-        add_support_items( *operator_npc, fpv_drone_item_id( drone_type ), 1 );
+        operator_npc->support_inv.add_item( std::move( *launched_drone ) );
         add_msg( _( "%s reports insufficient battery for launch, return, and reserve." ),
                  operator_npc->disp_name() );
         return;
@@ -9388,8 +9525,12 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     operator_npc->set_value( "fpv_arrival_turn", arrival_turn );
     operator_npc->set_value( "fpv_station_end_turn", station_end_turn );
     operator_npc->set_value( "fpv_return_end_turn", return_end_turn );
+    operator_npc->set_value( "fpv_launch_turn", now );
     operator_npc->set_value( "fpv_outbound_seconds", outbound_seconds );
     operator_npc->set_value( "fpv_return_seconds", return_seconds );
+    operator_npc->set_value( "fpv_battery_start_charges", battery_charges );
+    operator_npc->set_value( "fpv_battery_capacity", battery_capacity );
+    operator_npc->set_value( "fpv_battery_full_seconds", fpv_drone_full_battery_seconds( drone_type ) );
     operator_npc->set_value( "fpv_one_way", "no" );
     operator_npc->set_value( "fpv_expend_practiced", "no" );
     operator_npc->set_value( "fpv_drone_type", drone_type );
@@ -9481,7 +9622,6 @@ talk_effect_fun_t::func f_request_fpv_one_way()
 
         const int now = current_turn_number();
         const int arrival_turn = get_fpv_turn_value( *operator_npc, "fpv_arrival_turn" );
-        const int outbound_seconds = get_fpv_turn_value( *operator_npc, "fpv_outbound_seconds" );
         const std::string status = support_value_string( *operator_npc, "fpv_status" );
         if( status == "returning" ) {
             add_msg( _( "%s reports the drone is already on the return leg." ),
@@ -9503,10 +9643,15 @@ talk_effect_fun_t::func f_request_fpv_one_way()
             return;
         }
 
-        const int battery_seconds = fpv_drone_battery_seconds( active_fpv_drone_type( *operator_npc ) );
+        const int battery_seconds = fpv_mission_remaining_battery_seconds( *operator_npc, now );
+        if( battery_seconds <= 0 ) {
+            add_msg( _( "%s reports the drone has no battery margin left for one-way loiter." ),
+                     operator_npc->disp_name() );
+            return;
+        }
         const int one_way_station_seconds = std::max( 1, static_cast<int>( std::floor(
-                                            ( battery_seconds - outbound_seconds ) / 0.6 ) ) );
-        const int one_way_end_turn = arrival_turn + one_way_station_seconds;
+                                            battery_seconds / 0.6 ) ) );
+        const int one_way_end_turn = now + one_way_station_seconds;
         const int remaining_seconds = one_way_end_turn - now;
         if( remaining_seconds <= 0 ) {
             add_msg( _( "%s reports the drone has no battery margin left for one-way loiter." ),
@@ -9563,9 +9708,8 @@ talk_effect_fun_t::func f_request_fpv_abort_one_way()
         const int return_seconds = std::max( 1, get_fpv_turn_value( *operator_npc, "fpv_return_seconds" ) );
         const int reserve_seconds = 20;
         const int start_turn = std::max( now, busy_until );
-        const int one_way_end_turn = get_fpv_turn_value( *operator_npc, "fpv_station_end_turn" );
-        const int remaining_one_way_station = std::max( 0, one_way_end_turn - start_turn );
-        const int remaining_cruise_seconds = static_cast<int>( std::floor( remaining_one_way_station * 0.6 ) );
+        const int remaining_cruise_seconds = fpv_mission_remaining_battery_seconds( *operator_npc,
+                                             start_turn );
         if( remaining_cruise_seconds <= return_seconds ) {
             add_msg( _( "%s reports there is not enough battery left for safe recovery." ),
                      operator_npc->disp_name() );
@@ -9594,8 +9738,7 @@ talk_effect_fun_t::func f_request_fpv_abort_one_way()
 
         const int first_offset_seconds = std::max( 0, start_turn - now );
         schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, first_offset_seconds,
-                                      station_seconds, fpv_drone_battery_seconds(
-                                          active_fpv_drone_type( *operator_npc ) ) );
+                                      station_seconds, remaining_cruise_seconds );
         get_timed_events().add( timed_event_type::FPV_DRONE_RETURN_MESSAGE,
                                 calendar::turn + time_duration::from_seconds( first_offset_seconds +
                                         station_seconds ),
@@ -9650,6 +9793,13 @@ talk_effect_fun_t::func f_request_fpv_recover()
         const int busy_until = get_fpv_turn_value( *operator_npc, "fpv_command_busy_until" );
         const int return_seconds = std::max( 1, get_fpv_turn_value( *operator_npc, "fpv_return_seconds" ) );
         const int start_turn = std::max( now, busy_until );
+        const int remaining_cruise_seconds = fpv_mission_remaining_battery_seconds( *operator_npc,
+                                             start_turn );
+        if( remaining_cruise_seconds <= return_seconds ) {
+            add_msg( _( "%s reports there is not enough battery left for safe recovery." ),
+                     operator_npc->disp_name() );
+            return;
+        }
         const std::string mission_key = support_value_string( *operator_npc, "fpv_mission_key" );
         avatar &you = get_avatar();
 
@@ -9664,8 +9814,7 @@ talk_effect_fun_t::func f_request_fpv_recover()
 
         const int first_offset_seconds = std::max( 0, start_turn - now );
         schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, first_offset_seconds,
-                                      0, fpv_drone_battery_seconds(
-                                          active_fpv_drone_type( *operator_npc ) ) );
+                                      0, remaining_cruise_seconds );
         get_timed_events().add( timed_event_type::FPV_DRONE_RETURN_MESSAGE,
                                 calendar::turn + time_duration::from_seconds( first_offset_seconds ),
                                 -1, you.pos_abs(), return_seconds, operator_npc->disp_name(), mission_key );

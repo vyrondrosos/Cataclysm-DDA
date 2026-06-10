@@ -4127,8 +4127,12 @@ int npc::clear_fpv_support( const bool notify )
     remove_value( "fpv_arrival_turn" );
     remove_value( "fpv_station_end_turn" );
     remove_value( "fpv_return_end_turn" );
+    remove_value( "fpv_launch_turn" );
     remove_value( "fpv_outbound_seconds" );
     remove_value( "fpv_return_seconds" );
+    remove_value( "fpv_battery_start_charges" );
+    remove_value( "fpv_battery_capacity" );
+    remove_value( "fpv_battery_full_seconds" );
     remove_value( "fpv_one_way" );
     remove_value( "fpv_expend_practiced" );
     remove_value( "fpv_drone_type" );
