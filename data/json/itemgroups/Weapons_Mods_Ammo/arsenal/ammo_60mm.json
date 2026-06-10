@@ -72,12 +72,52 @@
   },
   {
     "type": "item_group",
+    "subtype": "distribution",
+    "id": "fpv_suicide_drone_found_charge",
+    "items": [
+      { "item": "fpv_suicide_drone", "charges": [ 800, 1000 ], "prob": 80 },
+      { "item": "fpv_suicide_drone", "charges": [ 300, 799 ], "prob": 15 },
+      { "item": "fpv_suicide_drone", "charges": [ 0, 299 ], "prob": 5 }
+    ]
+  },
+  {
+    "type": "item_group",
+    "subtype": "distribution",
+    "id": "fpv_military_suicide_drone_found_charge",
+    "items": [
+      { "item": "fpv_military_suicide_drone", "charges": [ 800, 1000 ], "prob": 80 },
+      { "item": "fpv_military_suicide_drone", "charges": [ 300, 799 ], "prob": 15 },
+      { "item": "fpv_military_suicide_drone", "charges": [ 0, 299 ], "prob": 5 }
+    ]
+  },
+  {
+    "type": "item_group",
+    "subtype": "distribution",
+    "id": "fpv_baba_yaga_drone_found_charge",
+    "items": [
+      { "item": "fpv_baba_yaga_drone", "charges": [ 4000, 5000 ], "prob": 75 },
+      { "item": "fpv_baba_yaga_drone", "charges": [ 1500, 3999 ], "prob": 20 },
+      { "item": "fpv_baba_yaga_drone", "charges": [ 0, 1499 ], "prob": 5 }
+    ]
+  },
+  {
+    "type": "item_group",
+    "subtype": "distribution",
+    "id": "fpv_scout_drone_found_charge",
+    "items": [
+      { "item": "fpv_scout_drone", "charges": [ 448, 560 ], "prob": 45 },
+      { "item": "fpv_scout_drone", "charges": [ 224, 447 ], "prob": 35 },
+      { "item": "fpv_scout_drone", "charges": [ 0, 223 ], "prob": 20 }
+    ]
+  },
+  {
+    "type": "item_group",
     "id": "fpv_drone_hardcase_full",
     "container-item": "laptop_hard_case",
     "on_overflow": "spill",
     "items": [
-      { "item": "fpv_suicide_drone", "count": 3 },
-      { "item": "fpv_military_suicide_drone", "prob": 30 },
+      { "group": "fpv_suicide_drone_found_charge", "count": 3 },
+      { "group": "fpv_military_suicide_drone_found_charge", "prob": 30 },
       { "item": "remotevehcontrol" }
     ]
   },
@@ -85,7 +125,7 @@
     "type": "item_group",
     "id": "fpv_scout_drone_hardcase_full",
     "container-item": "laptop_hard_case",
-    "items": [ { "item": "fpv_scout_drone", "count": 3 }, { "item": "remotevehcontrol" } ]
+    "items": [ { "group": "fpv_scout_drone_found_charge", "count": 3 }, { "item": "remotevehcontrol" } ]
   },
   {
     "type": "item_group",
