@@ -120,6 +120,7 @@
     "furniture": "f_m252_mortar",
     "ammo": "mortar_81mm",
     "range": 5900,
+    "max_assistants": 2,
     "npc_fire_message_delay": "20 seconds",
     "flight_time": [
       { "distance": 843, "minimum": "13 seconds", "maximum": "26 seconds" },
