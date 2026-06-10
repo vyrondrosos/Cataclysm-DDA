@@ -7162,7 +7162,8 @@ static std::optional<fpv_designation_target> active_fpv_designation(
     return std::nullopt;
 }
 
-std::optional<tripoint_abs_ms> active_fpv_designation_target( const std::string &designation_type )
+static std::optional<tripoint_abs_ms> active_fpv_designation_target_impl(
+    const std::string &designation_type )
 {
     const std::optional<fpv_designation_target> designation =
         active_fpv_designation( designation_type );
@@ -12828,6 +12829,12 @@ static void toggle_mortar_adjustment( npc &gunner )
 
 namespace talk_effect_fun
 {
+
+std::optional<tripoint_abs_ms> active_fpv_designation_target(
+    const std::string &designation_type )
+{
+    return active_fpv_designation_target_impl( designation_type );
+}
 
 bool is_manning_mortar( const npc &gunner )
 {
