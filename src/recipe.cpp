@@ -12,6 +12,7 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "ammo.h"
 #include "bonuses.h"
 #include "cached_options.h"
 #include "calendar.h"
@@ -57,7 +58,14 @@
 #include "visitable.h"
 
 static const itype_id itype_atomic_coffeepot( "atomic_coffeepot" );
+static const itype_id itype_battery( "battery" );
+static const itype_id itype_fpv_baba_yaga_drone( "fpv_baba_yaga_drone" );
+static const itype_id itype_fpv_military_suicide_drone( "fpv_military_suicide_drone" );
+static const itype_id itype_fpv_scout_drone( "fpv_scout_drone" );
+static const itype_id itype_fpv_suicide_drone( "fpv_suicide_drone" );
 static const itype_id itype_hotplate( "hotplate" );
+
+static const ammotype ammo_battery( "battery" );
 
 static const morale_type morale_fun_craft( "morale_fun_craft" );
 static const morale_type morale_shitty_craft( "morale_shitty_craft" );
@@ -1160,10 +1168,41 @@ static void set_new_comps( item &newit, int amount, item_components *used, bool 
     }
 }
 
+static bool result_inherits_component_battery_charge( const itype_id &result )
+{
+    return result == itype_fpv_baba_yaga_drone ||
+           result == itype_fpv_military_suicide_drone ||
+           result == itype_fpv_scout_drone ||
+           result == itype_fpv_suicide_drone;
+}
+
+static int component_battery_charge( const item_components &used )
+{
+    int charge = 0;
+    for( const item_components::type_vector_pair &component_group : used ) {
+        for( const item &component : component_group.second ) {
+            if( component.is_magazine() && component.ammo_capacity( ammo_battery ) > 0 ) {
+                charge += std::max( 0, component.ammo_remaining() );
+            }
+        }
+    }
+    return charge;
+}
+
+static void inherit_component_battery_charge( item &newit, const item_components &used )
+{
+    const int capacity = newit.ammo_capacity( ammo_battery );
+    if( capacity <= 0 ) {
+        return;
+    }
+    newit.ammo_set( itype_battery, clamp( component_battery_charge( used ), 0, capacity ) );
+}
+
 std::vector<item> recipe::create_result( bool set_components, bool is_food,
         item_components *used ) const
 {
     item newit( result_, calendar::turn );
+    const bool inherit_battery_charge = result_inherits_component_battery_charge( result_ );
 
     if( !variant().empty() ) {
         newit.set_itype_variant( variant() );
@@ -1190,7 +1229,7 @@ std::vector<item> recipe::create_result( bool set_components, bool is_food,
     }
 
     // if the first component has compatible pockets, try to preserve the contents
-    if( used && !used->empty() ) {
+    if( used && !used->empty() && !inherit_battery_charge ) {
         const item_components::type_vector_pair &first_component_pair = *used->begin();
 
         if( first_component_pair.second.size() == 1 ) {
@@ -1200,6 +1239,10 @@ std::vector<item> recipe::create_result( bool set_components, bool is_food,
                 newit.get_contents().combine( first_component.get_contents(), true );
             }
         }
+    }
+
+    if( used && !used->empty() && inherit_battery_charge ) {
+        inherit_component_battery_charge( newit, *used );
     }
 
     int amount = charges ? *charges : 1;
@@ -1238,13 +1281,17 @@ std::vector<item> recipe::create_results( int batch, item_components *used ) con
                               is_reversible();
         bool is_food_no_override = temp.is_food() && !temp.has_flag( flag_NUTRIENT_OVERRIDE );
         bool set_components = used && ( is_uncraftable || is_food_no_override );
+        bool split_components = set_components ||
+                                ( used && result_inherits_component_battery_charge( result_ ) );
         bool is_cooked = hot_result() || removes_raw();
-        if( set_components ) {
+        if( split_components ) {
             batch_comps = used->split( batch, i, is_cooked );
         }
         for( int j = 0; j < result_mult; j++ ) {
-            item_components mult_comps = batch_comps.split( result_mult, j, is_cooked );
-            std::vector<item> newits = create_result( set_components, temp.is_food(), &mult_comps );
+            item_components mult_comps = split_components ? batch_comps.split( result_mult, j,
+                                         is_cooked ) : item_components();
+            std::vector<item> newits = create_result( set_components, temp.is_food(),
+                                       split_components ? &mult_comps : nullptr );
 
             if( !result_->count_by_charges() ) {
                 items.reserve( items.size() + newits.size() );
