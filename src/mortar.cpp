@@ -770,10 +770,13 @@ mortar_fire_solution mortar_type::make_fire_solution( const tripoint_abs_ms &mor
         const tripoint_abs_ms &location_axis_to,
         const mortar_location_error &location_error, const double total_multiplier,
         const bool use_creeping_adjustment,
-        const int max_range ) const
+        const int max_range, const int accuracy_distance ) const
 {
     mortar_fire_solution result;
-    result.minimum_error = minimum_error( rl_dist( mortar_pos, target ) );
+    const int target_distance = rl_dist( mortar_pos, target );
+    const int ballistic_distance = accuracy_distance >= 0 ? accuracy_distance :
+                                   target_distance;
+    result.minimum_error = minimum_error( ballistic_distance );
     result.ballistic_error = mortar_error{ result.minimum_error.range * total_multiplier,
                                            result.minimum_error.deflection * total_multiplier };
     result.reported_error = combined_error( mortar_pos, target, result.ballistic_error,

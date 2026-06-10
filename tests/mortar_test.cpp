@@ -349,6 +349,29 @@ TEST_CASE( "mortar_fire_solution_without_creeping_uses_target_center", "[mortar]
     CHECK_FALSE( solution.creeping_solution );
 }
 
+TEST_CASE( "mortar_fire_solution_can_use_shorter_accuracy_distance", "[mortar]" )
+{
+    const mortar_type &mortar = mortar_m252.obj();
+    const tripoint_abs_ms mortar_pos( 0, 0, 0 );
+    const tripoint_abs_ms target( 10000, 0, 0 );
+    const tripoint_abs_ms spotter_pos( 0, 0, 0 );
+    const tripoint_abs_ms creeping_axis_to( 11000, 0, 0 );
+    const mortar_location_error location_error{ 0.0, 0.0 };
+    constexpr int accuracy_distance = 8850;
+    constexpr int max_range = 20000;
+
+    const mortar_fire_solution solution = mortar.make_fire_solution( mortar_pos, target,
+                                          spotter_pos, creeping_axis_to, spotter_pos, target,
+                                          location_error, 1.0, false,
+                                          max_range, accuracy_distance );
+
+    CHECK( solution.minimum_error.range ==
+           Approx( mortar.minimum_range_error( accuracy_distance ) ) );
+    CHECK( solution.minimum_error.deflection ==
+           Approx( mortar.minimum_deflection_error( accuracy_distance ) ) );
+    CHECK( solution.fire_center == target );
+}
+
 TEST_CASE( "mortar_fire_solution_clamps_creeping_center_to_valid_range", "[mortar]" )
 {
     const mortar_type &mortar = mortar_m224.obj();
