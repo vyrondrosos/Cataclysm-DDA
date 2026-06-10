@@ -4001,10 +4001,33 @@ void npc::set_mission( npc_mission new_mission )
 int npc::clear_mortar_support( const bool notify )
 {
     const diag_value assignment = get_value( "mortar_assignment" );
+    const diag_value crew_gunner = get_value( "mortar_crew_gunner_id" );
     const bool drop_rounds = is_active();
     const int released_rounds = talk_effect_fun::release_mortar_ammo( *this, drop_rounds );
-    if( assignment.is_empty() && released_rounds == 0 ) {
+    if( assignment.is_empty() && crew_gunner.is_empty() && released_rounds == 0 ) {
         return 0;
+    }
+
+    if( !assignment.is_empty() ) {
+        const int gunner_id = getID().get_value();
+        for( npc *crew : g->get_npcs_if( [gunner_id]( const npc & guy ) {
+            const diag_value stored_gunner = guy.get_value( "mortar_crew_gunner_id" );
+            return !stored_gunner.is_empty() && stored_gunner.is_dbl() &&
+                   static_cast<int>( stored_gunner.dbl() ) == gunner_id;
+        } ) ) {
+            if( crew == this ) {
+                continue;
+            }
+            if( crew->activity.id() == ACT_MAN_MORTAR ||
+                crew->peek_destination_activity().id() == ACT_MAN_MORTAR ) {
+                crew->revert_after_activity();
+            } else {
+                crew->remove_value( "mortar_crew_gunner_id" );
+                crew->remove_value( "mortar_crew_gunner_name" );
+                crew->remove_value( "mortar_crew_mortar_type" );
+                crew->remove_value( "mortar_assignment_pos" );
+            }
+        }
     }
 
     remove_value( "mortar_assignment" );
@@ -4016,6 +4039,9 @@ int npc::clear_mortar_support( const bool notify )
     remove_value( "mortar_adjustment_tactic" );
     remove_value( "mortar_creeping_axis_to" );
     remove_value( "mortar_selected_ammo" );
+    remove_value( "mortar_crew_gunner_id" );
+    remove_value( "mortar_crew_gunner_name" );
+    remove_value( "mortar_crew_mortar_type" );
 
     if( notify && released_rounds > 0 ) {
         if( drop_rounds ) {
@@ -4029,6 +4055,8 @@ int npc::clear_mortar_support( const bool notify )
                                 released_rounds ),
                      disp_name(), released_rounds );
         }
+    } else if( notify && !crew_gunner.is_empty() ) {
+        add_msg( _( "%s stops assisting the mortar crew." ), disp_name() );
     }
     return released_rounds;
 }

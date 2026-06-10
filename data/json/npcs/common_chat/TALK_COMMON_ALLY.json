@@ -115,6 +115,12 @@
         "topic": "TALK_DONE",
         "effect": "report_mortar_support"
       },
+      {
+        "text": "Assign a follower to your mortar crew.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "math": [ "has_var(n_mortar_assignment)" ] } ] },
+        "topic": "TALK_DONE",
+        "effect": "assign_mortar_crew"
+      },
       { "text": "Back.", "topic": "TALK_NONE" },
       { "text": "<lets_go>", "topic": "TALK_DONE" }
     ]
