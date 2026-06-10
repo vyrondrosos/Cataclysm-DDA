@@ -252,7 +252,7 @@ int mortar_type::minimum_launcher_skill()
     return mortar_minimum_launcher_skill;
 }
 
-double mortar_type::skill_accuracy_multiplier( const int launcher_skill )
+double mortar_type::skill_accuracy_multiplier( const double launcher_skill )
 {
     const double skill = clamp<double>( launcher_skill, mortar_minimum_launcher_skill, 10.0 );
     return 1.0 + ( 10.0 - skill ) *
@@ -336,12 +336,14 @@ mortar_creeping_solution mortar_creeping_adjustment( const tripoint_abs_ms &mort
 void mortar_type::load( const JsonObject &jo, std::string_view )
 {
     const numeric_bound_reader<int> positive_int{ 1 };
+    const numeric_bound_reader<int> non_negative_int{ 0 };
     const numeric_bound_reader<double> positive_double{ std::numeric_limits<double>::min() };
 
     mandatory( jo, was_loaded, "furniture", furniture_ );
     mandatory( jo, was_loaded, "ammo", ammo_ );
     mandatory( jo, was_loaded, "range", range_, positive_int );
     mandatory( jo, was_loaded, "npc_fire_message_delay", npc_fire_message_delay_ );
+    optional( jo, was_loaded, "max_assistants", max_assistants_, non_negative_int, 0 );
     optional( jo, was_loaded, "range_error_ratio", range_error_ratio_, positive_double, 0.015 );
     optional( jo, was_loaded, "deflection_error_mils", deflection_error_mils_, positive_double, 2.0 );
     was_loaded = true;
@@ -360,6 +362,11 @@ const ammotype &mortar_type::ammo() const
 int mortar_type::range() const
 {
     return range_;
+}
+
+int mortar_type::max_assistants() const
+{
+    return max_assistants_;
 }
 
 time_duration mortar_type::player_flight_time( const int distance ) const
@@ -504,7 +511,7 @@ tripoint_abs_ms mortar_type::clamp_fire_center_to_range( const tripoint_abs_ms &
     return clamped;
 }
 
-double mortar_type::repeat_cep_multiplier( const int launcher_skill ) const
+double mortar_type::repeat_cep_multiplier( const double launcher_skill ) const
 {
     const double skill = clamp<double>( launcher_skill, 1.0, 10.0 );
     if( skill <= 2.0 ) {
