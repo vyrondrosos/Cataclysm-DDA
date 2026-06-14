@@ -845,6 +845,17 @@ void timed_event::actualize()
             }
             break;
 
+        case timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE:
+            if( string_id.empty() ) {
+                add_msg( m_info,
+                         _( "Over the radio, you hear, \"Drone scout feed is ready.\"" ) );
+            } else {
+                add_msg( m_info,
+                         _( "Over the radio, %s reports, \"Drone scout feed is ready.\"" ),
+                         string_id );
+            }
+            break;
+
         case timed_event_type::FPV_DRONE_IMPACT_MESSAGE: {
             const bool in_bubble = here.inbounds( map_square );
             const int player_distance = rl_dist( player_character.pos_abs(), map_square );

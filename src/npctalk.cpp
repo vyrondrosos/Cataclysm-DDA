@@ -8810,6 +8810,7 @@ static void clear_fpv_status_events( const std::string &mission_key )
     get_timed_events().remove( timed_event_type::FPV_DRONE_RETURN_MESSAGE, mission_key );
     get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
     get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
 }
 
 static void clear_fpv_payload_drop_events( const std::string &mission_key )
@@ -10039,14 +10040,9 @@ talk_effect_fun_t::func f_request_fpv_scout()
         preserve_ready_fpv_scout_report( *operator_npc );
 
         map &here = get_map();
-        avatar &you = get_avatar();
-        add_msg( m_info, _( "Designate a visible drone scout point." ) );
+        add_msg( m_info, _( "Designate a drone scout point." ) );
         const std::optional<tripoint_bub_ms> target_bub = g->look_around();
         if( !target_bub ) {
-            return;
-        }
-        if( !you.sees( here, *target_bub ) ) {
-            add_msg( _( "You need line of sight to designate that scout point." ) );
             return;
         }
 
@@ -10055,6 +10051,7 @@ talk_effect_fun_t::func f_request_fpv_scout()
         const int vehicle_skill = operator_npc->get_skill_level( skill_driving );
         const int delay_seconds = std::max( 1, 20 - vehicle_skill );
         const int ready_turn = current_turn_number() + delay_seconds;
+        const std::string mission_key = support_value_string( *operator_npc, "fpv_mission_key" );
         operator_npc->set_value( "fpv_command_busy_until", ready_turn );
 
         operator_npc->set_value( "fpv_scout_active", "yes" );
@@ -10066,8 +10063,15 @@ talk_effect_fun_t::func f_request_fpv_scout()
         operator_npc->set_value( "fpv_station_y", scout_abs.y() );
         operator_npc->set_value( "fpv_station_z", scout_abs.z() );
 
-        add_msg( _( "You request a drone scout pass.  %1$s reports camera alignment in %2$s." ),
-                 operator_npc->disp_name(), format_fpv_duration( delay_seconds ) );
+        if( !mission_key.empty() ) {
+            get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
+            get_timed_events().add( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE,
+                                    calendar::turn + time_duration::from_seconds( delay_seconds ),
+                                    -1, scout_abs, -1, operator_npc->disp_name(), mission_key );
+        }
+
+        add_msg( _( "You request a drone scout pass.  %s reports they are scouting the area now and will report back shortly." ),
+                 operator_npc->disp_name() );
     };
 }
 

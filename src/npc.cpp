@@ -4089,6 +4089,7 @@ int npc::clear_fpv_support( const bool notify )
         get_timed_events().remove( timed_event_type::FPV_DRONE_RETURN_MESSAGE, mission_key );
         get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
         get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
+        get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
         get_timed_events().remove( timed_event_type::FPV_DRONE_PAYLOAD_DROP, mission_key );
     }
 
