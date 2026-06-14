@@ -715,8 +715,9 @@ void timed_event::actualize()
         break;
 
         case timed_event_type::MORTAR_GUIDED_IMPACT: {
+            const bool uses_drone_designation = guided_round_uses_drone_designation( key );
             const std::optional<tripoint_abs_ms> designation =
-                guided_round_uses_drone_designation( key ) ?
+                uses_drone_designation ?
                 talk_effect_fun::active_fpv_designation_target( "mortar" ) :
                 active_laser_designation_target( player_character );
             const timed_event_target_data *target_data = get_data<timed_event_target_data>();
@@ -725,6 +726,14 @@ void timed_event::actualize()
             const tripoint_abs_ms impact = designation ?
                                            guided_mortar_impact( map_square, original_target, *designation ) :
                                            map_square;
+            if( uses_drone_designation && !designation ) {
+                if( string_id.empty() ) {
+                    add_msg( _( "The OKSI round loses live drone designation and continues unguided." ) );
+                } else {
+                    add_msg( _( "%s reports live drone designation was lost; OKSI round continues unguided." ),
+                             string_id );
+                }
+            }
             apply_timed_explosion( player_character.as_avatar(), here, impact, expl_data );
             if( string_id.empty() && strength == mortar_report_mode_none ) {
                 break;
