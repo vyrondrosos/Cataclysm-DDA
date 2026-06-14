@@ -7154,12 +7154,34 @@ static std::optional<fpv_designation_target> resolve_fpv_designation_target(
     return target;
 }
 
+static std::vector<npc *> fpv_drone_operators()
+{
+    std::vector<npc *> operators;
+    std::set<character_id> seen;
+    const auto add_operator = [&operators, &seen]( npc * guy ) {
+        if( guy == nullptr || !guy->is_player_ally() ||
+            support_value_string( *guy, "fpv_assignment" ).empty() ||
+            !seen.insert( guy->getID() ).second ) {
+            return;
+        }
+        operators.emplace_back( guy );
+    };
+
+    for( npc *guy : g->get_npcs_if( []( const npc & guy ) {
+        return guy.is_player_ally() && !support_value_string( guy, "fpv_assignment" ).empty();
+    } ) ) {
+        add_operator( guy );
+    }
+    for( const character_id &follower_id : g->get_follower_list() ) {
+        add_operator( overmap_buffer.find_npc( follower_id ).get() );
+    }
+    return operators;
+}
+
 static fpv_designation_lookup find_fpv_designation( const std::string &designation_type )
 {
     fpv_designation_lookup lookup;
-    std::vector<npc *> drone_operators = g->get_npcs_if( []( const npc & guy ) {
-        return guy.is_player_ally() && !support_value_string( guy, "fpv_assignment" ).empty();
-    } );
+    const std::vector<npc *> drone_operators = fpv_drone_operators();
     if( drone_operators.empty() ) {
         lookup.live_failure = fpv_designation_failure::no_operator;
         return lookup;
@@ -7217,7 +7239,7 @@ static std::string fpv_designation_failure_report( const fpv_designation_lookup 
         case fpv_designation_failure::no_operator:
             return _( "no allied drone operator has an active drone assignment." );
         case fpv_designation_failure::no_designation:
-            return _( "no mortar target has been designated from a drone scout feed." );
+            return _( "no mortar target has been designated from the drone scout feed; a scout report alone is not a live guidance designation." );
         case fpv_designation_failure::drone_not_on_station:
             return _( "the designated scout target is only recorded coordinates; live guidance needs a scout drone on station." );
         case fpv_designation_failure::no_scout_package:
