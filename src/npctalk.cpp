@@ -7034,6 +7034,21 @@ struct fpv_designation_target {
     fpv_designation_target_kind kind = fpv_designation_target_kind::tile;
 };
 
+enum class fpv_designation_failure {
+    none,
+    no_operator,
+    no_designation,
+    drone_not_on_station,
+    no_scout_package,
+    target_lost
+};
+
+struct fpv_designation_lookup {
+    std::optional<fpv_designation_target> stored_target;
+    std::optional<fpv_designation_target> live_target;
+    fpv_designation_failure live_failure = fpv_designation_failure::none;
+};
+
 static std::string fpv_designation_target_kind_name( const fpv_designation_target_kind kind )
 {
     switch( kind ) {
@@ -7139,27 +7154,48 @@ static std::optional<fpv_designation_target> resolve_fpv_designation_target(
     return target;
 }
 
-static std::optional<fpv_designation_target> active_fpv_designation(
-    const std::string &designation_type )
+static fpv_designation_lookup find_fpv_designation( const std::string &designation_type )
 {
+    fpv_designation_lookup lookup;
     std::vector<npc *> drone_operators = g->get_npcs_if( []( const npc & guy ) {
         return guy.is_player_ally() && !support_value_string( guy, "fpv_assignment" ).empty();
     } );
+    if( drone_operators.empty() ) {
+        lookup.live_failure = fpv_designation_failure::no_operator;
+        return lookup;
+    }
+    lookup.live_failure = fpv_designation_failure::no_designation;
     for( npc *operator_npc : drone_operators ) {
         reconcile_fpv_mission( *operator_npc );
-        if( support_value_string( *operator_npc, "fpv_status" ) != "on_station" ||
-            !active_fpv_drone_has_scout_package( *operator_npc ) ||
-            support_value_string( *operator_npc, "fpv_designation_active" ) != "yes" ||
+        if( support_value_string( *operator_npc, "fpv_designation_active" ) != "yes" ||
             support_value_string( *operator_npc, "fpv_designation_type" ) != designation_type ) {
+            continue;
+        }
+        lookup.stored_target = read_fpv_designation_target( *operator_npc );
+        if( support_value_string( *operator_npc, "fpv_status" ) != "on_station" ) {
+            lookup.live_failure = fpv_designation_failure::drone_not_on_station;
+            continue;
+        }
+        if( !active_fpv_drone_has_scout_package( *operator_npc ) ) {
+            lookup.live_failure = fpv_designation_failure::no_scout_package;
             continue;
         }
         const std::optional<fpv_designation_target> target =
             resolve_fpv_designation_target( *operator_npc );
         if( target ) {
-            return target;
+            lookup.live_target = target;
+            lookup.live_failure = fpv_designation_failure::none;
+            return lookup;
         }
+        lookup.live_failure = fpv_designation_failure::target_lost;
     }
-    return std::nullopt;
+    return lookup;
+}
+
+static std::optional<fpv_designation_target> active_fpv_designation(
+    const std::string &designation_type )
+{
+    return find_fpv_designation( designation_type ).live_target;
 }
 
 static std::optional<tripoint_abs_ms> active_fpv_designation_target_impl(
@@ -7171,6 +7207,25 @@ static std::optional<tripoint_abs_ms> active_fpv_designation_target_impl(
         return std::nullopt;
     }
     return designation->pos;
+}
+
+static std::string fpv_designation_failure_report( const fpv_designation_lookup &lookup )
+{
+    switch( lookup.live_failure ) {
+        case fpv_designation_failure::none:
+            return _( "the drone designation is active." );
+        case fpv_designation_failure::no_operator:
+            return _( "no allied drone operator has an active drone assignment." );
+        case fpv_designation_failure::no_designation:
+            return _( "no mortar target has been designated from a drone scout feed." );
+        case fpv_designation_failure::drone_not_on_station:
+            return _( "the designated scout target is only recorded coordinates; live guidance needs a scout drone on station." );
+        case fpv_designation_failure::no_scout_package:
+            return _( "the active drone has no scout camera package for live guidance." );
+        case fpv_designation_failure::target_lost:
+            return _( "the scout drone no longer has the designated target in view." );
+    }
+    return _( "the drone designation is not available." );
 }
 
 std::vector<mortar_spotter_context> mortar_spotters_for_fire_mission( npc &gunner,
@@ -7783,11 +7838,18 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
                              mortar_data.range();
     const bool selected_round_needs_drone_designation = selected_round_sample &&
             mortar_round_is_oksi_guided( *selected_round_sample );
-    const std::optional<tripoint_abs_ms> drone_designated_mortar_target =
-        active_fpv_designation_target( "mortar" );
-    if( selected_round_needs_drone_designation && !drone_designated_mortar_target ) {
-        add_msg( _( "%s reports that the selected OKSI-guided round needs a drone-designated target." ),
-                 gunner.disp_name() );
+    const fpv_designation_lookup mortar_designation = find_fpv_designation( "mortar" );
+    std::optional<tripoint_abs_ms> drone_guided_mortar_target;
+    if( mortar_designation.live_target ) {
+        drone_guided_mortar_target = mortar_designation.live_target->pos;
+    }
+    std::optional<tripoint_abs_ms> drone_scout_mortar_target;
+    if( mortar_designation.stored_target ) {
+        drone_scout_mortar_target = mortar_designation.stored_target->pos;
+    }
+    if( selected_round_needs_drone_designation && !drone_guided_mortar_target ) {
+        add_msg( _( "%1$s reports that the selected OKSI-guided round needs live drone designation: %2$s" ),
+                 gunner.disp_name(), fpv_designation_failure_report( mortar_designation ) );
         return;
     }
     map &here = get_map();
@@ -7804,7 +7866,7 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
     if( forced_target ) {
         target_abs_ms = forced_target;
     } else if( selected_round_needs_drone_designation ) {
-        target_abs_ms = drone_designated_mortar_target;
+        target_abs_ms = drone_guided_mortar_target;
     } else if( repeat_target ) {
         if( !previous_target ) {
             add_msg( _( "%s reports they do not have a previous mortar target to repeat." ),
@@ -7817,9 +7879,9 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         target_menu.text = _( "Designate mortar target how?" );
         target_menu.addentry( 0, true, 'v', _( "Visible local square" ) );
         target_menu.addentry( 1, true, 'o', _( "Overmap tile" ) );
-        target_menu.addentry( 2, drone_designated_mortar_target.has_value(), 'd',
-                              drone_designated_mortar_target ? _( "Drone-designated target" ) :
-                              _( "No drone-designated target" ) );
+        target_menu.addentry( 2, drone_scout_mortar_target.has_value(), 'd',
+                              drone_scout_mortar_target ? _( "Drone-scout designated target" ) :
+                              _( "No drone-scout target designated" ) );
         target_menu.query();
         const int targeting_method = target_menu.ret;
         if( targeting_method < 0 ) {
@@ -7827,7 +7889,7 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         }
 
         if( targeting_method == 2 ) {
-            target_abs_ms = drone_designated_mortar_target;
+            target_abs_ms = drone_scout_mortar_target;
         } else if( targeting_method == 0 ) {
             add_msg( m_info, _( "Designate a visible square for the mortar strike." ) );
             const std::optional<tripoint_bub_ms> target_bub = g->look_around();
