@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <memory>
 #include <ostream>
 #include <set>
@@ -322,6 +324,71 @@ static std::string moves_to_string( const int moves )
     }
 }
 
+namespace
+{
+using spell_shape_function = decltype( spell_type::spell_area_function );
+using spell_effect_function = decltype( spell_type::effect );
+
+const std::map<spell_shape, spell_shape_function> &spell_shape_functions()
+{
+    static const std::map<spell_shape, spell_shape_function> functions = {
+        { spell_shape::blast, spell_effect::spell_effect_blast },
+        { spell_shape::line, spell_effect::spell_effect_line },
+        { spell_shape::cone, spell_effect::spell_effect_cone }
+    };
+    return functions;
+}
+
+const std::map<std::string, spell_effect_function> &spell_effect_functions()
+{
+    static const std::map<std::string, spell_effect_function> functions = {
+        { "pain_split", spell_effect::pain_split },
+        { "attack", spell_effect::attack },
+        { "add_trap", spell_effect::add_trap },
+        { "targeted_polymorph", spell_effect::targeted_polymorph },
+        { "short_range_teleport", spell_effect::short_range_teleport },
+        { "spawn_item", spell_effect::spawn_ethereal_item },
+        { "recover_energy", spell_effect::recover_energy },
+        { "summon", spell_effect::spawn_summoned_monster },
+        { "summon_vehicle", spell_effect::spawn_summoned_vehicle },
+        { "recharge_vehicle", spell_effect::recharge_vehicle },
+        { "fertilize_plant", spell_effect::fertilize_plant },
+        { "translocate", spell_effect::translocate },
+        { "area_pull", spell_effect::area_pull },
+        { "area_push", spell_effect::area_push },
+        { "directed_push", spell_effect::directed_push },
+        { "timed_event", spell_effect::timed_event },
+        { "ter_transform", spell_effect::transform_blast },
+        { "noise", spell_effect::noise },
+        { "vomit", spell_effect::vomit },
+        { "pull_target", spell_effect::pull_to_caster },
+        { "explosion", spell_effect::explosion },
+        { "flashbang", spell_effect::flashbang },
+        { "mod_moves", spell_effect::mod_moves },
+        { "map", spell_effect::map },
+        { "morale", spell_effect::morale },
+        { "charm_monster", spell_effect::charm_monster },
+        { "mutate", spell_effect::mutate },
+        { "bash", spell_effect::bash },
+        { "dash", spell_effect::dash },
+        { "banishment", spell_effect::banishment },
+        { "revive", spell_effect::revive },
+        { "revive_dormant", spell_effect::revive_dormant },
+        { "upgrade", spell_effect::upgrade },
+        { "guilt", spell_effect::guilt },
+        { "remove_effect", spell_effect::remove_effect },
+        { "emit", spell_effect::emit },
+        { "fungalize", spell_effect::fungalize },
+        { "remove_field", spell_effect::remove_field },
+        { "effect_on_condition", spell_effect::effect_on_condition },
+        { "pickup", spell_effect::pickup },
+        { "slime_split", spell_effect::slime_split_on_death },
+        { "none", spell_effect::none }
+    };
+    return functions;
+}
+} // namespace
+
 void spell_type::load( const JsonObject &jo, std::string_view src )
 {
     src_mod = mod_id( src );
@@ -337,15 +404,16 @@ void spell_type::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "sound_id", sound_id, sound_id_default );
     optional( jo, was_loaded, "sound_variant", sound_variant, sound_variant_default );
     mandatory( jo, was_loaded, "effect", effect_name );
-    const auto found_effect = spell_effect::effect_map.find( effect_name );
-    if( found_effect == spell_effect::effect_map.cend() ) {
+    const auto &effect_functions = spell_effect_functions();
+    const auto found_effect = effect_functions.find( effect_name );
+    if( found_effect == effect_functions.cend() ) {
         effect = spell_effect::none;
         debugmsg( "ERROR: spell %s has invalid effect %s", id.c_str(), effect_name );
     } else {
         effect = found_effect->second;
     }
     mandatory( jo, was_loaded, "shape", spell_area );
-    spell_area_function = spell_effect::shape_map.at( spell_area );
+    spell_area_function = spell_shape_functions().at( spell_area );
 
     const auto targeted_monster_ids_reader = string_id_reader<::mtype> {};
     optional( jo, was_loaded, "targeted_monster_ids", targeted_monster_ids,
