@@ -901,60 +901,6 @@ void effect_on_condition( const spell &sp, Creature &caster, const tripoint_bub_
 void pickup( const spell &sp, Creature &caster, const tripoint_bub_ms &target );
 void none( const spell &sp, Creature &, const tripoint_bub_ms &target );
 void slime_split_on_death( const spell &sp, Creature &, const tripoint_bub_ms &target );
-
-inline const std::map<spell_shape, std::function<std::set<tripoint_bub_ms>
-( const override_parameters &, const tripoint_bub_ms &, const tripoint_bub_ms & )>> shape_map = {
-    { spell_shape::blast, spell_effect_blast },
-    { spell_shape::line, spell_effect_line },
-    { spell_shape::cone, spell_effect_cone }
-};
-
-inline const
-std::map<std::string, std::function<void( const spell &, Creature &, const tripoint_bub_ms & )>>
-effect_map{
-    { "pain_split", spell_effect::pain_split },
-    { "attack", spell_effect::attack },
-    { "add_trap", spell_effect::add_trap},
-    { "targeted_polymorph", spell_effect::targeted_polymorph },
-    { "short_range_teleport", spell_effect::short_range_teleport },
-    { "spawn_item", spell_effect::spawn_ethereal_item },
-    { "recover_energy", spell_effect::recover_energy },
-    { "summon", spell_effect::spawn_summoned_monster },
-    { "summon_vehicle", spell_effect::spawn_summoned_vehicle },
-    { "recharge_vehicle", spell_effect::recharge_vehicle },
-    { "fertilize_plant", spell_effect::fertilize_plant },
-    { "translocate", spell_effect::translocate },
-    { "area_pull", spell_effect::area_pull },
-    { "area_push", spell_effect::area_push },
-    { "directed_push", spell_effect::directed_push },
-    { "timed_event", spell_effect::timed_event },
-    { "ter_transform", spell_effect::transform_blast },
-    { "noise", spell_effect::noise },
-    { "vomit", spell_effect::vomit },
-    { "pull_target", spell_effect::pull_to_caster },
-    { "explosion", spell_effect::explosion },
-    { "flashbang", spell_effect::flashbang },
-    { "mod_moves", spell_effect::mod_moves },
-    { "map", spell_effect::map },
-    { "morale", spell_effect::morale },
-    { "charm_monster", spell_effect::charm_monster },
-    { "mutate", spell_effect::mutate },
-    { "bash", spell_effect::bash },
-    { "dash", spell_effect::dash },
-    { "banishment", spell_effect::banishment },
-    { "revive", spell_effect::revive },
-    { "revive_dormant", spell_effect::revive_dormant },
-    { "upgrade", spell_effect::upgrade },
-    { "guilt", spell_effect::guilt },
-    { "remove_effect", spell_effect::remove_effect },
-    { "emit", spell_effect::emit },
-    { "fungalize", spell_effect::fungalize },
-    { "remove_field", spell_effect::remove_field },
-    { "effect_on_condition", spell_effect::effect_on_condition },
-    { "pickup", spell_effect::pickup },
-    { "slime_split", spell_effect::slime_split_on_death },
-    { "none", spell_effect::none }
-};
 } // namespace spell_effect
 
 class spellbook_callback : public uilist_callback
