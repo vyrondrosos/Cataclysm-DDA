@@ -279,7 +279,7 @@ static const item_transformation *fpv_payload_arming_transform( const itype &pay
         return nullptr;
     }
     const iuse_transform *transform_actor = dynamic_cast<const iuse_transform *>(
-                                            transform_use->get_actor_ptr() );
+            transform_use->get_actor_ptr() );
     return transform_actor != nullptr ? &transform_actor->transform : nullptr;
 }
 
@@ -668,7 +668,7 @@ void timed_event::actualize()
             }
 
             const bool correction_reported = impact_data->feedback_reported.value_or(
-                    !shot_lost && report_mode != mortar_report_mode_none );
+                                                 !shot_lost && report_mode != mortar_report_mode_none );
             if( !correction_reported ) {
                 add_msg_debug( debugmode::DF_NPC,
                                "Mortar spotting feedback for %s: no correction reported.",
@@ -722,7 +722,7 @@ void timed_event::actualize()
                 active_laser_designation_target( player_character );
             const timed_event_target_data *target_data = get_data<timed_event_target_data>();
             const tripoint_abs_ms original_target = target_data == nullptr ||
-                    target_data->target.is_invalid() ? map_square : target_data->target;
+                                                    target_data->target.is_invalid() ? map_square : target_data->target;
             const tripoint_abs_ms impact = designation ?
                                            guided_mortar_impact( map_square, original_target, *designation ) :
                                            map_square;

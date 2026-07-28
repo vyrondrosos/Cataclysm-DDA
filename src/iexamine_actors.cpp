@@ -534,7 +534,7 @@ void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) 
     you.assign_activity( ACT_MORTAR_AIMING, to_moves<int>( aim_dur ) );
 
     const time_duration impact_delay = mortar_round_player_flight_time( *mortar, round,
-                                      target_distance );
+                                       target_distance );
     const time_point impact_time = calendar::turn + impact_delay + aim_dur;
     if( mortar_round_is_guided( round ) ) {
         mortar_schedule_guided_impact_payload( round, target_abs_ms, designated_target_abs_ms,
