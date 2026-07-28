@@ -6551,7 +6551,7 @@ std::optional<assigned_mortar> get_assigned_mortar( const npc &gunner )
 npc *mortar_primary_operator_at( const npc &requester, const tripoint_abs_ms &mortar_pos )
 {
     for( npc *candidate : g->get_npcs_if( [&requester]( const npc & guy ) {
-        return guy.getID() != requester.getID() && guy.is_player_ally() &&
+    return guy.getID() != requester.getID() && guy.is_player_ally() &&
                !guy.get_value( "mortar_assignment" ).is_empty();
     } ) ) {
         const std::optional<assigned_mortar> assignment = get_assigned_mortar( *candidate );
@@ -6656,7 +6656,7 @@ time_duration mortar_crew_adjusted_fire_delay( const mortar_type &mortar, const 
         const assigned_mortar &assignment )
 {
     const int active_secondaries = static_cast<int>(
-                                      mortar_active_crew_members( gunner, assignment ).size() );
+                                       mortar_active_crew_members( gunner, assignment ).size() );
     const int divisor = 1 << active_secondaries;
     const int base_seconds = to_seconds<int>( mortar.npc_fire_message_delay() );
     const int crew_reduced_delay = std::max( 1, base_seconds - active_secondaries * 2 );
@@ -6996,7 +6996,8 @@ std::optional<tripoint_abs_ms> mortar_drone_station_position( const npc &operato
         const diag_value x_value = operator_npc.get_value( x_key );
         const diag_value y_value = operator_npc.get_value( y_key );
         const diag_value z_value = operator_npc.get_value( z_key );
-        if( x_value.is_empty() || y_value.is_empty() || z_value.is_empty() ) {
+        if( x_value.is_empty() || y_value.is_empty() || z_value.is_empty() )
+        {
             return std::nullopt;
         }
         return tripoint_abs_ms( static_cast<int>( x_value.dbl() ),
@@ -7168,7 +7169,7 @@ static std::vector<npc *> fpv_drone_operators()
     };
 
     for( npc *guy : g->get_npcs_if( []( const npc & guy ) {
-        return guy.is_player_ally() && !support_value_string( guy, "fpv_assignment" ).empty();
+    return guy.is_player_ally() && !support_value_string( guy, "fpv_assignment" ).empty();
     } ) ) {
         add_operator( guy );
     }
@@ -7301,7 +7302,8 @@ std::vector<mortar_spotter_context> mortar_spotters_for_fire_mission( npc &gunne
     return spotters;
 }
 
-const mortar_spotter_context &best_location_spotter( const std::vector<mortar_spotter_context> &spotters )
+const mortar_spotter_context &best_location_spotter( const std::vector<mortar_spotter_context>
+        &spotters )
 {
     return *std::min_element( spotters.begin(), spotters.end(),
     []( const mortar_spotter_context & lhs, const mortar_spotter_context & rhs ) {
@@ -7639,7 +7641,7 @@ void assign_mortar_crew_impl( npc &gunner )
     } );
 
     const int npcselect = npc_select_menu( candidates, _( "Who should join the mortar crew?" ),
-                                          false );
+                                           false );
     if( npcselect < 0 || static_cast<size_t>( npcselect ) >= candidates.size() ) {
         return;
     }
@@ -8584,7 +8586,7 @@ static int active_fpv_battery_capacity( const npc &operator_npc )
 {
     const int stored = support_value_int( operator_npc, "fpv_battery_capacity" );
     return stored > 0 ? stored : fpv_drone_nominal_battery_capacity( active_fpv_drone_type(
-                                    operator_npc ) );
+                operator_npc ) );
 }
 
 static int active_fpv_battery_start_charges( const npc &operator_npc )
@@ -8598,7 +8600,7 @@ static int active_fpv_full_battery_seconds( const npc &operator_npc )
 {
     const int stored = support_value_int( operator_npc, "fpv_battery_full_seconds" );
     return stored > 0 ? stored : fpv_drone_full_battery_seconds( active_fpv_drone_type(
-                                    operator_npc ) );
+                operator_npc ) );
 }
 
 static int fpv_mission_used_battery_seconds( const npc &operator_npc, const int at_turn )
@@ -8607,7 +8609,7 @@ static int fpv_mission_used_battery_seconds( const npc &operator_npc, const int 
     const int station_end_turn = get_fpv_turn_value( operator_npc, "fpv_station_end_turn" );
     const int return_end_turn = get_fpv_turn_value( operator_npc, "fpv_return_end_turn" );
     const int outbound_seconds = std::max( 0, get_fpv_turn_value( operator_npc,
-                                            "fpv_outbound_seconds" ) );
+                                           "fpv_outbound_seconds" ) );
     const int launch_turn = get_fpv_turn_value( operator_npc, "fpv_launch_turn" ) > 0 ?
                             get_fpv_turn_value( operator_npc, "fpv_launch_turn" ) :
                             arrival_turn - outbound_seconds;
@@ -8691,7 +8693,8 @@ static int get_fpv_turn_value( const npc &operator_npc, const std::string &key )
     return support_value_int( operator_npc, key );
 }
 
-static bool fpv_payload_has_immediate_explosion( const item &payload, const float minimum_power = 0.0f )
+static bool fpv_payload_has_immediate_explosion( const item &payload,
+        const float minimum_power = 0.0f )
 {
     if( !payload.ammo_data() ) {
         return false;
@@ -8828,7 +8831,7 @@ static int load_baba_yaga_payload( npc &operator_npc )
     int loaded = 0;
     for( ; loaded < to_load; ++loaded ) {
         if( !take_one_support_item( operator_npc, [&payload_id]( const item & it ) {
-            return it.typeId() == *payload_id && is_fpv_baba_yaga_payload( it );
+        return it.typeId() == *payload_id && is_fpv_baba_yaga_payload( it );
         } ) ) {
             break;
         }
@@ -9008,7 +9011,8 @@ talk_effect_fun_t::func f_reconcile_fpv_mission()
     };
 }
 
-static void schedule_fpv_status_messages( const npc &operator_npc, const tripoint_abs_ms &player_pos,
+static void schedule_fpv_status_messages( const npc &operator_npc,
+        const tripoint_abs_ms &player_pos,
         const std::string &mission_key, const int first_offset_seconds, const int station_seconds_remaining,
         const int total_battery_seconds )
 {
@@ -9049,8 +9053,8 @@ static bool require_fpv_radio_link( const dialogue &d, const npc &operator_npc )
 static bool require_fpv_controller( const npc &operator_npc )
 {
     if( operator_npc.amount_of( itype_remotevehcontrol, false ) <= 0 &&
-        count_support_items( operator_npc, []( const item & it ) {
-        return it.typeId() == itype_remotevehcontrol;
+    count_support_items( operator_npc, []( const item & it ) {
+    return it.typeId() == itype_remotevehcontrol;
     } ) <= 0 ) {
         add_msg( _( "%s needs a remote vehicle controller to operate drones." ),
                  operator_npc.disp_name() );
@@ -9300,7 +9304,7 @@ static std::optional<tripoint_abs_ms> select_fpv_scout_view( const tripoint_abs_
         const bool thermal )
 {
     return with_fpv_scout_camera( scout_abs, thermal,
-    [&scout_abs]( avatar &, map &, const tripoint_bub_ms & scout_bub )
+                                  [&scout_abs]( avatar &, map &, const tripoint_bub_ms & scout_bub )
     -> std::optional<tripoint_abs_ms> {
         tripoint_bub_ms center = scout_bub;
         g->look_around( true, center, scout_bub, false, true, false );
@@ -9314,8 +9318,8 @@ static std::optional<fpv_designation_target> select_fpv_scout_designation_target
     return with_fpv_scout_camera( scout_abs, thermal,
     []( avatar &, map &, const tripoint_bub_ms & ) -> std::optional<fpv_designation_target> {
         return select_fpv_designation_target(
-                   _( "Designate a target from the drone scout feed." ),
-                   _( "The selected target is not visible from the drone scout feed." ) );
+            _( "Designate a target from the drone scout feed." ),
+            _( "The selected target is not visible from the drone scout feed." ) );
     } );
 }
 
@@ -9423,7 +9427,7 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
         operator_npc->clear_mortar_support( true );
 
         const bool needs_controller = operator_npc->amount_of( itype_remotevehcontrol, false ) <= 0 &&
-                                      count_support_items( *operator_npc, []( const item & it ) {
+        count_support_items( *operator_npc, []( const item & it ) {
             return it.typeId() == itype_remotevehcontrol;
         } ) <= 0;
         if( needs_controller ) {
@@ -9448,7 +9452,7 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
                    is_fpv_scout_drone( it ) || is_fpv_baba_yaga_drone( it );
         };
         drop_locations drones = select_nearby_handover_items( drone_filter,
-                               _( "Select drones to hand over" ) );
+                                _( "Select drones to hand over" ) );
         for( drop_location &selected : drones ) {
             std::optional<item> drone = take_handover_item( selected.first, selected.second );
             if( !drone ) {
@@ -9581,7 +9585,7 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     }
 
     const int cruise_seconds = std::max( 1, static_cast<int>( std::ceil( distance * 3600.0 /
-                                      fpv_drone_cruise_speed_tiles_per_hour( drone_type ) ) ) );
+                                         fpv_drone_cruise_speed_tiles_per_hour( drone_type ) ) ) );
     const int outbound_seconds = cruise_seconds + fpv_drone_launch_delay_seconds( *operator_npc,
                                  drone_type );
     const int return_seconds = cruise_seconds;
@@ -9635,7 +9639,7 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
                             -1, you.pos_abs(), return_seconds, operator_npc->disp_name(), mission_key );
     get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
                             calendar::turn + time_duration::from_seconds( outbound_seconds + station_seconds +
-                                            return_seconds ),
+                                    return_seconds ),
                             -1, operator_npc->pos_abs(), -1, operator_npc->disp_name(), mission_key );
     practice_fpv_operation( *operator_npc );
     if( scout_drone ) {
@@ -9736,7 +9740,7 @@ talk_effect_fun_t::func f_request_fpv_one_way()
             return;
         }
         const int one_way_station_seconds = std::max( 1, static_cast<int>( std::floor(
-                                            battery_seconds / 0.6 ) ) );
+                                                battery_seconds / 0.6 ) ) );
         const int one_way_end_turn = now + one_way_station_seconds;
         const int remaining_seconds = one_way_end_turn - now;
         if( remaining_seconds <= 0 ) {
@@ -9805,7 +9809,7 @@ talk_effect_fun_t::func f_request_fpv_abort_one_way()
         int station_seconds = 0;
         if( remaining_cruise_seconds > return_seconds + reserve_seconds ) {
             station_seconds = std::max( 0, static_cast<int>( std::floor(
-                                           ( remaining_cruise_seconds - return_seconds - reserve_seconds ) / 0.6 ) ) );
+                                            ( remaining_cruise_seconds - return_seconds - reserve_seconds ) / 0.6 ) ) );
         }
         const int station_end_turn = start_turn + station_seconds;
         const int return_end_turn = station_end_turn + return_seconds;
@@ -10174,7 +10178,8 @@ talk_effect_fun_t::func f_request_fpv_scout_report( const bool thermal )
         }
         preserve_ready_fpv_scout_report( *operator_npc );
         const bool has_pending_scout = support_value_string( *operator_npc, "fpv_scout_active" ) == "yes";
-        const bool has_saved_report = support_value_string( *operator_npc, "fpv_scout_report_active" ) == "yes";
+        const bool has_saved_report = support_value_string( *operator_npc,
+                                      "fpv_scout_report_active" ) == "yes";
         if( !has_pending_scout && !has_saved_report ) {
             add_msg( _( "%s reports no drone scout feed has been tasked." ),
                      operator_npc->disp_name() );
@@ -10230,7 +10235,8 @@ talk_effect_fun_t::func f_request_fpv_designation()
 
         preserve_ready_fpv_scout_report( *operator_npc );
         const bool has_pending_scout = support_value_string( *operator_npc, "fpv_scout_active" ) == "yes";
-        const bool has_saved_report = support_value_string( *operator_npc, "fpv_scout_report_active" ) == "yes";
+        const bool has_saved_report = support_value_string( *operator_npc,
+                                      "fpv_scout_report_active" ) == "yes";
         if( !has_pending_scout && !has_saved_report ) {
             add_msg( _( "%s reports no drone scout feed has been tasked." ),
                      operator_npc->disp_name() );

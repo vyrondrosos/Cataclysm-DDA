@@ -4016,7 +4016,7 @@ int npc::clear_mortar_support( const bool notify )
     if( !assignment.is_empty() ) {
         const int gunner_id = getID().get_value();
         for( npc *crew : g->get_npcs_if( [gunner_id]( const npc & guy ) {
-            const diag_value stored_gunner = guy.get_value( "mortar_crew_gunner_id" );
+        const diag_value stored_gunner = guy.get_value( "mortar_crew_gunner_id" );
             return !stored_gunner.is_empty() && stored_gunner.is_dbl() &&
                    static_cast<int>( stored_gunner.dbl() ) == gunner_id;
         } ) ) {
@@ -4081,7 +4081,8 @@ int npc::clear_fpv_support( const bool notify )
     }
 
     const diag_value mission_key_value = get_value( "fpv_mission_key" );
-    const std::string mission_key = mission_key_value.is_empty() ? std::string() : mission_key_value.str();
+    const std::string mission_key = mission_key_value.is_empty() ? std::string() :
+                                    mission_key_value.str();
     if( !mission_key.empty() ) {
         get_timed_events().remove( timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE, mission_key );
         get_timed_events().remove( timed_event_type::FPV_DRONE_STATUS_MESSAGE, mission_key );
@@ -4094,8 +4095,10 @@ int npc::clear_fpv_support( const bool notify )
 
     if( !drone_airborne ) {
         const diag_value payload_type_value = get_value( "fpv_payload_loaded_type" );
-        const std::string payload_type = payload_type_value.is_empty() ? std::string() : payload_type_value.str();
-        const int loaded_count = std::max( 0, static_cast<int>( get_value( "fpv_payload_loaded_count" ).dbl() ) );
+        const std::string payload_type = payload_type_value.is_empty() ? std::string() :
+                                         payload_type_value.str();
+        const int loaded_count = std::max( 0,
+                                           static_cast<int>( get_value( "fpv_payload_loaded_count" ).dbl() ) );
         const itype_id payload_id( payload_type );
         if( loaded_count > 0 && payload_id.is_valid() ) {
             item payload( payload_id, calendar::turn, loaded_count );
