@@ -8619,6 +8619,7 @@ static int fpv_mission_used_battery_seconds( const npc &operator_npc, const int 
     if( now > station_end_turn ) {
         used += std::max( 0, std::min( now, return_end_turn ) - station_end_turn );
     }
+    used += std::max( 0, support_value_int( operator_npc, "fpv_command_battery_penalty" ) );
     return std::max( 0, used );
 }
 
@@ -8887,8 +8888,8 @@ static void preserve_ready_fpv_scout_report( npc &operator_npc )
     operator_npc.set_value( "fpv_scout_report_z", get_fpv_turn_value( operator_npc, "fpv_scout_z" ) );
 }
 
-static void clear_fpv_status_events( const std::string &mission_key,
-                                     const timed_event_type preserved_event = timed_event_type::NONE )
+static void clear_fpv_timeline_events( const std::string &mission_key,
+                                       const timed_event_type preserved_event = timed_event_type::NONE )
 {
     if( mission_key.empty() ) {
         return;
@@ -8902,7 +8903,15 @@ static void clear_fpv_status_events( const std::string &mission_key,
     if( preserved_event != timed_event_type::FPV_DRONE_LOST_MESSAGE ) {
         get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
     }
-    get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
+}
+
+static void clear_fpv_status_events( const std::string &mission_key,
+                                     const timed_event_type preserved_event = timed_event_type::NONE )
+{
+    clear_fpv_timeline_events( mission_key, preserved_event );
+    if( !mission_key.empty() ) {
+        get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
+    }
 }
 
 static void clear_fpv_payload_drop_events( const std::string &mission_key )
@@ -8936,6 +8945,7 @@ static void clear_fpv_mission( npc &operator_npc,
     operator_npc.remove_value( "fpv_payload_loaded_type" );
     operator_npc.remove_value( "fpv_payload_loaded_count" );
     operator_npc.remove_value( "fpv_command_busy_until" );
+    operator_npc.remove_value( "fpv_command_battery_penalty" );
     operator_npc.remove_value( "fpv_payload_drop_busy_until" );
     operator_npc.remove_value( "fpv_station_x" );
     operator_npc.remove_value( "fpv_station_y" );
@@ -9110,6 +9120,161 @@ static bool require_fpv_on_station( npc &operator_npc )
         return false;
     }
     return true;
+}
+
+static bool require_fpv_command_ready( const npc &operator_npc )
+{
+    const int seconds_remaining = get_fpv_turn_value( operator_npc,
+                                  "fpv_command_busy_until" ) - current_turn_number();
+    if( seconds_remaining <= 0 ) {
+        return true;
+    }
+    add_msg( _( "%1$s reports the drone is still executing its current command, ETA %2$s." ),
+             operator_npc.disp_name(), format_fpv_duration( seconds_remaining ) );
+    return false;
+}
+
+static int fpv_travel_seconds( const std::string &drone_type, const tripoint_abs_ms &from,
+                               const tripoint_abs_ms &to )
+{
+    const int distance = rl_dist( from, to );
+    if( distance <= 0 ) {
+        return 0;
+    }
+    return std::max( 1, static_cast<int>( std::ceil( distance * 3600.0 /
+                     fpv_drone_cruise_speed_tiles_per_hour( drone_type ) ) ) );
+}
+
+struct fpv_command_plan {
+    int travel_seconds = 0;
+    int delay_seconds = 0;
+    int busy_until = 0;
+    int station_seconds = 0;
+    int station_end_turn = 0;
+    int return_seconds = 0;
+    int return_end_turn = 0;
+    int battery_penalty = 0;
+    int remaining_battery_seconds = 0;
+    bool one_way = false;
+};
+
+static bool require_fpv_target_in_range( const npc &operator_npc,
+        const tripoint_abs_ms &target )
+{
+    const int max_range = fpv_drone_max_range_tiles( active_fpv_drone_type( operator_npc ) );
+    if( rl_dist( operator_npc.pos_abs(), target ) <= max_range ) {
+        return true;
+    }
+    add_msg( _( "%1$s reports the requested point is outside the drone's %2$d tile control range." ),
+             operator_npc.disp_name(), max_range );
+    return false;
+}
+
+static std::optional<fpv_command_plan> plan_fpv_command( npc &operator_npc,
+        const tripoint_abs_ms &target, const int handling_seconds )
+{
+    const std::string drone_type = active_fpv_drone_type( operator_npc );
+    if( !require_fpv_target_in_range( operator_npc, target ) ) {
+        return std::nullopt;
+    }
+
+    const tripoint_abs_ms station( get_fpv_turn_value( operator_npc, "fpv_station_x" ),
+                                   get_fpv_turn_value( operator_npc, "fpv_station_y" ),
+                                   get_fpv_turn_value( operator_npc, "fpv_station_z" ) );
+    fpv_command_plan plan;
+    plan.travel_seconds = fpv_travel_seconds( drone_type, station, target );
+    plan.delay_seconds = std::max( 1, handling_seconds ) + plan.travel_seconds;
+    plan.busy_until = current_turn_number() + plan.delay_seconds;
+    plan.return_seconds = fpv_travel_seconds( drone_type, target, operator_npc.pos_abs() );
+    plan.one_way = support_value_string( operator_npc, "fpv_one_way" ) == "yes";
+    plan.remaining_battery_seconds = fpv_mission_remaining_battery_seconds(
+                                         operator_npc, current_turn_number() );
+
+    // Station keeping already charges 0.6 battery seconds per elapsed second.  Reserve only the
+    // additional cruise cost here so later mission accounting remains continuous.
+    plan.battery_penalty = static_cast<int>( std::ceil( plan.travel_seconds * 0.4 ) );
+    const int command_battery = static_cast<int>( std::ceil( plan.delay_seconds * 0.6 ) ) +
+                                plan.battery_penalty;
+    const int reserve_seconds = plan.one_way ? 0 : 20;
+    const int required_return = plan.one_way ? 0 : plan.return_seconds;
+    const int station_battery = plan.remaining_battery_seconds - command_battery -
+                                required_return - reserve_seconds;
+    if( station_battery <= 0 ) {
+        if( plan.one_way ) {
+            add_msg( _( "%s reports there is not enough battery for that command." ),
+                     operator_npc.disp_name() );
+        } else {
+            add_msg( _( "%s reports there is not enough battery for that command and the planned recovery." ),
+                     operator_npc.disp_name() );
+        }
+        return std::nullopt;
+    }
+
+    plan.station_seconds = std::max( 1, static_cast<int>( std::floor( station_battery / 0.6 ) ) );
+    plan.station_end_turn = plan.busy_until + plan.station_seconds;
+    plan.return_end_turn = plan.station_end_turn + required_return;
+    return plan;
+}
+
+static std::optional<int> plan_fpv_terminal_command( npc &operator_npc,
+        const tripoint_abs_ms &target, const int handling_seconds )
+{
+    if( !require_fpv_target_in_range( operator_npc, target ) ) {
+        return std::nullopt;
+    }
+    const std::string drone_type = active_fpv_drone_type( operator_npc );
+    const tripoint_abs_ms station( get_fpv_turn_value( operator_npc, "fpv_station_x" ),
+                                   get_fpv_turn_value( operator_npc, "fpv_station_y" ),
+                                   get_fpv_turn_value( operator_npc, "fpv_station_z" ) );
+    const int travel_seconds = fpv_travel_seconds( drone_type, station, target );
+    const int command_battery = travel_seconds + static_cast<int>( std::ceil(
+                                    std::max( 1, handling_seconds ) * 0.6 ) );
+    if( fpv_mission_remaining_battery_seconds( operator_npc,
+            current_turn_number() ) < command_battery ) {
+        add_msg( _( "%s reports there is not enough battery to reach that target." ),
+                 operator_npc.disp_name() );
+        return std::nullopt;
+    }
+    return std::max( 1, handling_seconds ) + travel_seconds;
+}
+
+static void apply_fpv_command_plan( npc &operator_npc, const tripoint_abs_ms &target,
+                                    const fpv_command_plan &plan )
+{
+    const int previous_penalty = std::max( 0, support_value_int( operator_npc,
+                                          "fpv_command_battery_penalty" ) );
+    operator_npc.set_value( "fpv_command_busy_until", plan.busy_until );
+    operator_npc.set_value( "fpv_command_battery_penalty", previous_penalty + plan.battery_penalty );
+    operator_npc.set_value( "fpv_station_end_turn", plan.station_end_turn );
+    operator_npc.set_value( "fpv_return_end_turn", plan.return_end_turn );
+    operator_npc.set_value( "fpv_return_seconds", plan.return_seconds );
+    operator_npc.set_value( "fpv_station_x", target.x() );
+    operator_npc.set_value( "fpv_station_y", target.y() );
+    operator_npc.set_value( "fpv_station_z", target.z() );
+
+    const std::string mission_key = support_value_string( operator_npc, "fpv_mission_key" );
+    clear_fpv_timeline_events( mission_key );
+    schedule_fpv_status_messages( operator_npc, get_avatar().pos_abs(), mission_key,
+                                  plan.delay_seconds, plan.station_seconds,
+                                  plan.remaining_battery_seconds );
+    if( plan.one_way ) {
+        get_timed_events().add( timed_event_type::FPV_DRONE_LOST_MESSAGE,
+                                calendar::turn + time_duration::from_seconds( plan.delay_seconds +
+                                        plan.station_seconds ),
+                                -1, target, operator_npc.getID().get_value(), operator_npc.disp_name(),
+                                mission_key );
+        return;
+    }
+
+    get_timed_events().add( timed_event_type::FPV_DRONE_RETURN_MESSAGE,
+                            calendar::turn + time_duration::from_seconds( plan.delay_seconds +
+                                    plan.station_seconds ),
+                            -1, target, plan.return_seconds, operator_npc.disp_name(), mission_key );
+    get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
+                            calendar::turn + time_duration::from_seconds( plan.delay_seconds +
+                                    plan.station_seconds + plan.return_seconds ),
+                            -1, operator_npc.pos_abs(), operator_npc.getID().get_value(),
+                            operator_npc.disp_name(), mission_key );
 }
 
 static tripoint_abs_ms apply_circular_cep( const tripoint_abs_ms &target, const double cep )
@@ -9760,7 +9925,9 @@ talk_effect_fun_t::func f_request_fpv_one_way()
             return;
         }
 
-        const int battery_seconds = fpv_mission_remaining_battery_seconds( *operator_npc, now );
+        const int busy_until = get_fpv_turn_value( *operator_npc, "fpv_command_busy_until" );
+        const int start_turn = std::max( now, busy_until );
+        const int battery_seconds = fpv_mission_remaining_battery_seconds( *operator_npc, start_turn );
         if( battery_seconds <= 0 ) {
             add_msg( _( "%s reports the drone has no battery margin left for one-way loiter." ),
                      operator_npc->disp_name() );
@@ -9768,31 +9935,32 @@ talk_effect_fun_t::func f_request_fpv_one_way()
         }
         const int one_way_station_seconds = std::max( 1, static_cast<int>( std::floor(
                                                 battery_seconds / 0.6 ) ) );
-        const int one_way_end_turn = now + one_way_station_seconds;
-        const int remaining_seconds = one_way_end_turn - now;
-        if( remaining_seconds <= 0 ) {
-            add_msg( _( "%s reports the drone has no battery margin left for one-way loiter." ),
-                     operator_npc->disp_name() );
-            return;
-        }
+        const int one_way_end_turn = start_turn + one_way_station_seconds;
+        const int first_offset_seconds = start_turn - now;
 
         const std::string mission_key = support_value_string( *operator_npc, "fpv_mission_key" );
         avatar &you = get_avatar();
-        clear_fpv_status_events( mission_key );
+        clear_fpv_timeline_events( mission_key );
         practice_fpv_expenditure( *operator_npc );
         operator_npc->set_value( "fpv_one_way", "yes" );
         operator_npc->set_value( "fpv_status", "on_station" );
         operator_npc->set_value( "fpv_station_end_turn", one_way_end_turn );
         operator_npc->set_value( "fpv_return_end_turn", one_way_end_turn );
 
-        schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, 0, remaining_seconds,
-                                      battery_seconds );
+        schedule_fpv_status_messages( *operator_npc, you.pos_abs(), mission_key, first_offset_seconds,
+                                      one_way_station_seconds, battery_seconds );
         get_timed_events().add( timed_event_type::FPV_DRONE_LOST_MESSAGE,
-                                calendar::turn + time_duration::from_seconds( remaining_seconds ),
+                                calendar::turn + time_duration::from_seconds( first_offset_seconds +
+                                        one_way_station_seconds ),
                                 -1, you.pos_abs(), operator_npc->getID().get_value(),
                                 operator_npc->disp_name(), mission_key );
-        add_msg( _( "You commit the drone one-way.  %1$s reports battery-limited station time remaining %2$s; no recovery planned." ),
-                 operator_npc->disp_name(), format_fpv_duration( remaining_seconds ) );
+        if( start_turn > now ) {
+            add_msg( _( "You commit the drone one-way.  %1$s confirms current task completion first, then %2$s of battery-limited station time; no recovery planned." ),
+                     operator_npc->disp_name(), format_fpv_duration( one_way_station_seconds ) );
+        } else {
+            add_msg( _( "You commit the drone one-way.  %1$s reports battery-limited station time remaining %2$s; no recovery planned." ),
+                     operator_npc->disp_name(), format_fpv_duration( one_way_station_seconds ) );
+        }
     };
 }
 
@@ -9844,7 +10012,7 @@ talk_effect_fun_t::func f_request_fpv_abort_one_way()
         const std::string mission_key = support_value_string( *operator_npc, "fpv_mission_key" );
         avatar &you = get_avatar();
 
-        clear_fpv_status_events( mission_key );
+        clear_fpv_timeline_events( mission_key );
         operator_npc->set_value( "fpv_one_way", "no" );
         operator_npc->set_value( "fpv_station_end_turn", station_end_turn );
         operator_npc->set_value( "fpv_return_end_turn", return_end_turn );
@@ -9922,7 +10090,7 @@ talk_effect_fun_t::func f_request_fpv_recover()
         const std::string mission_key = support_value_string( *operator_npc, "fpv_mission_key" );
         avatar &you = get_avatar();
 
-        clear_fpv_status_events( mission_key );
+        clear_fpv_timeline_events( mission_key );
         operator_npc->set_value( "fpv_station_end_turn", start_turn );
         operator_npc->set_value( "fpv_return_end_turn", start_turn + return_seconds );
         if( now >= start_turn ) {
@@ -10025,7 +10193,11 @@ talk_effect_fun_t::func f_request_fpv_attack()
         }
 
         const int vehicle_skill = operator_npc->get_skill_level( skill_driving );
-        const int time_to_target = std::max( 5, 40 - vehicle_skill * 2 );
+        const std::optional<int> time_to_target = plan_fpv_terminal_command(
+                    *operator_npc, target->pos, std::max( 5, 40 - vehicle_skill * 2 ) );
+        if( !time_to_target ) {
+            return;
+        }
         const tripoint_bub_ms target_bub = here.get_bub( target->pos );
         const double light_multiplier = here.inbounds( target_bub ) ?
                                         fpv_light_cep_multiplier( here, target_bub ) : 1.0;
@@ -10040,10 +10212,10 @@ talk_effect_fun_t::func f_request_fpv_attack()
                                                explosion_data( 300.0f, 0.75f, false, shrapnel_data( 400, 0.4f ) );
 
         get_timed_events().add( timed_event_type::EXPLOSION,
-                                calendar::turn + time_duration::from_seconds( time_to_target ),
+                                calendar::turn + time_duration::from_seconds( *time_to_target ),
                                 impact_abs, drone_explosion );
         get_timed_events().add( timed_event_type::FPV_DRONE_IMPACT_MESSAGE,
-                                calendar::turn + time_duration::from_seconds( time_to_target + 1 ),
+                                calendar::turn + time_duration::from_seconds( *time_to_target + 1 ),
                                 -1, impact_abs, -1, operator_npc->disp_name(), "" );
 
         practice_fpv_expenditure( *operator_npc );
@@ -10051,11 +10223,11 @@ talk_effect_fun_t::func f_request_fpv_attack()
         const int reported_cep = static_cast<int>( std::round( cep ) );
         if( light_multiplier > 1.0 ) {
             add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s, probable hit area about %3$d tiles, and notes the camera package is not built for this light." ),
-                     operator_npc->disp_name(), format_fpv_duration( time_to_target ),
+                     operator_npc->disp_name(), format_fpv_duration( *time_to_target ),
                      reported_cep );
         } else {
             add_msg( _( "You command the FPV attack.  %1$s reports time to target %2$s and probable hit area about %3$d tiles." ),
-                     operator_npc->disp_name(), format_fpv_duration( time_to_target ),
+                     operator_npc->disp_name(), format_fpv_duration( *time_to_target ),
                      reported_cep );
         }
     };
@@ -10071,7 +10243,7 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
             return;
         }
         if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ||
-            !require_fpv_on_station( *operator_npc ) ) {
+            !require_fpv_on_station( *operator_npc ) || !require_fpv_command_ready( *operator_npc ) ) {
             return;
         }
         if( !active_fpv_drone_is_baba_yaga( *operator_npc ) ) {
@@ -10120,13 +10292,12 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
             impact_abs = here.get_abs( fpv_scout_top_position( here, impact_bub ) );
         }
 
-        const int delay_seconds = std::max( 1, 15 - vehicle_skill + rng( 0, 5 ) );
-        const int busy_until = current_turn_number() + delay_seconds;
-        operator_npc->set_value( "fpv_command_busy_until", busy_until );
-        operator_npc->set_value( "fpv_payload_drop_busy_until", busy_until );
-        operator_npc->set_value( "fpv_station_x", impact_abs.x() );
-        operator_npc->set_value( "fpv_station_y", impact_abs.y() );
-        operator_npc->set_value( "fpv_station_z", impact_abs.z() );
+        const int handling_seconds = std::max( 1, 15 - vehicle_skill + rng( 0, 5 ) );
+        const std::optional<fpv_command_plan> plan = plan_fpv_command( *operator_npc, impact_abs,
+                handling_seconds );
+        if( !plan ) {
+            return;
+        }
         std::optional<item> payload = take_one_inventory_item(
                                           operator_npc->fpv_payload_inv, [&payload_id]( const item & candidate ) {
             return candidate.typeId() == *payload_id;
@@ -10135,12 +10306,14 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
             debugmsg( "Bomber drone payload inventory changed while scheduling a drop." );
             return;
         }
+        apply_fpv_command_plan( *operator_npc, impact_abs, *plan );
+        operator_npc->set_value( "fpv_payload_drop_busy_until", plan->busy_until );
         get_timed_events().add_fpv_payload_drop(
-            calendar::turn + time_duration::from_seconds( delay_seconds ), impact_abs,
+            calendar::turn + time_duration::from_seconds( plan->delay_seconds ), impact_abs,
             std::move( *payload ), operator_npc->disp_name(),
             support_value_string( *operator_npc, "fpv_mission_key" ) );
         add_msg( _( "You command bomber drone payload release.  %1$s reports drop in %2$s, probable hit area about %3$d tiles, %4$d payload remaining." ),
-                 operator_npc->disp_name(), format_fpv_duration( delay_seconds ),
+                 operator_npc->disp_name(), format_fpv_duration( plan->delay_seconds ),
                  static_cast<int>( std::round( cep ) ),
                  loaded_fpv_payload_count( *operator_npc ) );
     };
@@ -10156,7 +10329,7 @@ talk_effect_fun_t::func f_request_fpv_scout()
             return;
         }
         if( !require_fpv_radio_link( d, *operator_npc ) || !require_fpv_controller( *operator_npc ) ||
-            !require_fpv_on_station( *operator_npc ) ) {
+            !require_fpv_on_station( *operator_npc ) || !require_fpv_command_ready( *operator_npc ) ) {
             return;
         }
         preserve_ready_fpv_scout_report( *operator_npc );
@@ -10171,29 +10344,30 @@ talk_effect_fun_t::func f_request_fpv_scout()
         const tripoint_bub_ms scout_bub = fpv_scout_top_position( here, *target_bub );
         const tripoint_abs_ms scout_abs = here.get_abs( scout_bub );
         const int vehicle_skill = operator_npc->get_skill_level( skill_driving );
-        const int delay_seconds = std::max( 1, 20 - vehicle_skill );
-        const int ready_turn = current_turn_number() + delay_seconds;
+        const int handling_seconds = std::max( 1, 20 - vehicle_skill );
+        const std::optional<fpv_command_plan> plan = plan_fpv_command( *operator_npc, scout_abs,
+                handling_seconds );
+        if( !plan ) {
+            return;
+        }
+        apply_fpv_command_plan( *operator_npc, scout_abs, *plan );
+        const int ready_turn = plan->busy_until;
         const std::string mission_key = support_value_string( *operator_npc, "fpv_mission_key" );
-        operator_npc->set_value( "fpv_command_busy_until", ready_turn );
 
         operator_npc->set_value( "fpv_scout_active", "yes" );
         operator_npc->set_value( "fpv_scout_ready_turn", ready_turn );
         operator_npc->set_value( "fpv_scout_x", scout_abs.x() );
         operator_npc->set_value( "fpv_scout_y", scout_abs.y() );
         operator_npc->set_value( "fpv_scout_z", scout_abs.z() );
-        operator_npc->set_value( "fpv_station_x", scout_abs.x() );
-        operator_npc->set_value( "fpv_station_y", scout_abs.y() );
-        operator_npc->set_value( "fpv_station_z", scout_abs.z() );
-
         if( !mission_key.empty() ) {
             get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
             get_timed_events().add( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE,
-                                    calendar::turn + time_duration::from_seconds( delay_seconds ),
+                                    calendar::turn + time_duration::from_seconds( plan->delay_seconds ),
                                     -1, scout_abs, -1, operator_npc->disp_name(), mission_key );
         }
 
-        add_msg( _( "You request a drone scout pass.  %s reports they are scouting the area now and will report back shortly." ),
-                 operator_npc->disp_name() );
+        add_msg( _( "You request a drone scout pass.  %1$s reports the feed will be ready in %2$s." ),
+                 operator_npc->disp_name(), format_fpv_duration( plan->delay_seconds ) );
     };
 }
 
