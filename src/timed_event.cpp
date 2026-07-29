@@ -835,15 +835,26 @@ void timed_event::actualize()
             }
             break;
 
-        case timed_event_type::FPV_DRONE_RECOVERED_MESSAGE:
+        case timed_event_type::FPV_DRONE_RECOVERED_MESSAGE: {
+            npc *operator_npc = strength >= 0 ? g->find_npc( character_id( strength ) ) : nullptr;
+            if( operator_npc == nullptr ||
+                !talk_effect_fun::complete_fpv_drone_recovery( *operator_npc, key ) ) {
+                break;
+            }
             if( string_id.empty() ) {
                 add_msg( m_info, _( "Over the radio, you hear, \"Drone recovered.\"" ) );
             } else {
                 add_msg( m_info, _( "Over the radio, %s reports, \"Drone recovered.\"" ), string_id );
             }
-            break;
+        }
+        break;
 
-        case timed_event_type::FPV_DRONE_LOST_MESSAGE:
+        case timed_event_type::FPV_DRONE_LOST_MESSAGE: {
+            npc *operator_npc = strength >= 0 ? g->find_npc( character_id( strength ) ) : nullptr;
+            if( operator_npc == nullptr ||
+                !talk_effect_fun::complete_fpv_drone_loss( *operator_npc, key ) ) {
+                break;
+            }
             if( string_id.empty() ) {
                 add_msg( m_info,
                          _( "Over the radio, you hear, \"Drone battery exhausted.  Airframe lost.\"" ) );
@@ -852,7 +863,8 @@ void timed_event::actualize()
                          _( "Over the radio, %s reports, \"Drone battery exhausted.  Airframe lost.\"" ),
                          string_id );
             }
-            break;
+        }
+        break;
 
         case timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE:
             if( string_id.empty() ) {
