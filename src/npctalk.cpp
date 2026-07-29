@@ -6774,7 +6774,8 @@ void set_mortar_adjustment_tactic( npc &gunner, const mortar_adjustment_tactic t
 }
 
 static int current_turn_number();
-static void reconcile_fpv_mission( npc &operator_npc );
+static void reconcile_fpv_mission( npc &operator_npc,
+                                   timed_event_type preserved_event = timed_event_type::NONE );
 static bool active_fpv_drone_has_scout_package( const npc &operator_npc );
 static bool active_fpv_drone_is_baba_yaga( const npc &operator_npc );
 
@@ -8887,7 +8888,8 @@ static void preserve_ready_fpv_scout_report( npc &operator_npc )
     operator_npc.set_value( "fpv_scout_report_z", get_fpv_turn_value( operator_npc, "fpv_scout_z" ) );
 }
 
-static void clear_fpv_status_events( const std::string &mission_key )
+static void clear_fpv_status_events( const std::string &mission_key,
+                                     const timed_event_type preserved_event = timed_event_type::NONE )
 {
     if( mission_key.empty() ) {
         return;
@@ -8895,8 +8897,12 @@ static void clear_fpv_status_events( const std::string &mission_key )
     get_timed_events().remove( timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE, mission_key );
     get_timed_events().remove( timed_event_type::FPV_DRONE_STATUS_MESSAGE, mission_key );
     get_timed_events().remove( timed_event_type::FPV_DRONE_RETURN_MESSAGE, mission_key );
-    get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
-    get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
+    if( preserved_event != timed_event_type::FPV_DRONE_RECOVERED_MESSAGE ) {
+        get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
+    }
+    if( preserved_event != timed_event_type::FPV_DRONE_LOST_MESSAGE ) {
+        get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
+    }
     get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
 }
 
@@ -8908,10 +8914,11 @@ static void clear_fpv_payload_drop_events( const std::string &mission_key )
     get_timed_events().remove( timed_event_type::FPV_DRONE_PAYLOAD_DROP, mission_key );
 }
 
-static void clear_fpv_mission( npc &operator_npc )
+static void clear_fpv_mission( npc &operator_npc,
+                               const timed_event_type preserved_event = timed_event_type::NONE )
 {
     const std::string mission_key = support_value_string( operator_npc, "fpv_mission_key" );
-    clear_fpv_status_events( mission_key );
+    clear_fpv_status_events( mission_key, preserved_event );
     clear_fpv_payload_drop_events( mission_key );
     operator_npc.remove_value( "fpv_status" );
     operator_npc.remove_value( "fpv_mission_key" );
@@ -8944,7 +8951,8 @@ static std::string make_fpv_payload_drop_string_id( const std::string &payload_i
     return payload_id + "\n" + operator_name;
 }
 
-static void reconcile_fpv_mission( npc &operator_npc )
+static void reconcile_fpv_mission( npc &operator_npc,
+                                   const timed_event_type preserved_event )
 {
     const std::string status = support_value_string( operator_npc, "fpv_status" );
     if( status != "enroute" && status != "on_station" && status != "returning" ) {
@@ -8961,22 +8969,45 @@ static void reconcile_fpv_mission( npc &operator_npc )
         operator_npc.set_value( "fpv_status", "enroute" );
         return;
     }
-    if( now <= station_end_turn ) {
+    if( now < station_end_turn ) {
         operator_npc.set_value( "fpv_status", "on_station" );
         return;
     }
     if( one_way ) {
-        clear_fpv_mission( operator_npc );
+        clear_fpv_mission( operator_npc, preserved_event );
         return;
     }
-    if( now <= return_end_turn ) {
+    if( now < return_end_turn ) {
         operator_npc.set_value( "fpv_status", "returning" );
         return;
     }
 
     return_loaded_fpv_payload( operator_npc );
     return_active_fpv_drone( operator_npc, return_end_turn );
-    clear_fpv_mission( operator_npc );
+    clear_fpv_mission( operator_npc, preserved_event );
+}
+
+static bool complete_fpv_drone_mission_event( npc &operator_npc,
+        const std::string &mission_key, const timed_event_type event_type )
+{
+    if( mission_key.empty() ||
+        support_value_string( operator_npc, "fpv_mission_key" ) != mission_key ) {
+        return false;
+    }
+    reconcile_fpv_mission( operator_npc, event_type );
+    return support_value_string( operator_npc, "fpv_mission_key" ).empty();
+}
+
+static bool complete_fpv_drone_loss_impl( npc &operator_npc, const std::string &mission_key )
+{
+    return complete_fpv_drone_mission_event( operator_npc, mission_key,
+            timed_event_type::FPV_DRONE_LOST_MESSAGE );
+}
+
+static bool complete_fpv_drone_recovery_impl( npc &operator_npc, const std::string &mission_key )
+{
+    return complete_fpv_drone_mission_event( operator_npc, mission_key,
+            timed_event_type::FPV_DRONE_RECOVERED_MESSAGE );
 }
 
 static void cancel_fpv_assignment_for_new_duty( npc &operator_npc )
@@ -9640,7 +9671,8 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
                             calendar::turn + time_duration::from_seconds( outbound_seconds + station_seconds +
                                     return_seconds ),
-                            -1, operator_npc->pos_abs(), -1, operator_npc->disp_name(), mission_key );
+                            -1, operator_npc->pos_abs(), operator_npc->getID().get_value(),
+                            operator_npc->disp_name(), mission_key );
     practice_fpv_operation( *operator_npc );
     if( scout_drone ) {
         add_msg( _( "You authorize scout drone launch.  %1$s reports ETA %2$s, planned time on station %3$s, and recovery %4$s after return." ),
@@ -9762,7 +9794,8 @@ talk_effect_fun_t::func f_request_fpv_one_way()
                                       battery_seconds );
         get_timed_events().add( timed_event_type::FPV_DRONE_LOST_MESSAGE,
                                 calendar::turn + time_duration::from_seconds( remaining_seconds ),
-                                -1, you.pos_abs(), -1, operator_npc->disp_name(), mission_key );
+                                -1, you.pos_abs(), operator_npc->getID().get_value(),
+                                operator_npc->disp_name(), mission_key );
         add_msg( _( "You commit the drone one-way.  %1$s reports battery-limited station time remaining %2$s; no recovery planned." ),
                  operator_npc->disp_name(), format_fpv_duration( remaining_seconds ) );
     };
@@ -9836,7 +9869,8 @@ talk_effect_fun_t::func f_request_fpv_abort_one_way()
         get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
                                 calendar::turn + time_duration::from_seconds( first_offset_seconds +
                                         station_seconds + return_seconds ),
-                                -1, operator_npc->pos_abs(), -1, operator_npc->disp_name(), mission_key );
+                                -1, operator_npc->pos_abs(), operator_npc->getID().get_value(),
+                                operator_npc->disp_name(), mission_key );
 
         if( start_turn > now ) {
             add_msg( _( "You order the drone back to bingo-return behavior.  %1$s confirms current task completion first; return profile resumes in %2$s." ),
@@ -9911,7 +9945,8 @@ talk_effect_fun_t::func f_request_fpv_recover()
         get_timed_events().add( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE,
                                 calendar::turn + time_duration::from_seconds( first_offset_seconds +
                                         return_seconds ),
-                                -1, operator_npc->pos_abs(), -1, operator_npc->disp_name(), mission_key );
+                                -1, operator_npc->pos_abs(), operator_npc->getID().get_value(),
+                                operator_npc->disp_name(), mission_key );
 
         if( start_turn > now ) {
             add_msg( _( "You order immediate drone recovery.  %1$s confirms current task completion first; return profile starts in %2$s." ),
@@ -12883,6 +12918,16 @@ talk_effect_fun_t::func f_trigger_event( const JsonObject &jo, std::string_view 
 }
 
 } // namespace
+
+bool complete_fpv_drone_loss( npc &operator_npc, const std::string &mission_key )
+{
+    return complete_fpv_drone_loss_impl( operator_npc, mission_key );
+}
+
+bool complete_fpv_drone_recovery( npc &operator_npc, const std::string &mission_key )
+{
+    return complete_fpv_drone_recovery_impl( operator_npc, mission_key );
+}
 
 static void assign_mortar_support( npc &gunner )
 {
