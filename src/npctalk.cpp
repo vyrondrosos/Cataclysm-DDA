@@ -6147,11 +6147,11 @@ bool support_has_item_with_flag( const npc &operator_npc, const flag_id &flag )
     } ) > 0;
 }
 
-std::optional<item> take_one_support_item( npc &operator_npc,
+static std::optional<item> take_one_inventory_item( inventory &source,
         const std::function<bool( const item & )> &filter )
 {
-    for( int pos = 0; pos < static_cast<int>( operator_npc.support_inv.size() ); ++pos ) {
-        item &candidate = operator_npc.support_inv.find_item( pos );
+    for( int pos = 0; pos < static_cast<int>( source.size() ); ++pos ) {
+        item &candidate = source.find_item( pos );
         if( candidate.is_null() || !filter( candidate ) ) {
             continue;
         }
@@ -6161,31 +6161,22 @@ std::optional<item> take_one_support_item( npc &operator_npc,
             taken.charges = 1;
             if( candidate.charges > 1 ) {
                 candidate.mod_charges( -1 );
-                operator_npc.support_inv.unsort();
+                source.unsort();
             } else {
-                operator_npc.support_inv.remove_item( pos );
+                source.remove_item( pos );
             }
         } else {
-            taken = operator_npc.support_inv.remove_item( pos );
+            taken = source.remove_item( pos );
         }
         return taken;
     }
     return std::nullopt;
 }
 
-void add_support_items( npc &operator_npc, const itype_id &item_id, const int count )
+std::optional<item> take_one_support_item( npc &operator_npc,
+        const std::function<bool( const item & )> &filter )
 {
-    if( count <= 0 ) {
-        return;
-    }
-    item sample( item_id, calendar::turn, count );
-    if( sample.count_by_charges() ) {
-        operator_npc.support_inv.add_item( std::move( sample ) );
-        return;
-    }
-    for( int i = 0; i < count; ++i ) {
-        operator_npc.support_inv.add_item( item( item_id, calendar::turn ) );
-    }
+    return take_one_inventory_item( operator_npc.support_inv, filter );
 }
 
 int support_stack_count( const npc &operator_npc, const int pos )
@@ -8652,8 +8643,13 @@ static int fpv_mission_remaining_battery_seconds( const npc &operator_npc, const
 
 static void return_active_fpv_drone( npc &operator_npc, const int at_turn )
 {
+    if( !operator_npc.fpv_active_drone ) {
+        debugmsg( "Drone mission completed without an active drone item." );
+        return;
+    }
     const std::string drone_type = active_fpv_drone_type( operator_npc );
-    item drone( fpv_drone_item_id( drone_type ), calendar::turn );
+    item drone = std::move( *operator_npc.fpv_active_drone );
+    operator_npc.fpv_active_drone.reset();
     const int capacity = std::max( active_fpv_battery_capacity( operator_npc ),
                                    fpv_drone_battery_capacity( drone, drone_type ) );
     set_fpv_drone_charge( drone, fpv_mission_remaining_charges( operator_npc, at_turn ), capacity );
@@ -8763,7 +8759,13 @@ static int fpv_payload_count( const npc &operator_npc, const itype_id &payload_i
 
 static int loaded_fpv_payload_count( const npc &operator_npc )
 {
-    return std::max( 0, support_value_int( operator_npc, "fpv_payload_loaded_count" ) );
+    int count = 0;
+    for( size_t pos = 0; pos < operator_npc.fpv_payload_inv.size(); ++pos ) {
+        for( const item &payload : operator_npc.fpv_payload_inv.const_stack( pos ) ) {
+            count += fpv_payload_item_count( payload );
+        }
+    }
+    return count;
 }
 
 static std::optional<itype_id> selected_fpv_payload_type( const npc &operator_npc )
@@ -8786,15 +8788,12 @@ static std::optional<itype_id> selected_fpv_payload_type( const npc &operator_np
 
 static std::optional<itype_id> loaded_fpv_payload_type( const npc &operator_npc )
 {
-    const std::string payload_type = support_value_string( operator_npc, "fpv_payload_loaded_type" );
-    if( payload_type.empty() ) {
-        return std::nullopt;
+    for( size_t pos = 0; pos < operator_npc.fpv_payload_inv.size(); ++pos ) {
+        for( const item &payload : operator_npc.fpv_payload_inv.const_stack( pos ) ) {
+            return payload.typeId();
+        }
     }
-    const itype_id payload_id( payload_type );
-    if( !payload_id.is_valid() || loaded_fpv_payload_count( operator_npc ) <= 0 ) {
-        return std::nullopt;
-    }
-    return payload_id;
+    return std::nullopt;
 }
 
 static int max_baba_yaga_payload_count( const itype_id &payload_id )
@@ -8808,18 +8807,17 @@ static int max_baba_yaga_payload_count( const itype_id &payload_id )
 
 static void return_loaded_fpv_payload( npc &operator_npc )
 {
-    const std::optional<itype_id> payload_id = loaded_fpv_payload_type( operator_npc );
-    if( payload_id ) {
-        add_support_items( operator_npc, *payload_id, loaded_fpv_payload_count( operator_npc ) );
+    while( operator_npc.fpv_payload_inv.size() > 0 ) {
+        std::list<item> payloads = operator_npc.fpv_payload_inv.reduce_stack( 0, -1 );
+        for( item &payload : payloads ) {
+            operator_npc.support_inv.add_item( std::move( payload ) );
+        }
     }
-    operator_npc.set_value( "fpv_payload_loaded_type", "" );
-    operator_npc.set_value( "fpv_payload_loaded_count", 0 );
 }
 
 static int load_baba_yaga_payload( npc &operator_npc )
 {
-    operator_npc.set_value( "fpv_payload_loaded_type", "" );
-    operator_npc.set_value( "fpv_payload_loaded_count", 0 );
+    operator_npc.fpv_payload_inv.clear();
     const std::optional<itype_id> payload_id = selected_fpv_payload_type( operator_npc );
     if( !payload_id ) {
         return 0;
@@ -8831,17 +8829,18 @@ static int load_baba_yaga_payload( npc &operator_npc )
     }
     int loaded = 0;
     for( ; loaded < to_load; ++loaded ) {
-        if( !take_one_support_item( operator_npc, [&payload_id]( const item & it ) {
-        return it.typeId() == *payload_id && is_fpv_baba_yaga_payload( it );
-        } ) ) {
+        std::optional<item> payload = take_one_support_item(
+                                          operator_npc, [&payload_id]( const item & it ) {
+            return it.typeId() == *payload_id && is_fpv_baba_yaga_payload( it );
+        } );
+        if( !payload ) {
             break;
         }
+        operator_npc.fpv_payload_inv.add_item( std::move( *payload ) );
     }
     if( loaded <= 0 ) {
         return 0;
     }
-    operator_npc.set_value( "fpv_payload_loaded_type", payload_id->str() );
-    operator_npc.set_value( "fpv_payload_loaded_count", loaded );
     return loaded;
 }
 
@@ -8941,14 +8940,9 @@ static void clear_fpv_mission( npc &operator_npc,
     operator_npc.remove_value( "fpv_station_x" );
     operator_npc.remove_value( "fpv_station_y" );
     operator_npc.remove_value( "fpv_station_z" );
+    operator_npc.fpv_active_drone.reset();
+    operator_npc.fpv_payload_inv.clear();
     clear_fpv_scout( operator_npc );
-}
-
-
-static std::string make_fpv_payload_drop_string_id( const std::string &payload_id,
-        const std::string &operator_name )
-{
-    return payload_id + "\n" + operator_name;
 }
 
 static void reconcile_fpv_mission( npc &operator_npc,
@@ -9640,6 +9634,7 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     const std::string mission_key = string_format( "fpv_%d_%d", operator_npc->getID().get_value(),
                                     now );
     const int payload_loaded = baba_yaga_drone ? load_baba_yaga_payload( *operator_npc ) : 0;
+    operator_npc->fpv_active_drone = std::move( *launched_drone );
 
     operator_npc->set_value( "fpv_status", "enroute" );
     operator_npc->set_value( "fpv_mission_key", mission_key );
@@ -10132,14 +10127,18 @@ talk_effect_fun_t::func f_request_fpv_payload_drop()
         operator_npc->set_value( "fpv_station_x", impact_abs.x() );
         operator_npc->set_value( "fpv_station_y", impact_abs.y() );
         operator_npc->set_value( "fpv_station_z", impact_abs.z() );
-        operator_npc->set_value( "fpv_payload_loaded_count",
-                                 loaded_fpv_payload_count( *operator_npc ) - 1 );
-
-        get_timed_events().add( timed_event_type::FPV_DRONE_PAYLOAD_DROP,
-                                calendar::turn + time_duration::from_seconds( delay_seconds ),
-                                -1, impact_abs, -1, make_fpv_payload_drop_string_id( payload_id->str(),
-                                        operator_npc->disp_name() ),
-                                support_value_string( *operator_npc, "fpv_mission_key" ) );
+        std::optional<item> payload = take_one_inventory_item(
+                                          operator_npc->fpv_payload_inv, [&payload_id]( const item & candidate ) {
+            return candidate.typeId() == *payload_id;
+        } );
+        if( !payload ) {
+            debugmsg( "Bomber drone payload inventory changed while scheduling a drop." );
+            return;
+        }
+        get_timed_events().add_fpv_payload_drop(
+            calendar::turn + time_duration::from_seconds( delay_seconds ), impact_abs,
+            std::move( *payload ), operator_npc->disp_name(),
+            support_value_string( *operator_npc, "fpv_mission_key" ) );
         add_msg( _( "You command bomber drone payload release.  %1$s reports drop in %2$s, probable hit area about %3$d tiles, %4$d payload remaining." ),
                  operator_npc->disp_name(), format_fpv_duration( delay_seconds ),
                  static_cast<int>( std::round( cep ) ),

@@ -2001,6 +2001,17 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                 jo.get_member( "mortar_field_age_seconds" ).read( field_data->age_seconds, true );
                 break;
             }
+            case timed_event_type::FPV_DRONE_PAYLOAD_DROP: {
+                if( !jo.has_member( "fpv_payload" ) ) {
+                    continue;
+                }
+                event.data = std::make_unique<fpv_payload_drop_event_data>();
+                fpv_payload_drop_event_data *payload_data =
+                    event.get_data<fpv_payload_drop_event_data>();
+                jo.read( "fpv_payload", payload_data->payload, true );
+                jo.read( "fpv_operator_name", payload_data->operator_name );
+                break;
+            }
             default:
                 break;
         }
@@ -2171,6 +2182,17 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
                 }
                 jsout.member( "mortar_field_radius", field_data->radius );
                 jsout.member( "mortar_field_age_seconds", field_data->age_seconds );
+                break;
+            }
+            case timed_event_type::FPV_DRONE_PAYLOAD_DROP: {
+                const fpv_payload_drop_event_data *payload_data =
+                    elem.get_data<fpv_payload_drop_event_data>();
+                if( payload_data == nullptr || payload_data->payload.is_null() ) {
+                    debugmsg( "FPV payload drop event missing payload." );
+                    break;
+                }
+                jsout.member( "fpv_payload", payload_data->payload );
+                jsout.member( "fpv_operator_name", payload_data->operator_name );
                 break;
             }
             default:
@@ -2398,6 +2420,8 @@ void npc::import_and_clean( const JsonObject &data )
     companion_mission_travel_time = defaults.companion_mission_travel_time;
     companion_mission_inv.clear();
     support_inv.clear();
+    fpv_active_drone.reset();
+    fpv_payload_inv.clear();
     chatbin.missions.clear();
     chatbin.missions_assigned.clear();
     chatbin.mission_selected = nullptr;

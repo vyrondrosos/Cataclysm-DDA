@@ -1614,6 +1614,9 @@ class npc : public Character
         inventory companion_mission_inv;
         // Equipment held for player-directed support duties such as drone operations.
         inventory support_inv;
+        // Exact equipment currently committed to an airborne drone mission.
+        std::optional<item> fpv_active_drone;
+        inventory fpv_payload_inv;
         npc_mission mission = NPC_MISSION_NULL;
         npc_mission previous_mission = NPC_MISSION_NULL;
         // Personality & other defining characteristics
