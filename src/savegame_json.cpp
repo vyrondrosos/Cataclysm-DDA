@@ -2316,6 +2316,12 @@ void npc::load( const JsonObject &data )
     if( data.has_member( "support_inv" ) ) {
         support_inv.json_load_items( data.get_member( "support_inv" ) );
     }
+    fpv_active_drone.reset();
+    data.read( "fpv_active_drone", fpv_active_drone );
+    fpv_payload_inv.clear();
+    if( data.has_member( "fpv_payload_inv" ) ) {
+        fpv_payload_inv.json_load_items( data.get_member( "fpv_payload_inv" ) );
+    }
 
     if( !data.read( "restock", restock ) ) {
         restock = calendar::before_time_starts;
@@ -2413,6 +2419,11 @@ void npc::store( JsonOut &json ) const
     companion_mission_inv.json_save_items( json );
     json.member( "support_inv" );
     support_inv.json_save_items( json );
+    if( fpv_active_drone ) {
+        json.member( "fpv_active_drone", *fpv_active_drone );
+    }
+    json.member( "fpv_payload_inv" );
+    fpv_payload_inv.json_save_items( json );
     json.member( "restock", restock );
 
     json.member( "complaints", complaints );

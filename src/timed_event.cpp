@@ -159,24 +159,6 @@ static std::string format_fpv_duration( int seconds )
     return string_format( n_gettext( "%d second", "%d seconds", clamped ), clamped );
 }
 
-struct fpv_payload_drop_data {
-    std::string payload_id;
-    std::string operator_name;
-};
-
-static fpv_payload_drop_data parse_fpv_payload_drop_string_id( const std::string &string_id )
-{
-    fpv_payload_drop_data parsed;
-    const size_t separator = string_id.find( '\n' );
-    if( separator == std::string::npos ) {
-        parsed.payload_id = string_id;
-    } else {
-        parsed.payload_id = string_id.substr( 0, separator );
-        parsed.operator_name = string_id.substr( separator + 1 );
-    }
-    return parsed;
-}
-
 static void apply_timed_explosion( Creature *source, map &here, const tripoint_abs_ms &impact_abs,
                                    const explosion_data &data )
 {
@@ -283,16 +265,16 @@ static const item_transformation *fpv_payload_arming_transform( const itype &pay
     return transform_actor != nullptr ? &transform_actor->transform : nullptr;
 }
 
-static void place_live_fpv_payload( map &target_map, const itype_id &payload_id,
+static void place_live_fpv_payload( map &target_map, item payload,
                                     const tripoint_abs_ms &impact_abs )
 {
     const tripoint_bub_ms impact = target_map.get_bub( impact_abs );
+    const itype_id payload_id = payload.typeId();
     if( payload_id == itype_landmine ) {
         target_map.trap_set( impact, tr_landmine );
         return;
     }
 
-    item payload( payload_id, calendar::turn, 1 );
     if( payload.ammo_data() && !payload.ammo_data()->ammo->drop.is_null() ) {
         const bool drop_active = payload.ammo_data()->ammo->drop_active;
         payload = item( payload.ammo_data()->ammo->drop, calendar::turn, 1 );
@@ -898,30 +880,28 @@ void timed_event::actualize()
             const std::string cue = !in_bubble ? _( "in the far distance" ) :
                                     player_distance > MAX_VIEW_DISTANCE ? _( "in the distance" ) :
                                     _( "nearby" );
-            const fpv_payload_drop_data payload_data = parse_fpv_payload_drop_string_id( string_id );
-            const itype_id payload_id( payload_data.payload_id );
-            if( !payload_id.is_valid() ) {
-                debugmsg( "FPV payload drop event has invalid payload: %s", payload_data.payload_id );
+            fpv_payload_drop_event_data *payload_data = get_data<fpv_payload_drop_event_data>();
+            if( payload_data == nullptr || payload_data->payload.is_null() ) {
+                debugmsg( "FPV payload drop event is missing its payload." );
                 break;
             }
 
-            item payload( payload_id, calendar::turn, 1 );
+            item payload = std::move( payload_data->payload );
             if( !detonate_fpv_payload_if_explosive( player_character.as_avatar(), here, payload,
                                                     map_square ) ) {
                 if( in_bubble ) {
-                    place_live_fpv_payload( here, payload_id, map_square );
+                    place_live_fpv_payload( here, std::move( payload ), map_square );
                 } else {
                     map target_map;
                     const tripoint_abs_sm origin( project_to<coords::sm>( map_square ) -
                                                   point_rel_sm{ HALF_MAPSIZE, HALF_MAPSIZE } );
                     target_map.load( origin, true, false );
-                    place_live_fpv_payload( target_map, payload_id, map_square );
+                    place_live_fpv_payload( target_map, std::move( payload ), map_square );
                     target_map.save();
                 }
             }
 
-            const std::string &speaker = payload_data.operator_name.empty() ? key :
-                                         payload_data.operator_name;
+            const std::string &speaker = payload_data->operator_name;
             if( speaker.empty() ) {
                 add_msg( m_info, _( "A drone payload drops %s." ), cue );
             } else {
@@ -1126,6 +1106,18 @@ void timed_event_manager::add_mortar_guided_impact( const time_point &when,
     event.data = std::make_unique<timed_event_target_data>();
     event.get_data<timed_event_target_data>()->target = target;
     event.expl_data = expl_data;
+}
+
+void timed_event_manager::add_fpv_payload_drop( const time_point &when,
+        const tripoint_abs_ms &impact, item payload, const std::string &operator_name,
+        const std::string &key )
+{
+    events.emplace_back( timed_event_type::FPV_DRONE_PAYLOAD_DROP, when, -1, impact, -1, key );
+    timed_event &event = events.back();
+    event.data = std::make_unique<fpv_payload_drop_event_data>();
+    fpv_payload_drop_event_data *payload_data = event.get_data<fpv_payload_drop_event_data>();
+    payload_data->payload = std::move( payload );
+    payload_data->operator_name = operator_name;
 }
 
 void timed_event_manager::add( timed_event_type type, const time_point &when,

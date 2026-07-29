@@ -11,6 +11,7 @@
 #include "character_id.h"
 #include "coordinates.h"
 #include "explosion.h"
+#include "item.h"
 #include "point.h"
 #include "submap.h"
 
@@ -91,6 +92,11 @@ struct mortar_impact_event_data : timed_event_data {
 struct mortar_field_event_data : timed_event_data {
     int radius = 0;
     int age_seconds = 0;
+};
+
+struct fpv_payload_drop_event_data : timed_event_data {
+    item payload;
+    std::string operator_name;
 };
 
 struct timed_event {
@@ -186,6 +192,9 @@ class timed_event_manager
                                        const std::string &gunner_name,
                                        const std::string &round_id,
                                        const explosion_data &expl_data );
+        void add_fpv_payload_drop( const time_point &when, const tripoint_abs_ms &impact,
+                                   item payload, const std::string &operator_name,
+                                   const std::string &key );
         /// @returns Whether at least one element of the given type is queued.
         bool queued( timed_event_type type ) const;
         /// @returns One of the queued events of the given type, or `nullptr`
