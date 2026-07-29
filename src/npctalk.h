@@ -163,6 +163,8 @@ namespace talk_effect_fun
 {
 void add_mortar_adjustment_downtime( npc &gunner );
 std::optional<tripoint_abs_ms> active_fpv_designation_target( const std::string &designation_type );
+bool complete_fpv_drone_loss( npc &operator_npc, const std::string &mission_key );
+bool complete_fpv_drone_recovery( npc &operator_npc, const std::string &mission_key );
 bool is_manning_mortar( const npc &gunner );
 int release_mortar_ammo( npc &gunner, bool drop );
 bool fire_scheduled_mortar( npc &gunner, const mortar_type_id &mortar_id,
