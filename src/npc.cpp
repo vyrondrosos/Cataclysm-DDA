@@ -4139,6 +4139,7 @@ int npc::clear_fpv_support( const bool notify )
     remove_value( "fpv_payload_loaded_type" );
     remove_value( "fpv_payload_loaded_count" );
     remove_value( "fpv_command_busy_until" );
+    remove_value( "fpv_command_battery_penalty" );
     remove_value( "fpv_payload_drop_busy_until" );
     remove_value( "fpv_station_x" );
     remove_value( "fpv_station_y" );
