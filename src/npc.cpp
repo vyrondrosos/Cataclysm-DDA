@@ -4077,7 +4077,8 @@ int npc::clear_fpv_support( const bool notify )
     const diag_value status_value = get_value( "fpv_status" );
     const std::string status = status_value.is_empty() ? std::string() : status_value.str();
     const bool drone_airborne = status == "enroute" || status == "on_station" || status == "returning";
-    if( !assigned && support_inv.size() == 0 && !drone_airborne ) {
+    if( !assigned && support_inv.size() == 0 && !fpv_active_drone && fpv_payload_inv.size() == 0 &&
+        !drone_airborne ) {
         return 0;
     }
 
@@ -4095,23 +4096,18 @@ int npc::clear_fpv_support( const bool notify )
     }
 
     if( !drone_airborne ) {
-        const diag_value payload_type_value = get_value( "fpv_payload_loaded_type" );
-        const std::string payload_type = payload_type_value.is_empty() ? std::string() :
-                                         payload_type_value.str();
-        const int loaded_count = std::max( 0,
-                                           static_cast<int>( get_value( "fpv_payload_loaded_count" ).dbl() ) );
-        const itype_id payload_id( payload_type );
-        if( loaded_count > 0 && payload_id.is_valid() ) {
-            item payload( payload_id, calendar::turn, loaded_count );
-            if( payload.count_by_charges() ) {
+        if( fpv_active_drone ) {
+            support_inv.add_item( std::move( *fpv_active_drone ) );
+        }
+        while( fpv_payload_inv.size() > 0 ) {
+            std::list<item> payloads = fpv_payload_inv.reduce_stack( 0, -1 );
+            for( item &payload : payloads ) {
                 support_inv.add_item( std::move( payload ) );
-            } else {
-                for( int i = 0; i < loaded_count; ++i ) {
-                    support_inv.add_item( item( payload_id, calendar::turn ) );
-                }
             }
         }
     }
+    fpv_active_drone.reset();
+    fpv_payload_inv.clear();
 
     int dropped_items = 0;
     map &here = get_map();
