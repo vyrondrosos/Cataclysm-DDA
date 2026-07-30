@@ -4110,8 +4110,8 @@ const char *timed_event_type_name( timed_event_type t )
             return "fpv_drone_lost_message";
         case timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE:
             return "fpv_drone_scout_ready_message";
-        case timed_event_type::FPV_DRONE_IMPACT_MESSAGE:
-            return "fpv_drone_impact_message";
+        case timed_event_type::FPV_DRONE_TERMINAL_IMPACT:
+            return "fpv_drone_terminal_impact";
         case timed_event_type::FPV_DRONE_PAYLOAD_DROP:
             return "fpv_drone_payload_drop";
         case timed_event_type::NUM_TIMED_EVENT_TYPES:
