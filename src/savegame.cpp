@@ -2012,6 +2012,18 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                 jo.read( "fpv_operator_name", payload_data->operator_name );
                 break;
             }
+            case timed_event_type::FPV_DRONE_TERMINAL_IMPACT: {
+                if( !jo.has_member( "fpv_terminal_miss" ) ) {
+                    continue;
+                }
+                event.data = std::make_unique<fpv_terminal_impact_event_data>();
+                fpv_terminal_impact_event_data *impact_data =
+                    event.get_data<fpv_terminal_impact_event_data>();
+                jo.read( "fpv_terminal_target_character", impact_data->target_character );
+                jo.read( "fpv_terminal_target_monster", impact_data->target_monster );
+                jo.get_member( "fpv_terminal_miss" ).read( impact_data->miss, true );
+                break;
+            }
             default:
                 break;
         }
@@ -2193,6 +2205,18 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
                 }
                 jsout.member( "fpv_payload", payload_data->payload );
                 jsout.member( "fpv_operator_name", payload_data->operator_name );
+                break;
+            }
+            case timed_event_type::FPV_DRONE_TERMINAL_IMPACT: {
+                const fpv_terminal_impact_event_data *impact_data =
+                    elem.get_data<fpv_terminal_impact_event_data>();
+                if( impact_data == nullptr ) {
+                    debugmsg( "FPV terminal impact event missing targeting data." );
+                    break;
+                }
+                jsout.member( "fpv_terminal_target_character", impact_data->target_character );
+                jsout.member( "fpv_terminal_target_monster", impact_data->target_monster );
+                jsout.member( "fpv_terminal_miss", impact_data->miss );
                 break;
             }
             default:

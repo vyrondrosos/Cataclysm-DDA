@@ -50,7 +50,7 @@ enum class timed_event_type : int {
     FPV_DRONE_RECOVERED_MESSAGE,
     FPV_DRONE_LOST_MESSAGE,
     FPV_DRONE_SCOUT_READY_MESSAGE,
-    FPV_DRONE_IMPACT_MESSAGE,
+    FPV_DRONE_TERMINAL_IMPACT,
     FPV_DRONE_PAYLOAD_DROP,
     NUM_TIMED_EVENT_TYPES
 };
@@ -97,6 +97,12 @@ struct mortar_field_event_data : timed_event_data {
 struct fpv_payload_drop_event_data : timed_event_data {
     item payload;
     std::string operator_name;
+};
+
+struct fpv_terminal_impact_event_data : timed_event_data {
+    character_id target_character;
+    int target_monster = -1;
+    tripoint_rel_ms miss = tripoint_rel_ms::zero;
 };
 
 struct timed_event {
@@ -195,6 +201,10 @@ class timed_event_manager
         void add_fpv_payload_drop( const time_point &when, const tripoint_abs_ms &impact,
                                    item payload, const std::string &operator_name,
                                    const std::string &key );
+        void add_fpv_terminal_impact( const time_point &when, const tripoint_abs_ms &target,
+                                      const std::string &operator_name,
+                                      const fpv_terminal_impact_event_data &impact_data,
+                                      const explosion_data &expl_data );
         /// @returns Whether at least one element of the given type is queued.
         bool queued( timed_event_type type ) const;
         /// @returns One of the queued events of the given type, or `nullptr`
