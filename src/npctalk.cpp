@@ -10205,18 +10205,19 @@ talk_effect_fun_t::func f_request_fpv_attack()
         const double cep = std::max( 1.0, 15.0 - vehicle_skill ) *
                            ( fixed_point_attack ? 0.4 : 1.0 ) * light_multiplier;
         const tripoint_abs_ms impact_abs = apply_circular_cep( target->pos, cep );
+        fpv_terminal_impact_event_data impact_data;
+        impact_data.target_character = target->target_character;
+        impact_data.target_monster = target->target_monster;
+        impact_data.miss = tripoint_rel_ms( impact_abs.raw() - target->pos.raw() );
         const bool military_explosive_drone =
             active_fpv_drone_type( *operator_npc ) == "military_suicide";
         const explosion_data drone_explosion = military_explosive_drone ?
                                                explosion_data( 920.0f, 0.75f, false, shrapnel_data( 400, 0.4f ) ) :
                                                explosion_data( 300.0f, 0.75f, false, shrapnel_data( 400, 0.4f ) );
 
-        get_timed_events().add( timed_event_type::EXPLOSION,
-                                calendar::turn + time_duration::from_seconds( *time_to_target ),
-                                impact_abs, drone_explosion );
-        get_timed_events().add( timed_event_type::FPV_DRONE_IMPACT_MESSAGE,
-                                calendar::turn + time_duration::from_seconds( *time_to_target + 1 ),
-                                -1, impact_abs, -1, operator_npc->disp_name(), "" );
+        get_timed_events().add_fpv_terminal_impact(
+            calendar::turn + time_duration::from_seconds( *time_to_target ), target->pos,
+            operator_npc->disp_name(), impact_data, drone_explosion );
 
         practice_fpv_expenditure( *operator_npc );
         clear_fpv_mission( *operator_npc );

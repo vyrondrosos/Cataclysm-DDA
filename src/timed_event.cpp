@@ -17,6 +17,7 @@
 #include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
+#include "creature_tracker.h"
 #include "current_map.h"
 #include "debug.h"
 #include "enums.h"
@@ -178,6 +179,60 @@ static void apply_timed_explosion( Creature *source, map &here, const tripoint_a
                                         data );
     target_map.process_falling();
     target_map.save();
+}
+
+static Creature *resolve_fpv_terminal_target( const fpv_terminal_impact_event_data &impact_data,
+        Character &player_character )
+{
+    if( impact_data.target_character == player_character.getID() ) {
+        return &player_character;
+    }
+    if( impact_data.target_character.is_valid() ) {
+        return g->find_npc( impact_data.target_character );
+    }
+    if( impact_data.target_monster >= 0 ) {
+        return get_creature_tracker().from_temporary_id( impact_data.target_monster ).get();
+    }
+    return nullptr;
+}
+
+static void clear_fpv_terminal_target( fpv_terminal_impact_event_data &impact_data )
+{
+    impact_data.target_character = character_id();
+    impact_data.target_monster = -1;
+}
+
+static void continue_fpv_terminal_tracking( fpv_terminal_impact_event_data &impact_data,
+        Character &player_character, map &here, tripoint_abs_ms &last_target_pos )
+{
+    if( !impact_data.target_character.is_valid() && impact_data.target_monster < 0 ) {
+        return;
+    }
+    Creature *const target = resolve_fpv_terminal_target( impact_data, player_character );
+    if( target == nullptr || target->is_dead_state() || target->is_hallucination() ) {
+        clear_fpv_terminal_target( impact_data );
+        return;
+    }
+
+    const tripoint_abs_ms current_target_pos = target->pos_abs();
+    if( current_target_pos == last_target_pos ) {
+        return;
+    }
+
+    const tripoint_bub_ms last_target_bub = here.get_bub( last_target_pos );
+    const tripoint_bub_ms current_target_bub = here.get_bub( current_target_pos );
+    if( !here.inbounds( last_target_bub ) || !here.inbounds( current_target_bub ) ) {
+        clear_fpv_terminal_target( impact_data );
+        return;
+    }
+    here.build_map_cache( current_target_bub.z() );
+    here.update_visibility_cache( current_target_bub.z() );
+    if( !here.sees( last_target_bub, current_target_bub,
+                    rl_dist( last_target_bub, current_target_bub ) + 3 ) ) {
+        clear_fpv_terminal_target( impact_data );
+        return;
+    }
+    last_target_pos = current_target_pos;
 }
 
 static std::optional<tripoint_abs_ms> active_laser_designation_target( const avatar &spotter )
@@ -859,9 +914,18 @@ void timed_event::actualize()
             }
             break;
 
-        case timed_event_type::FPV_DRONE_IMPACT_MESSAGE: {
-            const bool in_bubble = here.inbounds( map_square );
-            const int player_distance = rl_dist( player_character.pos_abs(), map_square );
+        case timed_event_type::FPV_DRONE_TERMINAL_IMPACT: {
+            const fpv_terminal_impact_event_data *impact_data =
+                get_data<fpv_terminal_impact_event_data>();
+            if( impact_data == nullptr ) {
+                debugmsg( "FPV terminal impact event is missing its targeting data." );
+                break;
+            }
+            const tripoint_abs_ms impact = map_square + impact_data->miss;
+            apply_timed_explosion( player_character.as_avatar(), here, impact, expl_data );
+
+            const bool in_bubble = here.inbounds( impact );
+            const int player_distance = rl_dist( player_character.pos_abs(), impact );
             const std::string cue = !in_bubble ? _( "in the far distance" ) :
                                     player_distance > MAX_VIEW_DISTANCE ? _( "in the distance" ) :
                                     _( "nearby" );
@@ -1005,6 +1069,16 @@ void timed_event::per_turn()
             }
             break;
 
+        case timed_event_type::FPV_DRONE_TERMINAL_IMPACT: {
+            fpv_terminal_impact_event_data *impact_data =
+                get_data<fpv_terminal_impact_event_data>();
+            if( impact_data != nullptr ) {
+                continue_fpv_terminal_tracking( *impact_data, player_character, here, map_square );
+                map_point = project_to<coords::sm>( map_square );
+            }
+        }
+        break;
+
         default:
             // Nothing happens for other events
             break;
@@ -1118,6 +1192,17 @@ void timed_event_manager::add_fpv_payload_drop( const time_point &when,
     fpv_payload_drop_event_data *payload_data = event.get_data<fpv_payload_drop_event_data>();
     payload_data->payload = std::move( payload );
     payload_data->operator_name = operator_name;
+}
+
+void timed_event_manager::add_fpv_terminal_impact( const time_point &when,
+        const tripoint_abs_ms &target, const std::string &operator_name,
+        const fpv_terminal_impact_event_data &impact_data, const explosion_data &expl_data )
+{
+    events.emplace_back( timed_event_type::FPV_DRONE_TERMINAL_IMPACT, when, -1, target, -1,
+                         operator_name, "" );
+    timed_event &event = events.back();
+    event.data = std::make_unique<fpv_terminal_impact_event_data>( impact_data );
+    event.expl_data = expl_data;
 }
 
 void timed_event_manager::add( timed_event_type type, const time_point &when,
