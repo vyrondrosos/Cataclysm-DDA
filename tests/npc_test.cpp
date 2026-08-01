@@ -878,6 +878,30 @@ TEST_CASE( "FPV_support_items_use_physical_NPC_storage", "[npc][drone][inventory
     CHECK_FALSE( npc::is_fpv_support_item( *rejected ) );
 }
 
+TEST_CASE( "FPV_mission_cleanup_removes_all_scoped_values", "[npc][drone]" )
+{
+    npc guy;
+    guy.set_value( "fpv_assignment", "operator" );
+    guy.set_value( "fpv_payload_type", "grenade" );
+    guy.set_value( "fpv_status", "on_station" );
+    guy.set_value( "fpv_command_battery_penalty", 10 );
+    guy.set_value( "fpv_scout_report_active", "yes" );
+    guy.set_value( "fpv_designation_target_type", "character" );
+    guy.set_value( "fpv_designation_character_id", 1 );
+    guy.set_value( "fpv_designation_monster_id", 2 );
+
+    guy.clear_fpv_mission_values();
+
+    CHECK( guy.get_value( "fpv_status" ).is_empty() );
+    CHECK( guy.get_value( "fpv_command_battery_penalty" ).is_empty() );
+    CHECK( guy.get_value( "fpv_scout_report_active" ).is_empty() );
+    CHECK( guy.get_value( "fpv_designation_target_type" ).is_empty() );
+    CHECK( guy.get_value( "fpv_designation_character_id" ).is_empty() );
+    CHECK( guy.get_value( "fpv_designation_monster_id" ).is_empty() );
+    CHECK( guy.get_value( "fpv_assignment" ).str() == "operator" );
+    CHECK( guy.get_value( "fpv_payload_type" ).str() == "grenade" );
+}
+
 TEST_CASE( "invalid_FPV_mission_state_is_not_reinterpreted", "[npc][drone]" )
 {
     clear_map_without_vision();

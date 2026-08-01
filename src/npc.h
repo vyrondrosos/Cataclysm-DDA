@@ -54,6 +54,7 @@ class mission;
 class monster;
 class talker;
 class vehicle;
+enum class timed_event_type : int;
 
 namespace npc_factions
 {
@@ -1419,6 +1420,8 @@ class npc : public Character
         void set_mission( npc_mission new_mission );
         int clear_mortar_support( bool notify = false );
         int clear_fpv_support( bool notify = false );
+        void clear_fpv_mission_events( timed_event_type preserved_event );
+        void clear_fpv_mission_values();
         static bool is_fpv_support_item( const item &it );
         std::optional<item> stow_fpv_support_item( item it );
         bool has_activity() const;

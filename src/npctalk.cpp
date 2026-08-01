@@ -8953,32 +8953,6 @@ static int load_baba_yaga_payload( npc &operator_npc )
     return loaded;
 }
 
-static void clear_fpv_designation( npc &operator_npc )
-{
-    operator_npc.set_value( "fpv_designation_active", "no" );
-    operator_npc.set_value( "fpv_designation_type", "" );
-    operator_npc.set_value( "fpv_designation_x", 0 );
-    operator_npc.set_value( "fpv_designation_y", 0 );
-    operator_npc.set_value( "fpv_designation_z", 0 );
-    operator_npc.set_value( "fpv_designation_target_type", "" );
-    operator_npc.set_value( "fpv_designation_character_id", 0 );
-    operator_npc.set_value( "fpv_designation_monster_id", -1 );
-}
-
-static void clear_fpv_scout( npc &operator_npc )
-{
-    operator_npc.set_value( "fpv_scout_active", "no" );
-    operator_npc.set_value( "fpv_scout_ready_turn", 0 );
-    operator_npc.set_value( "fpv_scout_x", 0 );
-    operator_npc.set_value( "fpv_scout_y", 0 );
-    operator_npc.set_value( "fpv_scout_z", 0 );
-    operator_npc.set_value( "fpv_scout_report_active", "no" );
-    operator_npc.set_value( "fpv_scout_report_x", 0 );
-    operator_npc.set_value( "fpv_scout_report_y", 0 );
-    operator_npc.set_value( "fpv_scout_report_z", 0 );
-    clear_fpv_designation( operator_npc );
-}
-
 static bool fpv_scout_task_ready( const npc &operator_npc )
 {
     return support_value_string( operator_npc, "fpv_scout_active" ) == "yes" &&
@@ -9013,54 +8987,13 @@ static void clear_fpv_timeline_events( const std::string &mission_key,
     }
 }
 
-static void clear_fpv_status_events( const std::string &mission_key,
-                                     const timed_event_type preserved_event = timed_event_type::NONE )
-{
-    clear_fpv_timeline_events( mission_key, preserved_event );
-    if( !mission_key.empty() ) {
-        get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
-    }
-}
-
-static void clear_fpv_payload_drop_events( const std::string &mission_key )
-{
-    if( mission_key.empty() ) {
-        return;
-    }
-    get_timed_events().remove( timed_event_type::FPV_DRONE_PAYLOAD_DROP, mission_key );
-}
-
 static void clear_fpv_mission( npc &operator_npc,
                                const timed_event_type preserved_event = timed_event_type::NONE )
 {
-    const std::string mission_key = support_value_string( operator_npc, "fpv_mission_key" );
-    clear_fpv_status_events( mission_key, preserved_event );
-    clear_fpv_payload_drop_events( mission_key );
-    operator_npc.remove_value( "fpv_status" );
-    operator_npc.remove_value( "fpv_mission_key" );
-    operator_npc.remove_value( "fpv_arrival_turn" );
-    operator_npc.remove_value( "fpv_station_end_turn" );
-    operator_npc.remove_value( "fpv_return_end_turn" );
-    operator_npc.remove_value( "fpv_launch_turn" );
-    operator_npc.remove_value( "fpv_outbound_seconds" );
-    operator_npc.remove_value( "fpv_return_seconds" );
-    operator_npc.remove_value( "fpv_battery_start_charges" );
-    operator_npc.remove_value( "fpv_battery_capacity" );
-    operator_npc.remove_value( "fpv_battery_full_seconds" );
-    operator_npc.remove_value( "fpv_one_way" );
-    operator_npc.remove_value( "fpv_expend_practiced" );
-    operator_npc.remove_value( "fpv_drone_type" );
-    operator_npc.remove_value( "fpv_payload_loaded_type" );
-    operator_npc.remove_value( "fpv_payload_loaded_count" );
-    operator_npc.remove_value( "fpv_command_busy_until" );
-    operator_npc.remove_value( "fpv_command_battery_penalty" );
-    operator_npc.remove_value( "fpv_payload_drop_busy_until" );
-    operator_npc.remove_value( "fpv_station_x" );
-    operator_npc.remove_value( "fpv_station_y" );
-    operator_npc.remove_value( "fpv_station_z" );
+    operator_npc.clear_fpv_mission_events( preserved_event );
+    operator_npc.clear_fpv_mission_values();
     operator_npc.fpv_active_drone.reset();
     operator_npc.fpv_payload_inv.clear();
-    clear_fpv_scout( operator_npc );
 }
 
 static bool read_required_fpv_mission_int( const npc &operator_npc, const std::string &key,
