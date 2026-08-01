@@ -950,7 +950,9 @@ TEST_CASE( "invalid_FPV_mission_state_is_not_reinterpreted", "[npc][drone]" )
     CHECK( guy.get_value( "fpv_assignment" ).is_empty() );
     CHECK( guy.get_value( "fpv_status" ).is_empty() );
     CHECK_FALSE( guy.fpv_active_drone.has_value() );
-    int recovered_scout_drones = 0;
+    int recovered_scout_drones = guy.items_with( []( const item & it ) {
+        return it.typeId() == itype_fpv_scout_drone;
+    } ).size();
     map &here = get_map();
     for( const item &it : here.i_at( guy.pos_bub( here ) ) ) {
         if( it.typeId() == itype_fpv_scout_drone ) {
