@@ -144,6 +144,8 @@ static const npc_class_id NC_EVAC_SHOPKEEP( "NC_EVAC_SHOPKEEP" );
 static const npc_class_id NC_NONE( "NC_NONE" );
 static const npc_class_id NC_NONE_HARDENED( "NC_NONE_HARDENED" );
 
+static const std::string fpv_support_item_var = "fpv_support_item";
+
 static const overmap_location_str_id overmap_location_source_of_ammo( "source_of_ammo" );
 static const overmap_location_str_id overmap_location_source_of_anything( "source_of_anything" );
 static const overmap_location_str_id overmap_location_source_of_drink( "source_of_drink" );
@@ -4069,6 +4071,28 @@ int npc::clear_mortar_support( const bool notify )
 }
 
 
+bool npc::is_fpv_support_item( const item &it )
+{
+    return it.has_var( fpv_support_item_var );
+}
+
+std::optional<item> npc::stow_fpv_support_item( item it )
+{
+    if( !can_pickWeight( it ) || ( !can_stash( it ) &&
+                                  ( has_weapon() || !can_wield( it ).success() ) ) ) {
+        return it;
+    }
+
+    it.set_var( fpv_support_item_var, true );
+    item_location stored = i_add( it, true, nullptr, nullptr, false, true, false );
+    if( !stored ) {
+        return it;
+    }
+    clear_inventory_search_cache();
+    invalidate_inventory_validity_cache();
+    return std::nullopt;
+}
+
 int npc::clear_fpv_support( const bool notify )
 {
     const diag_value assignment = get_value( "fpv_assignment" );
@@ -4076,7 +4100,8 @@ int npc::clear_fpv_support( const bool notify )
     const diag_value status_value = get_value( "fpv_status" );
     const std::string status = status_value.is_empty() ? std::string() : status_value.str();
     const bool drone_airborne = status == "enroute" || status == "on_station" || status == "returning";
-    if( !assigned && support_inv.size() == 0 && !fpv_active_drone && fpv_payload_inv.size() == 0 &&
+    const std::vector<item *> support_items = items_with( is_fpv_support_item );
+    if( !assigned && support_items.empty() && !fpv_active_drone && fpv_payload_inv.size() == 0 &&
         !drone_airborne ) {
         return 0;
     }
@@ -4096,30 +4121,52 @@ int npc::clear_fpv_support( const bool notify )
 
     if( !drone_airborne ) {
         if( fpv_active_drone ) {
-            support_inv.add_item( std::move( *fpv_active_drone ) );
+            std::optional<item> rejected = stow_fpv_support_item( std::move( *fpv_active_drone ) );
+            if( rejected ) {
+                debugmsg( "Unable to return recovered FPV drone to %s's physical inventory.",
+                          disp_name() );
+                fpv_active_drone = std::move( *rejected );
+            } else {
+                fpv_active_drone.reset();
+            }
         }
+        std::list<item> payloads;
         while( fpv_payload_inv.size() > 0 ) {
-            std::list<item> payloads = fpv_payload_inv.reduce_stack( 0, -1 );
-            for( item &payload : payloads ) {
-                support_inv.add_item( std::move( payload ) );
+            payloads.splice( payloads.end(), fpv_payload_inv.reduce_stack( 0, -1 ) );
+        }
+        for( item &payload : payloads ) {
+            std::optional<item> rejected = stow_fpv_support_item( std::move( payload ) );
+            if( rejected ) {
+                debugmsg( "Unable to return an FPV payload to %s's physical inventory.",
+                          disp_name() );
+                fpv_payload_inv.add_item( std::move( *rejected ) );
             }
         }
+    } else {
+        fpv_active_drone.reset();
+        fpv_payload_inv.clear();
     }
-    fpv_active_drone.reset();
-    fpv_payload_inv.clear();
 
-    int dropped_items = 0;
-    map &here = get_map();
-    const tripoint_bub_ms drop_pos = pos_bub( here );
-    for( size_t pos = 0; pos < support_inv.size(); ++pos ) {
-        for( const item &it : support_inv.const_stack( pos ) ) {
-            if( !it.count_by_charges() || it.charges > 0 ) {
-                dropped_items += it.count();
-                here.add_item_or_charges( drop_pos, it );
-            }
+    int released_items = 0;
+    if( is_active() ) {
+        std::list<item> released = remove_items_with( is_fpv_support_item );
+        map &here = get_map();
+        for( item &it : released ) {
+            released_items += it.count();
+            it.erase_var( fpv_support_item_var );
+            here.add_item_or_charges( pos_bub( here ), std::move( it ) );
         }
+    } else {
+        visit_items( [&released_items]( item *it, item * ) {
+            if( is_fpv_support_item( *it ) ) {
+                released_items += it->count();
+                it->erase_var( fpv_support_item_var );
+            }
+            return VisitResponse::NEXT;
+        } );
+        clear_inventory_search_cache();
+        invalidate_inventory_validity_cache();
     }
-    support_inv.clear();
 
     remove_value( "fpv_assignment" );
     remove_value( "fpv_status" );
@@ -4164,13 +4211,20 @@ int npc::clear_fpv_support( const bool notify )
         if( drone_airborne ) {
             add_msg( _( "%s stops drone duty.  The airborne drone is lost." ), disp_name() );
         }
-        if( dropped_items > 0 ) {
-            add_msg( n_gettext( "%1$s drops %2$d drone support item.",
-                                "%1$s drops %2$d drone support items.", dropped_items ),
-                     disp_name(), dropped_items );
+        if( released_items > 0 ) {
+            if( is_active() ) {
+                add_msg( n_gettext( "%1$s drops %2$d drone support item.",
+                                    "%1$s drops %2$d drone support items.", released_items ),
+                         disp_name(), released_items );
+            } else {
+                add_msg( n_gettext( "%1$s stops drone duty and keeps %2$d support item.",
+                                    "%1$s stops drone duty and keeps %2$d support items.",
+                                    released_items ),
+                         disp_name(), released_items );
+            }
         }
     }
-    return dropped_items;
+    return released_items;
 }
 
 bool npc::has_activity() const
