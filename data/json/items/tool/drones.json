@@ -16,6 +16,13 @@
     "use_action": [ { "type": "link_up", "menu_text": "Plug in / Unplug", "cable_length": 4, "charge_rate": "300 W" } ],
     "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "battery": 5000 } } ],
     "tool_ammo": [ "battery" ],
+    "properties": {
+      "fpv_control_range_tiles": "20000",
+      "fpv_endurance_seconds": "1440",
+      "fpv_cruise_speed_tiles_per_hour": "70000",
+      "fpv_launch_delay_multiplier": "2",
+      "fpv_payload_capacity_grams": "8000"
+    },
     "flags": [ "WATER_BREAK", "ELECTRONIC", "NO_UNLOAD", "NO_RELOAD", "RECHARGE", "TRADER_AVOID" ],
     "faults": [ { "fault_group": "electronic_general" } ],
     "melee_damage": { "bash": 8 }
@@ -37,6 +44,12 @@
     "use_action": [ { "type": "link_up", "menu_text": "Plug in / Unplug", "cable_length": 3, "charge_rate": "100 W" } ],
     "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "battery": 560 } } ],
     "tool_ammo": [ "battery" ],
+    "properties": {
+      "fpv_control_range_tiles": "15000",
+      "fpv_endurance_seconds": "1080",
+      "fpv_cruise_speed_tiles_per_hour": "150000",
+      "fpv_launch_delay_multiplier": "1"
+    },
     "flags": [ "WATER_BREAK", "ELECTRONIC", "NO_UNLOAD", "NO_RELOAD", "RECHARGE", "TRADER_AVOID" ],
     "faults": [ { "fault_group": "electronic_general" } ],
     "melee_damage": { "bash": 3 }
@@ -60,6 +73,12 @@
     "use_action": [ { "type": "link_up", "menu_text": "Plug in / Unplug", "cable_length": 3, "charge_rate": "100 W" } ],
     "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "battery": 1000 } } ],
     "tool_ammo": [ "battery" ],
+    "properties": {
+      "fpv_control_range_tiles": "7000",
+      "fpv_endurance_seconds": "360",
+      "fpv_cruise_speed_tiles_per_hour": "150000",
+      "fpv_launch_delay_multiplier": "1"
+    },
     "flags": [ "WATER_BREAK", "ELECTRONIC", "BOMB", "DANGEROUS", "NO_UNLOAD", "NO_RELOAD", "RECHARGE", "TRADER_AVOID" ],
     "faults": [ { "fault_group": "electronic_general" } ],
     "melee_damage": { "bash": 4 }

@@ -113,7 +113,10 @@ static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_bat( "bat" );
 static const itype_id itype_crackers( "crackers" );
 static const itype_id itype_debug_backpack( "debug_backpack" );
+static const itype_id itype_fpv_baba_yaga_drone( "fpv_baba_yaga_drone" );
+static const itype_id itype_fpv_military_suicide_drone( "fpv_military_suicide_drone" );
 static const itype_id itype_fpv_scout_drone( "fpv_scout_drone" );
+static const itype_id itype_fpv_suicide_drone( "fpv_suicide_drone" );
 static const itype_id itype_honeycomb( "honeycomb" );
 static const itype_id itype_leather_belt( "leather_belt" );
 static const itype_id itype_lighter( "lighter" );
@@ -900,6 +903,29 @@ TEST_CASE( "FPV_mission_cleanup_removes_all_scoped_values", "[npc][drone]" )
     CHECK( guy.get_value( "fpv_designation_monster_id" ).is_empty() );
     CHECK( guy.get_value( "fpv_assignment" ).str() == "operator" );
     CHECK( guy.get_value( "fpv_payload_type" ).str() == "grenade" );
+}
+
+TEST_CASE( "FPV_drone_capabilities_are_defined_by_items", "[npc][drone]" )
+{
+    for( const itype_id &drone_id : {
+             itype_fpv_baba_yaga_drone, itype_fpv_military_suicide_drone,
+             itype_fpv_scout_drone, itype_fpv_suicide_drone
+         } ) {
+        const item drone( drone_id );
+        CAPTURE( drone_id.str() );
+        CHECK( drone.get_property_int64_t( "fpv_control_range_tiles" ) > 0 );
+        CHECK( drone.get_property_int64_t( "fpv_endurance_seconds" ) > 0 );
+        CHECK( drone.get_property_int64_t( "fpv_cruise_speed_tiles_per_hour" ) > 0 );
+        CHECK( drone.get_property_int64_t( "fpv_launch_delay_multiplier" ) > 0 );
+    }
+
+    const item bomber( itype_fpv_baba_yaga_drone );
+    CHECK( bomber.get_property_int64_t( "fpv_payload_capacity_grams" ) > 0 );
+
+    const item improvised_attack( itype_fpv_suicide_drone );
+    const item military_attack( itype_fpv_military_suicide_drone );
+    CHECK( improvised_attack.type->explosion.power > 0.0f );
+    CHECK( military_attack.type->explosion.power > improvised_attack.type->explosion.power );
 }
 
 TEST_CASE( "invalid_FPV_mission_state_is_not_reinterpreted", "[npc][drone]" )
