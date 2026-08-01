@@ -189,7 +189,7 @@
         "effect": "request_fpv_baba_yaga_launch"
       },
       {
-        "text": "Ignore bingo fuel and keep the drone on station. (warning: this will lose the drone when the battery runs out)",
+        "text": "Ignore bingo fuel and keep the drone on station.  (warning: this will lose the drone when the battery runs out)",
         "condition": {
           "and": [
             { "compare_string": [ "on_station", { "npc_val": "fpv_status" } ] },
