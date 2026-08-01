@@ -25,7 +25,9 @@
 #include "map_helpers_tests.h"
 #include "map_scale_constants.h"
 #include "map_selector.h"
+#include "map_viewpoint.h"
 #include "monster.h"
+#include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
 #include "ret_val.h"
@@ -33,13 +35,33 @@
 #include "type_id.h"
 #include "units.h"
 #include "value_ptr.h"
+#include "veh_type.h"
+#include "vehicle.h"
+#include "vpart_position.h"
+#include "vpart_range.h"
 #include "weather.h"
+
+static const efftype_id effect_blind( "blind" );
 
 static const itype_id itype_almond_milk( "almond_milk" );
 static const itype_id itype_bag_plastic( "bag_plastic" );
 static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const itype_id itype_cookies( "cookies" );
 static const itype_id itype_disinfectant( "disinfectant" );
+
+static const ter_str_id ter_t_brick_wall( "t_brick_wall" );
+static const ter_str_id ter_t_floor( "t_floor" );
+
+static const vproto_id vehicle_prototype_obstacle_test( "obstacle_test" );
+
+class relocated_small_fake_map : public small_fake_map
+{
+    public:
+        explicit relocated_small_fake_map( const tripoint_abs_sm &origin ) :
+            small_fake_map( ter_t_floor.id() ) {
+            set_abs_sub( origin );
+        }
+};
 
 TEST_CASE( "map_coordinate_conversion_functions" )
 {
@@ -132,6 +154,60 @@ TEST_CASE( "map_bounds_checking" )
             }
         }
     }
+}
+
+TEST_CASE( "map_viewpoint_on_non_current_map", "[map][map_viewpoint]" )
+{
+    clear_avatar();
+    map &main_map = get_map();
+    avatar &you = get_avatar();
+    const tripoint_abs_ms avatar_pos = you.pos_abs();
+
+    const tripoint_abs_sm remote_sm = main_map.get_abs_sub() + point( MAPSIZE_X, 0 );
+    relocated_small_fake_map remote( remote_sm );
+    map &remote_map = *remote.cast_to_map();
+
+    const tripoint_bub_ms origin( 4, 4, 0 );
+    const tripoint_bub_ms target( 9, 4, 0 );
+    const tripoint_bub_ms beyond_range( 11, 4, 0 );
+    REQUIRE_FALSE( main_map.inbounds( remote_map.get_abs( origin ) ) );
+    map_viewpoint view( remote_map.get_abs( origin ), 6 );
+    you.add_effect( effect_blind, 1_turns, true );
+    const on_out_of_scope remove_blind( [&you]() {
+        you.remove_effect( effect_blind );
+    } );
+    REQUIRE( you.is_blind() );
+    remote_map.build_los_cache( 0 );
+
+    CHECK( view.sees( remote_map, target ) );
+    CHECK_FALSE( view.sees( remote_map, beyond_range ) );
+    CHECK_FALSE( view.sees( main_map, target ) );
+
+    remote_map.ter_set( tripoint_bub_ms( 7, 4, 0 ), ter_t_brick_wall );
+    remote_map.build_los_cache( 0 );
+    CHECK_FALSE( view.sees( remote_map, target ) );
+
+    view.set_origin( remote_map.get_abs( tripoint_bub_ms( 8, 4, 0 ) ) );
+    view.set_range( 1 );
+    CHECK( view.sees( remote_map, target ) );
+    view.set_range( 0 );
+    CHECK_FALSE( view.sees( remote_map, target ) );
+
+    vehicle *obstacle = remote_map.add_vehicle( vehicle_prototype_obstacle_test,
+                        tripoint_bub_ms( 16, 16, 0 ), 0_degrees, 0,
+                        veh_spawn_status::UNDAMAGED, false );
+    REQUIRE( obstacle != nullptr );
+    remote_map.build_los_cache( 0 );
+    int opaque_parts = 0;
+    for( const vpart_reference &vp : obstacle->get_avail_parts( VPFLAG_OPAQUE ) ) {
+        const tripoint_bub_ms part_pos = obstacle->bub_part_pos( remote_map, vp.part() );
+        CHECK_FALSE( remote_map.is_transparent( part_pos ) );
+        ++opaque_parts;
+    }
+    CHECK( opaque_parts > 0 );
+
+    CHECK( &get_map() == &main_map );
+    CHECK( you.pos_abs() == avatar_pos );
 }
 
 TEST_CASE( "tinymap_bounds_checking" )

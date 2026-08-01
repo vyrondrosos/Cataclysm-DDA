@@ -1812,6 +1812,13 @@ class map
         void apply_faction_ownership( const point_bub_ms &p1, const point_bub_ms &p2,
                                       const faction_id &id );
         void do_vehicle_caching( int z );
+        /**
+         * Build map-owned caches required for geometric line of sight.
+         * Character-derived visibility and lighting caches are not changed.
+         * Call this after loading or changing the map; moving a viewpoint alone
+         * does not require a rebuild.
+         */
+        void build_los_cache( int zlev );
         // Note: in 3D mode, will actually build caches on ALL z-levels
         void build_map_cache( int zlev, bool skip_lightmap = false );
         // Unlike the other caches, this populates a supplied cache instead of an internal cache.
@@ -2038,6 +2045,7 @@ class map
         // Used to determine if seen cache should be rebuilt.
         bool build_transparency_cache( int zlev );
         bool build_vision_transparency_cache( int zlev );
+        bool build_los_cache_internal( int zlev );
         // fills lm with sunlight. pzlev is current player's zlevel
         void build_sunlight_cache( int pzlev );
     public:
