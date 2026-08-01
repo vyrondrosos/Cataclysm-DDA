@@ -2443,7 +2443,6 @@ void npc::import_and_clean( const JsonObject &data )
     companion_mission_exertion = defaults.companion_mission_exertion;
     companion_mission_travel_time = defaults.companion_mission_travel_time;
     companion_mission_inv.clear();
-    support_inv.clear();
     fpv_active_drone.reset();
     fpv_payload_inv.clear();
     chatbin.missions.clear();
