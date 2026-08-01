@@ -4093,6 +4093,46 @@ std::optional<item> npc::stow_fpv_support_item( item it )
     return std::nullopt;
 }
 
+void npc::clear_fpv_mission_values()
+{
+    for( const char *key : {
+             "fpv_status", "fpv_mission_key", "fpv_arrival_turn", "fpv_station_end_turn",
+             "fpv_return_end_turn", "fpv_launch_turn", "fpv_outbound_seconds",
+             "fpv_return_seconds", "fpv_battery_start_charges", "fpv_battery_capacity",
+             "fpv_battery_full_seconds", "fpv_one_way", "fpv_expend_practiced", "fpv_drone_type",
+             "fpv_command_busy_until", "fpv_command_battery_penalty", "fpv_payload_drop_busy_until",
+             "fpv_station_x", "fpv_station_y", "fpv_station_z", "fpv_scout_active",
+             "fpv_scout_ready_turn", "fpv_scout_x", "fpv_scout_y", "fpv_scout_z",
+             "fpv_scout_report_active", "fpv_scout_report_x", "fpv_scout_report_y",
+             "fpv_scout_report_z", "fpv_designation_active", "fpv_designation_type",
+             "fpv_designation_x", "fpv_designation_y", "fpv_designation_z",
+             "fpv_designation_target_type", "fpv_designation_character_id",
+             "fpv_designation_monster_id"
+         } ) {
+        remove_value( key );
+    }
+}
+
+void npc::clear_fpv_mission_events( const timed_event_type preserved_event )
+{
+    const diag_value mission_key_value = get_value( "fpv_mission_key" );
+    if( !mission_key_value.is_str() || mission_key_value.str().empty() ) {
+        return;
+    }
+    const std::string &mission_key = mission_key_value.str();
+    get_timed_events().remove( timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_STATUS_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_RETURN_MESSAGE, mission_key );
+    if( preserved_event != timed_event_type::FPV_DRONE_RECOVERED_MESSAGE ) {
+        get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
+    }
+    if( preserved_event != timed_event_type::FPV_DRONE_LOST_MESSAGE ) {
+        get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
+    }
+    get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
+    get_timed_events().remove( timed_event_type::FPV_DRONE_PAYLOAD_DROP, mission_key );
+}
+
 int npc::clear_fpv_support( const bool notify )
 {
     const diag_value assignment = get_value( "fpv_assignment" );
@@ -4106,18 +4146,7 @@ int npc::clear_fpv_support( const bool notify )
         return 0;
     }
 
-    const diag_value mission_key_value = get_value( "fpv_mission_key" );
-    const std::string mission_key = mission_key_value.is_empty() ? std::string() :
-                                    mission_key_value.str();
-    if( !mission_key.empty() ) {
-        get_timed_events().remove( timed_event_type::FPV_DRONE_ARRIVAL_MESSAGE, mission_key );
-        get_timed_events().remove( timed_event_type::FPV_DRONE_STATUS_MESSAGE, mission_key );
-        get_timed_events().remove( timed_event_type::FPV_DRONE_RETURN_MESSAGE, mission_key );
-        get_timed_events().remove( timed_event_type::FPV_DRONE_RECOVERED_MESSAGE, mission_key );
-        get_timed_events().remove( timed_event_type::FPV_DRONE_LOST_MESSAGE, mission_key );
-        get_timed_events().remove( timed_event_type::FPV_DRONE_SCOUT_READY_MESSAGE, mission_key );
-        get_timed_events().remove( timed_event_type::FPV_DRONE_PAYLOAD_DROP, mission_key );
-    }
+    clear_fpv_mission_events( timed_event_type::NONE );
 
     if( !drone_airborne ) {
         if( fpv_active_drone ) {
@@ -4168,43 +4197,8 @@ int npc::clear_fpv_support( const bool notify )
         invalidate_inventory_validity_cache();
     }
 
+    clear_fpv_mission_values();
     remove_value( "fpv_assignment" );
-    remove_value( "fpv_status" );
-    remove_value( "fpv_mission_key" );
-    remove_value( "fpv_arrival_turn" );
-    remove_value( "fpv_station_end_turn" );
-    remove_value( "fpv_return_end_turn" );
-    remove_value( "fpv_launch_turn" );
-    remove_value( "fpv_outbound_seconds" );
-    remove_value( "fpv_return_seconds" );
-    remove_value( "fpv_battery_start_charges" );
-    remove_value( "fpv_battery_capacity" );
-    remove_value( "fpv_battery_full_seconds" );
-    remove_value( "fpv_one_way" );
-    remove_value( "fpv_expend_practiced" );
-    remove_value( "fpv_drone_type" );
-    remove_value( "fpv_payload_loaded_type" );
-    remove_value( "fpv_payload_loaded_count" );
-    remove_value( "fpv_command_busy_until" );
-    remove_value( "fpv_command_battery_penalty" );
-    remove_value( "fpv_payload_drop_busy_until" );
-    remove_value( "fpv_station_x" );
-    remove_value( "fpv_station_y" );
-    remove_value( "fpv_station_z" );
-    remove_value( "fpv_scout_active" );
-    remove_value( "fpv_scout_ready_turn" );
-    remove_value( "fpv_scout_x" );
-    remove_value( "fpv_scout_y" );
-    remove_value( "fpv_scout_z" );
-    remove_value( "fpv_scout_report_active" );
-    remove_value( "fpv_scout_report_x" );
-    remove_value( "fpv_scout_report_y" );
-    remove_value( "fpv_scout_report_z" );
-    remove_value( "fpv_designation_active" );
-    remove_value( "fpv_designation_type" );
-    remove_value( "fpv_designation_x" );
-    remove_value( "fpv_designation_y" );
-    remove_value( "fpv_designation_z" );
     remove_value( "fpv_payload_type" );
 
     if( notify ) {
