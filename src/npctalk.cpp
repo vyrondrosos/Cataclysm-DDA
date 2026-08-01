@@ -6106,6 +6106,31 @@ int support_value_int( const npc &operator_npc, const std::string &key )
     return value.is_empty() ? 0 : static_cast<int>( value.dbl() );
 }
 
+static std::optional<int> strict_support_value_int( const npc &operator_npc,
+        const std::string &key )
+{
+    const diag_value value = operator_npc.get_value( key );
+    if( value.is_empty() || !value.is_dbl() ) {
+        return std::nullopt;
+    }
+    const double number = value.dbl();
+    if( !std::isfinite( number ) || std::trunc( number ) != number ||
+        number < INT_MIN || number > INT_MAX ) {
+        return std::nullopt;
+    }
+    return static_cast<int>( number );
+}
+
+static std::optional<std::string> strict_support_value_string( const npc &operator_npc,
+        const std::string &key )
+{
+    const diag_value value = operator_npc.get_value( key );
+    if( value.is_empty() || !value.is_str() ) {
+        return std::nullopt;
+    }
+    return value.str();
+}
+
 item_location select_nearby_handover_item( const std::function<bool( const item & )> &filter,
         const std::string &title )
 {
@@ -7068,32 +7093,59 @@ static std::string fpv_designation_target_kind_name( const fpv_designation_targe
         case fpv_designation_target_kind::tile:
             return "tile";
     }
-    return "tile";
+    return std::string();
 }
 
-static fpv_designation_target_kind fpv_designation_target_kind_from_string(
+static std::optional<fpv_designation_target_kind> fpv_designation_target_kind_from_string(
     const std::string &kind )
 {
+    if( kind == "tile" ) {
+        return fpv_designation_target_kind::tile;
+    }
     if( kind == "character" ) {
         return fpv_designation_target_kind::character;
     }
     if( kind == "monster" ) {
         return fpv_designation_target_kind::monster;
     }
-    return fpv_designation_target_kind::tile;
+    return std::nullopt;
 }
 
-static fpv_designation_target read_fpv_designation_target( const npc &operator_npc )
+static std::optional<fpv_designation_target> read_fpv_designation_target(
+    const npc &operator_npc )
 {
+    const std::optional<int> x = strict_support_value_int( operator_npc, "fpv_designation_x" );
+    const std::optional<int> y = strict_support_value_int( operator_npc, "fpv_designation_y" );
+    const std::optional<int> z = strict_support_value_int( operator_npc, "fpv_designation_z" );
+    const std::optional<std::string> kind_name = strict_support_value_string(
+                operator_npc, "fpv_designation_target_type" );
+    const std::optional<fpv_designation_target_kind> kind = kind_name ?
+            fpv_designation_target_kind_from_string( *kind_name ) : std::nullopt;
+    if( !x || !y || !z || !kind ) {
+        return std::nullopt;
+    }
+
     fpv_designation_target target;
-    target.pos = tripoint_abs_ms( support_value_int( operator_npc, "fpv_designation_x" ),
-                                  support_value_int( operator_npc, "fpv_designation_y" ),
-                                  support_value_int( operator_npc, "fpv_designation_z" ) );
-    target.kind = fpv_designation_target_kind_from_string(
-                      support_value_string( operator_npc, "fpv_designation_target_type" ) );
-    target.target_character = character_id(
-                                  support_value_int( operator_npc, "fpv_designation_character_id" ) );
-    target.target_monster = support_value_int( operator_npc, "fpv_designation_monster_id" );
+    target.pos = tripoint_abs_ms( *x, *y, *z );
+    target.kind = *kind;
+    if( target.kind == fpv_designation_target_kind::character ) {
+        const std::optional<int> character = strict_support_value_int(
+                operator_npc, "fpv_designation_character_id" );
+        if( !character ) {
+            return std::nullopt;
+        }
+        target.target_character = character_id( *character );
+        if( !target.target_character.is_valid() ) {
+            return std::nullopt;
+        }
+    } else if( target.kind == fpv_designation_target_kind::monster ) {
+        const std::optional<int> monster = strict_support_value_int(
+                                               operator_npc, "fpv_designation_monster_id" );
+        if( !monster || *monster < 0 ) {
+            return std::nullopt;
+        }
+        target.target_monster = *monster;
+    }
     return target;
 }
 
@@ -7115,7 +7167,11 @@ static void write_fpv_designation_target( npc &operator_npc, const std::string &
 static std::optional<fpv_designation_target> resolve_fpv_designation_target(
     npc &operator_npc )
 {
-    fpv_designation_target target = read_fpv_designation_target( operator_npc );
+    std::optional<fpv_designation_target> stored_target = read_fpv_designation_target( operator_npc );
+    if( !stored_target ) {
+        return std::nullopt;
+    }
+    fpv_designation_target target = *stored_target;
     if( target.kind == fpv_designation_target_kind::tile ) {
         return target;
     }
@@ -7203,6 +7259,12 @@ static fpv_designation_lookup find_fpv_designation( const std::string &designati
             continue;
         }
         lookup.stored_target = read_fpv_designation_target( *operator_npc );
+        if( !lookup.stored_target ) {
+            debugmsg( "Ignoring malformed FPV designation state for %s.",
+                      operator_npc->disp_name() );
+            lookup.live_failure = fpv_designation_failure::target_lost;
+            continue;
+        }
         if( support_value_string( *operator_npc, "fpv_status" ) != "on_station" ) {
             lookup.live_failure = fpv_designation_failure::drone_not_on_station;
             continue;
@@ -8460,6 +8522,9 @@ static bool is_fpv_scout_drone( const item &it )
 
 static itype_id fpv_drone_item_id( const std::string &drone_type )
 {
+    if( drone_type == "suicide" ) {
+        return itype_fpv_suicide_drone;
+    }
     if( drone_type == "scout" ) {
         return itype_fpv_scout_drone;
     }
@@ -8469,12 +8534,15 @@ static itype_id fpv_drone_item_id( const std::string &drone_type )
     if( drone_type == "baba_yaga" ) {
         return itype_fpv_baba_yaga_drone;
     }
-    return itype_fpv_suicide_drone;
+    return itype_id::NULL_ID();
 }
 
 static int fpv_drone_count( const npc &operator_npc, const std::string &drone_type )
 {
     const itype_id drone_id = fpv_drone_item_id( drone_type );
+    if( drone_id == itype_id::NULL_ID() ) {
+        return 0;
+    }
     return count_support_items( operator_npc, [&drone_id]( const item & it ) {
         return it.typeId() == drone_id;
     } );
@@ -8483,6 +8551,9 @@ static int fpv_drone_count( const npc &operator_npc, const std::string &drone_ty
 static std::optional<item> take_fpv_drone( npc &operator_npc, const std::string &drone_type )
 {
     const itype_id drone_id = fpv_drone_item_id( drone_type );
+    if( drone_id == itype_id::NULL_ID() ) {
+        return std::nullopt;
+    }
     return take_one_support_item( operator_npc, [&drone_id]( const item & it ) {
         return it.typeId() == drone_id;
     } );
@@ -8490,11 +8561,13 @@ static std::optional<item> take_fpv_drone( npc &operator_npc, const std::string 
 
 static std::string active_fpv_drone_type( const npc &operator_npc )
 {
-    const std::string drone_type = support_value_string( operator_npc, "fpv_drone_type" );
-    if( drone_type == "scout" || drone_type == "baba_yaga" || drone_type == "military_suicide" ) {
-        return drone_type;
+    const std::optional<std::string> drone_type = strict_support_value_string(
+                operator_npc, "fpv_drone_type" );
+    if( drone_type && ( *drone_type == "suicide" || *drone_type == "scout" ||
+                       *drone_type == "baba_yaga" || *drone_type == "military_suicide" ) ) {
+        return *drone_type;
     }
-    return "suicide";
+    return std::string();
 }
 
 static bool active_fpv_drone_is_suicide( const npc &operator_npc )
@@ -8528,7 +8601,10 @@ static int fpv_drone_max_range_tiles( const std::string &drone_type )
     if( drone_type == "baba_yaga" ) {
         return 20000;
     }
-    return 7000;
+    if( drone_type == "suicide" || drone_type == "military_suicide" ) {
+        return 7000;
+    }
+    return 0;
 }
 
 static int fpv_drone_full_battery_seconds( const std::string &drone_type )
@@ -8539,7 +8615,10 @@ static int fpv_drone_full_battery_seconds( const std::string &drone_type )
     if( drone_type == "baba_yaga" ) {
         return 24 * 60;
     }
-    return 6 * 60;
+    if( drone_type == "suicide" || drone_type == "military_suicide" ) {
+        return 6 * 60;
+    }
+    return 0;
 }
 
 static int fpv_drone_nominal_battery_capacity( const std::string &drone_type )
@@ -8550,7 +8629,10 @@ static int fpv_drone_nominal_battery_capacity( const std::string &drone_type )
     if( drone_type == "baba_yaga" ) {
         return 5000;
     }
-    return 1000;
+    if( drone_type == "suicide" || drone_type == "military_suicide" ) {
+        return 1000;
+    }
+    return 0;
 }
 
 static int fpv_drone_battery_capacity( const item &drone, const std::string &drone_type )
@@ -8592,23 +8674,19 @@ static void set_fpv_drone_charge( item &drone, const int charge, const int capac
 
 static int active_fpv_battery_capacity( const npc &operator_npc )
 {
-    const int stored = support_value_int( operator_npc, "fpv_battery_capacity" );
-    return stored > 0 ? stored : fpv_drone_nominal_battery_capacity( active_fpv_drone_type(
-                operator_npc ) );
+    return support_value_int( operator_npc, "fpv_battery_capacity" );
 }
 
 static int active_fpv_battery_start_charges( const npc &operator_npc )
 {
     const int capacity = active_fpv_battery_capacity( operator_npc );
     const int stored = support_value_int( operator_npc, "fpv_battery_start_charges" );
-    return stored > 0 ? clamp( stored, 0, capacity ) : capacity;
+    return clamp( stored, 0, capacity );
 }
 
 static int active_fpv_full_battery_seconds( const npc &operator_npc )
 {
-    const int stored = support_value_int( operator_npc, "fpv_battery_full_seconds" );
-    return stored > 0 ? stored : fpv_drone_full_battery_seconds( active_fpv_drone_type(
-                operator_npc ) );
+    return support_value_int( operator_npc, "fpv_battery_full_seconds" );
 }
 
 static int fpv_mission_used_battery_seconds( const npc &operator_npc, const int at_turn )
@@ -8618,9 +8696,7 @@ static int fpv_mission_used_battery_seconds( const npc &operator_npc, const int 
     const int return_end_turn = get_fpv_turn_value( operator_npc, "fpv_return_end_turn" );
     const int outbound_seconds = std::max( 0, get_fpv_turn_value( operator_npc,
                                            "fpv_outbound_seconds" ) );
-    const int launch_turn = get_fpv_turn_value( operator_npc, "fpv_launch_turn" ) > 0 ?
-                            get_fpv_turn_value( operator_npc, "fpv_launch_turn" ) :
-                            arrival_turn - outbound_seconds;
+    const int launch_turn = get_fpv_turn_value( operator_npc, "fpv_launch_turn" );
     const int now = std::max( launch_turn, at_turn );
 
     if( now <= arrival_turn ) {
@@ -8683,7 +8759,11 @@ static double fpv_drone_cruise_speed_tiles_per_hour( const std::string &drone_ty
     if( drone_type == "baba_yaga" ) {
         return 70000.0;
     }
-    return 150000.0;
+    if( drone_type == "suicide" || drone_type == "scout" ||
+        drone_type == "military_suicide" ) {
+        return 150000.0;
+    }
+    return 0.0;
 }
 
 static int fpv_drone_launch_delay_seconds( const npc &operator_npc, const std::string &drone_type )
@@ -8983,11 +9063,170 @@ static void clear_fpv_mission( npc &operator_npc,
     clear_fpv_scout( operator_npc );
 }
 
+static bool read_required_fpv_mission_int( const npc &operator_npc, const std::string &key,
+        int &result, std::string &failure )
+{
+    const std::optional<int> value = strict_support_value_int( operator_npc, key );
+    if( !value ) {
+        failure = string_format( "missing or malformed %s", key );
+        return false;
+    }
+    result = *value;
+    return true;
+}
+
+static bool valid_optional_fpv_mission_int( const npc &operator_npc, const std::string &key,
+        std::string &failure )
+{
+    const diag_value value = operator_npc.get_value( key );
+    if( value.is_empty() ) {
+        return true;
+    }
+    const std::optional<int> parsed = strict_support_value_int( operator_npc, key );
+    if( !parsed || *parsed < 0 ) {
+        failure = string_format( "malformed %s", key );
+        return false;
+    }
+    return true;
+}
+
+static bool valid_fpv_mission_state( const npc &operator_npc, std::string &failure )
+{
+    const std::optional<std::string> assignment = strict_support_value_string(
+                operator_npc, "fpv_assignment" );
+    if( !assignment || assignment->empty() ) {
+        failure = "missing drone operator assignment";
+        return false;
+    }
+
+    const std::string drone_type = active_fpv_drone_type( operator_npc );
+    const itype_id expected_drone = fpv_drone_item_id( drone_type );
+    if( drone_type.empty() || expected_drone == itype_id::NULL_ID() ) {
+        failure = "missing or unknown drone type";
+        return false;
+    }
+    if( !operator_npc.fpv_active_drone ) {
+        failure = "missing active drone item";
+        return false;
+    }
+    if( operator_npc.fpv_active_drone->typeId() != expected_drone ) {
+        failure = string_format( "active item %s does not match drone type %s",
+                                 operator_npc.fpv_active_drone->typeId().str(), drone_type );
+        return false;
+    }
+
+    const std::optional<std::string> mission_key = strict_support_value_string(
+                operator_npc, "fpv_mission_key" );
+    if( !mission_key || mission_key->empty() ) {
+        failure = "missing mission key";
+        return false;
+    }
+    const std::optional<std::string> one_way_value = strict_support_value_string(
+                operator_npc, "fpv_one_way" );
+    if( !one_way_value || ( *one_way_value != "yes" && *one_way_value != "no" ) ) {
+        failure = "missing or malformed one-way state";
+        return false;
+    }
+    const std::optional<std::string> practiced = strict_support_value_string(
+                operator_npc, "fpv_expend_practiced" );
+    if( !practiced || ( *practiced != "yes" && *practiced != "no" ) ) {
+        failure = "missing or malformed expenditure-practice state";
+        return false;
+    }
+
+    int launch_turn = 0;
+    int arrival_turn = 0;
+    int station_end_turn = 0;
+    int return_end_turn = 0;
+    int outbound_seconds = 0;
+    int return_seconds = 0;
+    int battery_start_charges = 0;
+    int battery_capacity = 0;
+    int full_battery_seconds = 0;
+    int station_x = 0;
+    int station_y = 0;
+    int station_z = 0;
+    if( !read_required_fpv_mission_int( operator_npc, "fpv_launch_turn", launch_turn, failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_arrival_turn", arrival_turn, failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_station_end_turn", station_end_turn,
+                                        failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_return_end_turn", return_end_turn,
+                                        failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_outbound_seconds", outbound_seconds,
+                                        failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_return_seconds", return_seconds,
+                                        failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_battery_start_charges",
+                                        battery_start_charges, failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_battery_capacity", battery_capacity,
+                                        failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_battery_full_seconds",
+                                        full_battery_seconds, failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_station_x", station_x, failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_station_y", station_y, failure ) ||
+        !read_required_fpv_mission_int( operator_npc, "fpv_station_z", station_z, failure ) ) {
+        return false;
+    }
+
+    if( launch_turn < 0 || outbound_seconds < 0 || return_seconds < 0 ||
+        static_cast<long long>( arrival_turn ) - launch_turn != outbound_seconds ||
+        station_end_turn < arrival_turn || return_end_turn < station_end_turn ) {
+        failure = "inconsistent mission timeline";
+        return false;
+    }
+    if( *one_way_value == "no" &&
+        static_cast<long long>( return_end_turn ) - station_end_turn != return_seconds ) {
+        failure = "inconsistent return timeline";
+        return false;
+    }
+    if( battery_capacity <= 0 || full_battery_seconds <= 0 ||
+        battery_start_charges < 0 || battery_start_charges > battery_capacity ) {
+        failure = "invalid battery snapshot";
+        return false;
+    }
+    const tripoint_abs_ms station( station_x, station_y, station_z );
+    if( station == tripoint_abs_ms::invalid ) {
+        failure = "invalid station position";
+        return false;
+    }
+    if( !valid_optional_fpv_mission_int( operator_npc, "fpv_command_busy_until", failure ) ||
+        !valid_optional_fpv_mission_int( operator_npc, "fpv_command_battery_penalty", failure ) ||
+        !valid_optional_fpv_mission_int( operator_npc, "fpv_payload_drop_busy_until", failure ) ) {
+        return false;
+    }
+    return true;
+}
+
+static void cancel_invalid_fpv_mission( npc &operator_npc, const std::string &reason )
+{
+    debugmsg( "Cancelling invalid FPV mission state for %s: %s.",
+              operator_npc.disp_name(), reason );
+    // Recover the exact stored items instead of treating an unrecognized state as airborne loss.
+    operator_npc.remove_value( "fpv_status" );
+    operator_npc.clear_fpv_support( true );
+}
+
 static void reconcile_fpv_mission( npc &operator_npc,
                                    const timed_event_type preserved_event )
 {
-    const std::string status = support_value_string( operator_npc, "fpv_status" );
-    if( status != "enroute" && status != "on_station" && status != "returning" ) {
+    const diag_value stored_status = operator_npc.get_value( "fpv_status" );
+    if( stored_status.is_empty() ) {
+        if( operator_npc.fpv_active_drone || operator_npc.fpv_payload_inv.size() > 0 ||
+            !operator_npc.get_value( "fpv_mission_key" ).is_empty() ) {
+            cancel_invalid_fpv_mission( operator_npc, "active mission data has no status" );
+        }
+        return;
+    }
+    const std::optional<std::string> parsed_status = strict_support_value_string(
+                operator_npc, "fpv_status" );
+    if( !parsed_status || ( *parsed_status != "enroute" && *parsed_status != "on_station" &&
+                           *parsed_status != "returning" ) ) {
+        cancel_invalid_fpv_mission( operator_npc, "unknown mission status" );
+        return;
+    }
+    std::string invalid_reason;
+    if( !valid_fpv_mission_state( operator_npc, invalid_reason ) ) {
+        cancel_invalid_fpv_mission( operator_npc, invalid_reason );
         return;
     }
 
