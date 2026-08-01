@@ -113,6 +113,7 @@ static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_bat( "bat" );
 static const itype_id itype_crackers( "crackers" );
 static const itype_id itype_debug_backpack( "debug_backpack" );
+static const itype_id itype_fpv_scout_drone( "fpv_scout_drone" );
 static const itype_id itype_honeycomb( "honeycomb" );
 static const itype_id itype_leather_belt( "leather_belt" );
 static const itype_id itype_lighter( "lighter" );
@@ -853,6 +854,28 @@ TEST_CASE( "npc_extracts_weapon_from_wielded_container", "[npc_ai]" )
 
     // The backpack should no longer be wielded
     CHECK( hostile.get_wielded_item()->typeId() != itype_debug_backpack );
+}
+
+TEST_CASE( "FPV_support_items_use_physical_NPC_storage", "[npc][drone][inventory]" )
+{
+    clear_map_without_vision();
+    npc &guy = spawn_npc( { 50, 50 }, "test_talker" );
+    clear_character( guy );
+
+    item first_drone( itype_fpv_scout_drone );
+    const units::mass drone_weight = first_drone.weight();
+    REQUIRE_FALSE( guy.has_weapon() );
+
+    CHECK_FALSE( guy.stow_fpv_support_item( std::move( first_drone ) ).has_value() );
+    REQUIRE( guy.get_wielded_item() );
+    CHECK( guy.get_wielded_item()->typeId() == itype_fpv_scout_drone );
+    CHECK( npc::is_fpv_support_item( *guy.get_wielded_item() ) );
+    CHECK( guy.weight_carried() >= drone_weight );
+
+    std::optional<item> rejected = guy.stow_fpv_support_item( item( itype_fpv_scout_drone ) );
+    REQUIRE( rejected );
+    CHECK( rejected->typeId() == itype_fpv_scout_drone );
+    CHECK_FALSE( npc::is_fpv_support_item( *rejected ) );
 }
 
 TEST_CASE( "npc_needs_bt_diagnostic_during_move", "[npc][behavior]" )

@@ -2312,10 +2312,6 @@ void npc::load( const JsonObject &data )
     if( data.has_member( "companion_mission_inv" ) ) {
         companion_mission_inv.json_load_items( data.get_member( "companion_mission_inv" ) );
     }
-    support_inv.clear();
-    if( data.has_member( "support_inv" ) ) {
-        support_inv.json_load_items( data.get_member( "support_inv" ) );
-    }
     fpv_active_drone.reset();
     data.read( "fpv_active_drone", fpv_active_drone );
     fpv_payload_inv.clear();
@@ -2417,8 +2413,6 @@ void npc::store( JsonOut &json ) const
     json.member( "companion_mission_travel_time", companion_mission_travel_time );
     json.member( "companion_mission_inv" );
     companion_mission_inv.json_save_items( json );
-    json.member( "support_inv" );
-    support_inv.json_save_items( json );
     if( fpv_active_drone ) {
         json.member( "fpv_active_drone", *fpv_active_drone );
     }

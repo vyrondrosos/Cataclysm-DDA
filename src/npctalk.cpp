@@ -6130,11 +6130,11 @@ int count_support_items( const npc &operator_npc,
                          const std::function<bool( const item & )> &filter )
 {
     int count = 0;
-    for( size_t pos = 0; pos < operator_npc.support_inv.size(); ++pos ) {
-        for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
-            if( filter( it ) ) {
-                count += it.count();
-            }
+    for( const item *it : operator_npc.items_with( [&filter]( const item & candidate ) {
+        return npc::is_fpv_support_item( candidate ) && filter( candidate );
+    } ) ) {
+        if( it != nullptr ) {
+            count += it->count();
         }
     }
     return count;
@@ -6176,38 +6176,34 @@ static std::optional<item> take_one_inventory_item( inventory &source,
 std::optional<item> take_one_support_item( npc &operator_npc,
         const std::function<bool( const item & )> &filter )
 {
-    return take_one_inventory_item( operator_npc.support_inv, filter );
-}
-
-int support_stack_count( const npc &operator_npc, const int pos )
-{
-    int count = 0;
-    for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
-        count += it.count();
-    }
-    return count;
-}
-
-bool support_stack_matches( const npc &operator_npc, const int pos,
-                            const std::function<bool( const item & )> &filter )
-{
-    for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
-        if( filter( it ) ) {
-            return true;
+    for( item_location &loc : operator_npc.all_items_loc() ) {
+        if( !loc || !npc::is_fpv_support_item( *loc ) || !filter( *loc ) ) {
+            continue;
         }
+        item taken;
+        if( loc->count_by_charges() && loc->charges > 1 ) {
+            taken = loc->split( 1 );
+        } else {
+            taken = *loc;
+            loc.remove_item();
+        }
+        taken.erase_var( "fpv_support_item" );
+        operator_npc.clear_inventory_search_cache();
+        operator_npc.invalidate_inventory_validity_cache();
+        return taken;
     }
-    return false;
+    return std::nullopt;
 }
 
 std::string support_inventory_summary( const npc &operator_npc,
                                        const std::function<bool( const item & )> &filter )
 {
     std::map<std::string, int> counts;
-    for( size_t pos = 0; pos < operator_npc.support_inv.size(); ++pos ) {
-        for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
-            if( filter( it ) ) {
-                counts[it.tname()] += it.count();
-            }
+    for( const item *it : operator_npc.items_with( [&filter]( const item & candidate ) {
+        return npc::is_fpv_support_item( candidate ) && filter( candidate );
+    } ) ) {
+        if( it != nullptr ) {
+            counts[it->tname()] += it->count();
         }
     }
     if( counts.empty() ) {
@@ -6230,8 +6226,16 @@ int give_support_items( npc &operator_npc, const std::function<bool( const item 
         if( !transferred_item || !filter( *transferred_item ) ) {
             continue;
         }
-        transferred += transferred_item->count();
-        operator_npc.support_inv.add_item( std::move( *transferred_item ) );
+        const int item_count = transferred_item->count();
+        std::optional<item> rejected = operator_npc.stow_fpv_support_item(
+                                           std::move( *transferred_item ) );
+        if( rejected ) {
+            get_avatar().i_add_or_drop( *rejected );
+            add_msg( _( "%s cannot physically carry that support item." ),
+                     operator_npc.disp_name() );
+            continue;
+        }
+        transferred += item_count;
     }
     return transferred;
 }
@@ -6239,32 +6243,44 @@ int give_support_items( npc &operator_npc, const std::function<bool( const item 
 int take_back_support_items( npc &operator_npc,
                              const std::function<bool( const item & )> &filter, const std::string &title )
 {
-    std::vector<int> positions;
-    uilist menu;
-    menu.text = title;
-    for( int pos = 0; pos < static_cast<int>( operator_npc.support_inv.size() ); ++pos ) {
-        if( !support_stack_matches( operator_npc, pos, filter ) ) {
+    std::map<itype_id, std::pair<std::string, int>> support_types;
+    for( const item *it : operator_npc.items_with( [&filter]( const item & candidate ) {
+        return npc::is_fpv_support_item( candidate ) && filter( candidate );
+    } ) ) {
+        if( it == nullptr ) {
             continue;
         }
-        const item &it = operator_npc.support_inv.find_item( pos );
-        positions.emplace_back( pos );
-        menu.addentry( static_cast<int>( positions.size() ) - 1, true, MENU_AUTOASSIGN, "%s x%d",
-                       it.tname(), support_stack_count( operator_npc, pos ) );
+        std::pair<std::string, int> &entry = support_types[it->typeId()];
+        entry.first = it->tname();
+        entry.second += it->count();
     }
-    if( positions.empty() ) {
+
+    std::vector<itype_id> types;
+    uilist menu;
+    menu.text = title;
+    for( const std::pair<const itype_id, std::pair<std::string, int>> &entry : support_types ) {
+        types.emplace_back( entry.first );
+        menu.addentry( static_cast<int>( types.size() ) - 1, true, MENU_AUTOASSIGN, "%s x%d",
+                       entry.second.first, entry.second.second );
+    }
+    if( types.empty() ) {
         popup( _( "There is no matching support equipment to take back." ), PF_GET_KEY );
         return 0;
     }
     menu.query();
-    if( menu.ret < 0 || menu.ret >= static_cast<int>( positions.size() ) ) {
+    if( menu.ret < 0 || menu.ret >= static_cast<int>( types.size() ) ) {
         return 0;
     }
 
     avatar &you = get_avatar();
     int returned = 0;
-    std::list<item> items = operator_npc.support_inv.reduce_stack( positions[menu.ret], -1 );
+    const itype_id selected_type = types[menu.ret];
+    std::list<item> items = operator_npc.remove_items_with( [selected_type]( const item & it ) {
+        return npc::is_fpv_support_item( it ) && it.typeId() == selected_type;
+    } );
     for( item &it : items ) {
         returned += it.count();
+        it.erase_var( "fpv_support_item" );
         you.i_add_or_drop( it );
     }
     return returned;
@@ -8642,11 +8658,11 @@ static int fpv_mission_remaining_battery_seconds( const npc &operator_npc, const
             remaining_charges, capacity );
 }
 
-static void return_active_fpv_drone( npc &operator_npc, const int at_turn )
+static bool return_active_fpv_drone( npc &operator_npc, const int at_turn )
 {
     if( !operator_npc.fpv_active_drone ) {
         debugmsg( "Drone mission completed without an active drone item." );
-        return;
+        return false;
     }
     const std::string drone_type = active_fpv_drone_type( operator_npc );
     item drone = std::move( *operator_npc.fpv_active_drone );
@@ -8654,7 +8670,12 @@ static void return_active_fpv_drone( npc &operator_npc, const int at_turn )
     const int capacity = std::max( active_fpv_battery_capacity( operator_npc ),
                                    fpv_drone_battery_capacity( drone, drone_type ) );
     set_fpv_drone_charge( drone, fpv_mission_remaining_charges( operator_npc, at_turn ), capacity );
-    operator_npc.support_inv.add_item( std::move( drone ) );
+    std::optional<item> rejected = operator_npc.stow_fpv_support_item( std::move( drone ) );
+    if( rejected ) {
+        operator_npc.fpv_active_drone = std::move( *rejected );
+        return false;
+    }
+    return true;
 }
 
 static double fpv_drone_cruise_speed_tiles_per_hour( const std::string &drone_type )
@@ -8775,11 +8796,11 @@ static std::optional<itype_id> selected_fpv_payload_type( const npc &operator_np
     const itype_id payload_id( payload_type );
     if( payload_type.empty() || !payload_id.is_valid() ||
         fpv_payload_count( operator_npc, payload_id ) <= 0 ) {
-        for( size_t pos = 0; pos < operator_npc.support_inv.size(); ++pos ) {
-            for( const item &it : operator_npc.support_inv.const_stack( pos ) ) {
-                if( is_fpv_baba_yaga_payload( it ) ) {
-                    return it.typeId();
-                }
+        for( const item *it : operator_npc.items_with( []( const item & candidate ) {
+            return npc::is_fpv_support_item( candidate ) && is_fpv_baba_yaga_payload( candidate );
+        } ) ) {
+            if( it != nullptr ) {
+                return it->typeId();
             }
         }
         return std::nullopt;
@@ -8806,14 +8827,21 @@ static int max_baba_yaga_payload_count( const itype_id &payload_id )
     return std::max( 0, static_cast<int>( 8_kilogram / payload.weight() ) );
 }
 
-static void return_loaded_fpv_payload( npc &operator_npc )
+static bool return_loaded_fpv_payload( npc &operator_npc )
 {
+    bool returned_all = true;
+    std::list<item> payloads;
     while( operator_npc.fpv_payload_inv.size() > 0 ) {
-        std::list<item> payloads = operator_npc.fpv_payload_inv.reduce_stack( 0, -1 );
-        for( item &payload : payloads ) {
-            operator_npc.support_inv.add_item( std::move( payload ) );
+        payloads.splice( payloads.end(), operator_npc.fpv_payload_inv.reduce_stack( 0, -1 ) );
+    }
+    for( item &payload : payloads ) {
+        std::optional<item> rejected = operator_npc.stow_fpv_support_item( std::move( payload ) );
+        if( rejected ) {
+            operator_npc.fpv_payload_inv.add_item( std::move( *rejected ) );
+            returned_all = false;
         }
     }
+    return returned_all;
 }
 
 static int load_baba_yaga_payload( npc &operator_npc )
@@ -8986,9 +9014,11 @@ static void reconcile_fpv_mission( npc &operator_npc,
         return;
     }
 
-    return_loaded_fpv_payload( operator_npc );
-    return_active_fpv_drone( operator_npc, return_end_turn );
-    clear_fpv_mission( operator_npc, preserved_event );
+    const bool payload_returned = return_loaded_fpv_payload( operator_npc );
+    const bool drone_returned = return_active_fpv_drone( operator_npc, return_end_turn );
+    if( payload_returned && drone_returned ) {
+        clear_fpv_mission( operator_npc, preserved_event );
+    }
 }
 
 static bool complete_fpv_drone_mission_event( npc &operator_npc,
@@ -9549,10 +9579,15 @@ static int transfer_baba_yaga_payload( npc &operator_npc )
             continue;
         }
         const itype_id payload_id = payload->typeId();
+        std::optional<item> rejected = operator_npc.stow_fpv_support_item( std::move( *payload ) );
+        if( rejected ) {
+            get_avatar().i_add_or_drop( *rejected );
+            add_msg( _( "%s cannot physically carry that payload." ), operator_npc.disp_name() );
+            continue;
+        }
         if( !selected_id ) {
             selected_id = payload_id;
         }
-        operator_npc.support_inv.add_item( std::move( *payload ) );
         transferred += payload_count;
     }
     if( selected_id ) {
@@ -9630,7 +9665,14 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
                          operator_npc->disp_name() );
                 return;
             }
-            operator_npc->support_inv.add_item( std::move( *controller_item ) );
+            std::optional<item> rejected = operator_npc->stow_fpv_support_item(
+                                               std::move( *controller_item ) );
+            if( rejected ) {
+                get_avatar().i_add_or_drop( *rejected );
+                add_msg( _( "%s cannot physically carry the remote vehicle controller." ),
+                         operator_npc->disp_name() );
+                return;
+            }
         }
 
         int suicide_drones = 0;
@@ -9648,19 +9690,28 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
             if( !drone ) {
                 continue;
             }
+            int *stored_count = nullptr;
             if( is_fpv_suicide_drone( *drone ) ) {
-                ++suicide_drones;
-                operator_npc->support_inv.add_item( std::move( *drone ) );
+                stored_count = &suicide_drones;
             } else if( is_fpv_military_suicide_drone( *drone ) ) {
-                ++military_suicide_drones;
-                operator_npc->support_inv.add_item( std::move( *drone ) );
+                stored_count = &military_suicide_drones;
             } else if( is_fpv_scout_drone( *drone ) ) {
-                ++scout_drones;
-                operator_npc->support_inv.add_item( std::move( *drone ) );
+                stored_count = &scout_drones;
             } else if( is_fpv_baba_yaga_drone( *drone ) ) {
-                ++baba_yaga_drones;
-                operator_npc->support_inv.add_item( std::move( *drone ) );
+                stored_count = &baba_yaga_drones;
             }
+            if( stored_count == nullptr ) {
+                continue;
+            }
+            std::optional<item> rejected = operator_npc->stow_fpv_support_item(
+                                               std::move( *drone ) );
+            if( rejected ) {
+                get_avatar().i_add_or_drop( *rejected );
+                add_msg( _( "%s cannot physically carry another drone." ),
+                         operator_npc->disp_name() );
+                continue;
+            }
+            ++*stored_count;
         }
         const int payload_count = ( baba_yaga_drones > 0 ||
                                     fpv_drone_count( *operator_npc, "baba_yaga" ) > 0 ) ?
@@ -9757,7 +9808,13 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     const bool baba_yaga_drone = drone_type == "baba_yaga";
     const int max_range_tiles = fpv_drone_max_range_tiles( drone_type );
     if( distance > max_range_tiles ) {
-        operator_npc->support_inv.add_item( std::move( *launched_drone ) );
+        std::optional<item> rejected = operator_npc->stow_fpv_support_item(
+                                           std::move( *launched_drone ) );
+        if( rejected ) {
+            debugmsg( "Unable to return an unlaunched FPV drone to %s's physical inventory.",
+                      operator_npc->disp_name() );
+            operator_npc->fpv_active_drone = std::move( *rejected );
+        }
         if( scout_drone ) {
             add_msg( _( "%s reports that you are outside the 15000 tile scout drone control range." ),
                      operator_npc->disp_name() );
@@ -9786,7 +9843,13 @@ static void request_fpv_launch( dialogue const &d, const std::string &drone_type
     const int reserve_seconds = 20;
     const int cruise_budget = battery_seconds - outbound_seconds - return_seconds - reserve_seconds;
     if( cruise_budget <= 0 ) {
-        operator_npc->support_inv.add_item( std::move( *launched_drone ) );
+        std::optional<item> rejected = operator_npc->stow_fpv_support_item(
+                                           std::move( *launched_drone ) );
+        if( rejected ) {
+            debugmsg( "Unable to return an unlaunched FPV drone to %s's physical inventory.",
+                      operator_npc->disp_name() );
+            operator_npc->fpv_active_drone = std::move( *rejected );
+        }
         add_msg( _( "%s reports insufficient battery for launch, return, and reserve." ),
                  operator_npc->disp_name() );
         return;
