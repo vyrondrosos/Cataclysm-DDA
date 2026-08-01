@@ -878,6 +878,38 @@ TEST_CASE( "FPV_support_items_use_physical_NPC_storage", "[npc][drone][inventory
     CHECK_FALSE( npc::is_fpv_support_item( *rejected ) );
 }
 
+TEST_CASE( "invalid_FPV_mission_state_is_not_reinterpreted", "[npc][drone]" )
+{
+    clear_map_without_vision();
+    npc &guy = spawn_npc( { 50, 50 }, "test_talker" );
+    clear_character( guy );
+
+    guy.set_value( "fpv_assignment", "operator" );
+    guy.set_value( "fpv_status", "enroute" );
+    guy.set_value( "fpv_mission_key", "invalid_fpv_mission" );
+    guy.set_value( "fpv_drone_type", "removed_prototype_type" );
+    guy.fpv_active_drone = item( itype_fpv_scout_drone );
+
+    bool completed = false;
+    const std::string message = capture_debugmsg_during( [&guy, &completed]() {
+        completed = talk_effect_fun::complete_fpv_drone_recovery( guy, "invalid_fpv_mission" );
+    } );
+
+    CHECK( completed );
+    CHECK( message.find( "missing or unknown drone type" ) != std::string::npos );
+    CHECK( guy.get_value( "fpv_assignment" ).is_empty() );
+    CHECK( guy.get_value( "fpv_status" ).is_empty() );
+    CHECK_FALSE( guy.fpv_active_drone.has_value() );
+    int recovered_scout_drones = 0;
+    map &here = get_map();
+    for( const item &it : here.i_at( guy.pos_bub( here ) ) ) {
+        if( it.typeId() == itype_fpv_scout_drone ) {
+            ++recovered_scout_drones;
+        }
+    }
+    CHECK( recovered_scout_drones == 1 );
+}
+
 TEST_CASE( "npc_needs_bt_diagnostic_during_move", "[npc][behavior]" )
 {
     // RAII: save and restore debug globals so later tests are unaffected
