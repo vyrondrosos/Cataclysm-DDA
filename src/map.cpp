@@ -67,6 +67,7 @@
 #include "map_iterator.h"
 #include "map_memory.h"
 #include "map_selector.h"
+#include "map_viewpoint.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
 #include "mapgen.h"
@@ -7748,6 +7749,35 @@ void map::draw( const catacurses::window &w, const tripoint_bub_ms &center )
     }
 }
 
+void map::draw_view( const catacurses::window &w, const tripoint_bub_ms &center,
+                     const map_viewpoint &viewpoint,
+                     const std::optional<tripoint_bub_ms> &cursor ) const
+{
+    const int height = getmaxy( w );
+    const int width = getmaxx( w );
+    const tripoint_bub_ms offset = center - tripoint_rel_ms( width / 2, height / 2, 0 );
+    drawsq_params params;
+    params.show_items( false ).show_traps( false ).player_vision( false );
+
+    for( int y = 0; y < height; ++y ) {
+        for( int x = 0; x < width; ++x ) {
+            wmove( w, point( x, y ) );
+            const tripoint_bub_ms p = offset + tripoint_rel_ms( x, y, 0 );
+            if( !viewpoint.sees( *this, p ) ) {
+                wputch( w, cursor == p ? c_white_red : c_black, cursor == p ? 'X' : ' ' );
+                continue;
+            }
+
+            params.highlight( cursor == p );
+            const const_maptile tile = maptile_at_internal( p );
+            if( !draw_maptile( w, p, tile, params ) ) {
+                draw_from_above( w, p + tripoint::below,
+                                 maptile_at_internal( p + tripoint::below ), params );
+            }
+        }
+    }
+}
+
 void map::drawsq( const catacurses::window &w, const tripoint_bub_ms &p,
                   const drawsq_params &params ) const
 {
@@ -7833,7 +7863,7 @@ bool map::draw_maptile( const catacurses::window &w, const tripoint_bub_ms &p,
         param.show_items( false ); // Can only see underwater items if WE are underwater
     }
     // If there's a trap here, and we have sufficient perception, draw that instead
-    if( curr_trap.can_see( p, player_character ) ) {
+    if( param.show_traps() && curr_trap.can_see( p, player_character ) ) {
         tercol = curr_trap.color;
         if( curr_trap.sym == '%' ) {
             switch( rng( 1, 5 ) ) {
@@ -7965,13 +7995,15 @@ bool map::draw_maptile( const catacurses::window &w, const tripoint_bub_ms &p,
         graf = true;
     }
 
-    const auto u_vision = player_character.get_vision_modes();
-    if( u_vision[BOOMERED] ) {
-        tercol = c_magenta;
-    } else if( u_vision[NV_GOGGLES] ) {
-        tercol = param.bright_light() ? c_white : c_light_green;
-    } else if( param.low_light() || u_vision[DARKNESS] ) {
-        tercol = c_dark_gray;
+    if( param.player_vision() ) {
+        const auto u_vision = player_character.get_vision_modes();
+        if( u_vision[BOOMERED] ) {
+            tercol = c_magenta;
+        } else if( u_vision[NV_GOGGLES] ) {
+            tercol = param.bright_light() ? c_white : c_light_green;
+        } else if( param.low_light() || u_vision[DARKNESS] ) {
+            tercol = c_dark_gray;
+        }
     }
 
     if( param.highlight() ) {
@@ -8055,13 +8087,15 @@ void map::draw_from_above( const catacurses::window &w, const tripoint_bub_ms &p
         sym = determine_wall_corner( p );
     }
 
-    const std::bitset<NUM_VISION_MODES> &u_vision = get_player_character().get_vision_modes();
-    if( u_vision[BOOMERED] ) {
-        tercol = c_magenta;
-    } else if( u_vision[NV_GOGGLES] ) {
-        tercol = params.bright_light() ? c_white : c_light_green;
-    } else if( params.low_light() || u_vision[DARKNESS] ) {
-        tercol = c_dark_gray;
+    if( params.player_vision() ) {
+        const std::bitset<NUM_VISION_MODES> &u_vision = get_player_character().get_vision_modes();
+        if( u_vision[BOOMERED] ) {
+            tercol = c_magenta;
+        } else if( u_vision[NV_GOGGLES] ) {
+            tercol = params.bright_light() ? c_white : c_light_green;
+        } else if( params.low_light() || u_vision[DARKNESS] ) {
+            tercol = c_dark_gray;
+        }
     }
 
     if( params.highlight() ) {

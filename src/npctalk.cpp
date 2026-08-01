@@ -16,7 +16,6 @@
 #include <set>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -100,6 +99,8 @@
 #include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "map_selector.h"
+#include "map_view_ui.h"
+#include "map_viewpoint.h"
 #include "mapbuffer.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
@@ -178,16 +179,15 @@ static const activity_id ACT_TRAIN( "ACT_TRAIN" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
 static const efftype_id effect_asked_to_train( "asked_to_train" );
-static const efftype_id effect_blind( "blind" );
-static const efftype_id effect_boomered( "boomered" );
-static const efftype_id effect_darkness( "darkness" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_narcosis( "narcosis" );
-static const efftype_id effect_no_sight( "no_sight" );
 static const efftype_id effect_riding( "riding" );
 static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_stunned( "stunned" );
 static const efftype_id effect_under_operation( "under_operation" );
+
+static const json_character_flag json_flag_INVISIBLE( "INVISIBLE" );
+static const json_character_flag json_flag_SUPPRESS_INVISIBILITY( "SUPPRESS_INVISIBILITY" );
 
 static const flag_id json_flag_GRENADE( "GRENADE" );
 static const flag_id json_flag_NO_UNLOAD( "NO_UNLOAD" );
@@ -221,9 +221,7 @@ static const skill_id skill_launcher( "launcher" );
 static const skill_id skill_speech( "speech" );
 
 static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
-static const trait_id trait_DEBUG_NIGHTVISION( "DEBUG_NIGHTVISION" );
 static const trait_id trait_HALLUCINATION( "HALLUCINATION" );
-static const trait_id trait_INFRARED( "INFRARED" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
 static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
 
@@ -9528,18 +9526,24 @@ static double fpv_light_cep_multiplier( map &here, const tripoint_bub_ms &target
     return 1.0;
 }
 
-static fpv_designation_target make_fpv_designation_target( Character &observer, map &here,
-        const tripoint_bub_ms &target_bub, const bool track_creatures )
+static fpv_designation_target make_fpv_designation_target( const tripoint_abs_ms &target_pos,
+        const bool track_creatures )
 {
     fpv_designation_target target;
-    target.pos = here.get_abs( target_bub );
+    target.pos = target_pos;
     if( !track_creatures ) {
         return target;
     }
 
-    Creature *const target_creature = get_creature_tracker().creature_at<Creature>( target_bub );
-    if( target_creature == nullptr || target_creature == &observer ||
-        target_creature->is_hallucination() ) {
+    Creature *target_creature = nullptr;
+    for( Creature &candidate : g->all_creatures() ) {
+        if( candidate.pos_abs() == target_pos && &candidate != &get_avatar() &&
+            !candidate.is_hallucination() ) {
+            target_creature = &candidate;
+            break;
+        }
+    }
+    if( target_creature == nullptr ) {
         return target;
     }
     if( Character *const target_as_character = dynamic_cast<Character *>( target_creature ) ) {
@@ -9569,7 +9573,7 @@ static std::optional<fpv_designation_target> select_fpv_designation_target(
         add_msg( "%s", los_failure.c_str() );
         return std::nullopt;
     }
-    return make_fpv_designation_target( you, here, target_bub, track_creatures );
+    return make_fpv_designation_target( here.get_abs( target_bub ), track_creatures );
 }
 
 static tripoint_bub_ms fpv_scout_top_position( map &here, const tripoint_bub_ms &target )
@@ -9646,103 +9650,77 @@ static void reveal_fpv_scout_overmap_vision( const tripoint_abs_ms &scout_abs )
     }
 }
 
-template<typename Func>
-static auto with_fpv_scout_camera( const tripoint_abs_ms &scout_abs, const bool thermal,
-                                   Func &&func )
--> decltype( func( std::declval<avatar &>(), std::declval<map &>(),
-                   std::declval<tripoint_bub_ms>() ) )
+static bool fpv_camera_detects( const Creature &critter )
 {
-    using result_type = decltype( func( std::declval<avatar &>(), std::declval<map &>(),
-                                        std::declval<tripoint_bub_ms>() ) );
-    map &here = get_map();
-    avatar &you = get_avatar();
-    const tripoint_bub_ms scout_bub = here.get_bub( scout_abs );
-    if( !here.inbounds( scout_bub ) ) {
-        add_msg( _( "The drone scout feed is no longer within the local control bubble." ) );
-        return result_type{};
+    if( critter.is_hallucination() ) {
+        return false;
     }
-
-    const tripoint_bub_ms previous_pos = you.pos_bub( here );
-    const tripoint_rel_ms previous_offset = you.view_offset;
-    const auto previous_last_target = you.last_target;
-    const std::optional<tripoint_abs_ms> previous_last_target_pos = you.last_target_pos;
-    const bool had_debug_nightvision = you.has_trait( trait_DEBUG_NIGHTVISION );
-    const bool had_infrared = you.has_trait( trait_INFRARED );
-    const std::set<efftype_id> drone_blocked_effects = {
-        effect_blind, effect_boomered, effect_darkness, effect_narcosis, effect_no_sight
-    };
-    std::vector<effect> restored_effects;
-
-    for( const effect &eff : you.get_effects() ) {
-        if( drone_blocked_effects.count( eff.get_id() ) > 0 ) {
-            restored_effects.emplace_back( eff );
-        }
+    if( const Character *const character = critter.as_character() ) {
+        return !character->is_invisible();
     }
-    for( const effect &eff : restored_effects ) {
-        you.remove_effect( eff.get_id(), eff.get_bp() );
-    }
-    if( !had_debug_nightvision ) {
-        you.set_mutation( trait_DEBUG_NIGHTVISION );
-    }
-    if( thermal && !had_infrared ) {
-        you.set_mutation( trait_INFRARED );
-    }
-
-    you.setpos( here, scout_bub, false );
-    you.view_offset = tripoint_rel_ms::zero;
-    you.recalc_sight_limits();
-    here.build_map_cache( scout_bub.z() );
-    here.update_visibility_cache( scout_bub.z() );
-    [[maybe_unused]] const on_out_of_scope restore_view( [&]() {
-        you.setpos( here, previous_pos, false );
-        you.view_offset = previous_offset;
-        you.last_target = previous_last_target;
-        you.last_target_pos = previous_last_target_pos;
-        if( !had_infrared ) {
-            you.unset_mutation( trait_INFRARED );
-        }
-        if( !had_debug_nightvision ) {
-            you.unset_mutation( trait_DEBUG_NIGHTVISION );
-        }
-        for( const effect &eff : restored_effects ) {
-            you.add_effect( eff );
-        }
-        you.recalc_sight_limits();
-        here.invalidate_map_cache( scout_bub.z() );
-        here.invalidate_visibility_cache();
-        here.build_map_cache( previous_pos.z() );
-        here.update_visibility_cache( previous_pos.z() );
-    } );
-
-    return func( you, here, scout_bub );
+    return ( !critter.has_effect_with_flag( json_flag_INVISIBLE ) &&
+             !critter.has_flag( mon_flag_PERMANENT_INVISIBILITY ) ) ||
+           critter.has_effect_with_flag( json_flag_SUPPRESS_INVISIBILITY );
 }
 
-static std::optional<tripoint_abs_ms> select_fpv_scout_view( const tripoint_abs_ms &scout_abs,
-        const bool thermal )
+static std::optional<tripoint_abs_ms> query_fpv_scout_view(
+    const tripoint_abs_ms &scout_abs, const bool thermal, const bool select )
 {
-    return with_fpv_scout_camera( scout_abs, thermal,
-                                  [&scout_abs]( avatar &, map &, const tripoint_bub_ms & scout_bub )
-    -> std::optional<tripoint_abs_ms> {
-        tripoint_bub_ms center = scout_bub;
-        g->look_around( true, center, scout_bub, false, true, false );
-        return scout_abs;
-    } );
+    if( scout_abs.z() < -OVERMAP_DEPTH || scout_abs.z() > OVERMAP_HEIGHT ) {
+        add_msg( m_bad, _( "The drone scout feed coordinates are invalid." ) );
+        return std::nullopt;
+    }
+
+    map *viewed_map = &get_map();
+    std::unique_ptr<map> remote_map;
+    const tripoint_bub_ms scout_bub = viewed_map->get_bub( scout_abs );
+    const tripoint_rel_ms view_margin( MAX_VIEW_DISTANCE, MAX_VIEW_DISTANCE, 0 );
+    if( !viewed_map->inbounds( scout_bub - view_margin ) ||
+        !viewed_map->inbounds( scout_bub + view_margin ) ) {
+        remote_map = std::make_unique<map>();
+        const tripoint_abs_sm origin = project_to<coords::sm>( scout_abs ) -
+                                       point_rel_sm{ HALF_MAPSIZE, HALF_MAPSIZE };
+        remote_map->load( origin, true, false );
+        viewed_map = remote_map.get();
+        if( !viewed_map->inbounds( scout_abs ) ) {
+            add_msg( m_bad, _( "The drone scout feed could not load its observation area." ) );
+            return std::nullopt;
+        }
+    }
+    viewed_map->build_los_cache( scout_abs.z() );
+
+    map_view_ui_params params;
+    if( select ) {
+        params.title = _( "Drone target designation" );
+    } else if( thermal ) {
+        params.title = _( "Thermal drone scout feed" );
+    } else {
+        params.title = _( "Drone scout feed" );
+    }
+    params.select = select;
+    for( Creature &critter : g->all_creatures() ) {
+        if( fpv_camera_detects( critter ) ) {
+            params.overlays.push_back( { critter.pos_abs(), critter.symbol(),
+                                        thermal ? c_light_red : critter.symbol_color(),
+                                        critter.disp_name() } );
+        }
+    }
+    return query_map_view( *viewed_map, map_viewpoint( scout_abs, MAX_VIEW_DISTANCE ), params );
 }
 
 static std::optional<fpv_designation_target> select_fpv_scout_designation_target(
     const tripoint_abs_ms &scout_abs, const bool thermal )
 {
-    return with_fpv_scout_camera( scout_abs, thermal,
-    []( avatar &, map &, const tripoint_bub_ms & ) -> std::optional<fpv_designation_target> {
-        return select_fpv_designation_target(
-            _( "Designate a target from the drone scout feed." ),
-            _( "The selected target is not visible from the drone scout feed." ) );
-    } );
+    const std::optional<tripoint_abs_ms> target = query_fpv_scout_view( scout_abs, thermal, true );
+    if( !target ) {
+        return std::nullopt;
+    }
+    return make_fpv_designation_target( *target, true );
 }
 
-static bool show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool thermal )
+static void show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool thermal )
 {
-    return select_fpv_scout_view( scout_abs, thermal ).has_value();
+    ( void )query_fpv_scout_view( scout_abs, thermal, false );
 }
 
 static void practice_fpv_operation( npc &operator_npc )
