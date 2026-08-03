@@ -5,7 +5,7 @@
     "//": "Scenario specific follower for the Apache Farm Landing start.",
     "class": "NC_STARTING_APACHE_GUNNER",
     "attitude": 3,
-    "mission": 7,
+    "mission": "NULL",
     "chat": "TALK_FRIEND",
     "faction": "your_followers"
   },

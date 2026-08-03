@@ -98,6 +98,7 @@ if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
     endif ()
 endif ()
 
+include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 
 if(DEFINED ENV{MSYSTEM})
@@ -112,7 +113,15 @@ endif()
 #SET(CMAKE_SHARED_LIBRARY_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CXX_FLAGS} -m32")
 
 if (NOT MSVC)
+    check_c_compiler_flag(-mcx16 HAVE_C_MCX16)
+    check_cxx_compiler_flag(-mcx16 HAVE_CXX_MCX16)
+endif()
+
+if (HAVE_C_MCX16)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcx16")
+endif()
+
+if (HAVE_CXX_MCX16)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcx16")
 endif()
 

@@ -1043,11 +1043,16 @@ else
   AR_FLAGS =
 endif
 
-ifeq ($(TARGETSYSTEM),LINUX)
+ifneq ($(filter LINUX CYGWIN,$(TARGETSYSTEM)),)
   ifneq ($(filter $(CX16_TARGETS),$(CXX_TARGET_MACHINE)),)
-    CFLAGS += -mcx16
-    CXXFLAGS += -mcx16
+    ifeq ($(shell $(CXX) -E -mcx16 - < /dev/null > /dev/null 2>&1 && echo mcx16),mcx16)
+      CFLAGS += -mcx16
+      CXXFLAGS += -mcx16
+    endif
   endif
+endif
+
+ifeq ($(TARGETSYSTEM),LINUX)
   BINDIST_EXTRAS += cataclysm-launcher
   ifeq ($(SDL3),1)
     # bundle-sdl3-linux.sh fills bindist/lib/; RUNPATH=$$ORIGIN/lib lets
@@ -1080,10 +1085,6 @@ ifeq ($(TARGETSYSTEM),LINUX)
 endif
 
 ifeq ($(TARGETSYSTEM),CYGWIN)
-  ifneq ($(filter $(CX16_TARGETS),$(CXX_TARGET_MACHINE)),)
-    CFLAGS += -mcx16
-    CXXFLAGS += -mcx16
-  endif
   BINDIST_EXTRAS += cataclysm-launcher
   DEFINES += -D_GLIBCXX_USE_C99_MATH_TR1
 endif

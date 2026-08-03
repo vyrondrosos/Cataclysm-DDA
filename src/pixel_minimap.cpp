@@ -284,8 +284,11 @@ void pixel_minimap::flush_cache_updates()
             continue;
         }
 
-        scoped_render_target chunk_scope( renderer, mcp.second.chunk_tex.get(),
-                                          get_shared_variant_pass() );
+        scoped_render_target chunk_scope( renderer, mcp.second.chunk_tex.get()
+#if SDL_MAJOR_VERSION >= 3
+                                          , get_shared_variant_pass()
+#endif
+                                        );
         if( !chunk_scope.is_valid() ) {
             abort_minimap_frame( chunk_scope,
                                  "pixel_minimap::flush_cache_updates: variant_pass refused boundary",
@@ -478,8 +481,11 @@ void pixel_minimap::reset()
 
 void pixel_minimap::render( const tripoint_bub_ms &center )
 {
-    scoped_render_target main_scope( renderer, main_tex.get(),
-                                     get_shared_variant_pass() );
+    scoped_render_target main_scope( renderer, main_tex.get()
+#if SDL_MAJOR_VERSION >= 3
+                                     , get_shared_variant_pass()
+#endif
+                                   );
     if( !main_scope.is_valid() ) {
         // main_tex unpainted: the RenderCopy below would composite stale data.
         abort_minimap_frame( main_scope,
