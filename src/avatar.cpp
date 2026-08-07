@@ -151,6 +151,52 @@ avatar::avatar( avatar && ) = default;
 // NOLINTNEXTLINE(performance-noexcept-move-constructor)
 avatar &avatar::operator=( avatar && ) = default;
 
+/**
+ * Normalize the character the player just stepped out of into a plain follower.
+ *
+ * swap_character() only moves the Character sub-object, so the npc-specific half
+ * of @p np is whatever was parked in the shadow npc: the role state that body had
+ * *before* the player took it over (guarding, mid-activity, on a companion
+ * mission), or the placeholder from get_shadow_npc() on the very first swap.
+ * Left as-is that state makes game::chat() drop the entire follower-orders block,
+ * since those entries require is_following() and a non-camp companion role, and
+ * the placeholder's "TALK_NONE" first topic leaves the character unable to talk.
+ *
+ * Only role state is reset.  Identity state - personality, opinion, chatbin
+ * topics, follower rules, class, assigned camp - belongs to this character and is
+ * deliberately preserved.
+ */
+static void make_ex_avatar_a_follower( npc &np )
+{
+    if( np.has_player_activity() ) {
+        np.revert_after_activity();
+    }
+    // Two calls so previous_attitude also lands on a sane value: set_attitude is a
+    // no-op when the attitude is unchanged, so a single call can leave the stale
+    // attitude behind for revert_after_activity() to restore later.
+    np.set_attitude( NPCATT_NULL );
+    np.set_attitude( NPCATT_FOLLOW );
+    np.set_mission( NPC_MISSION_NULL );
+    np.previous_mission = NPC_MISSION_NULL;
+    np.current_activity_id = activity_id::NULL_ID();
+    if( np.has_companion_mission() ) {
+        np.reset_companion_mission();
+    }
+    np.companion_mission_role_id.clear();
+    np.chatbin.first_topic = np.chatbin.talk_friend;
+    // Drop any destination inherited from the old role so they walk with us.
+    np.goal = npc::no_goal_point;
+    np.guard_pos = std::nullopt;
+    np.clear_ai_guard_pos();
+    np.clear_committed_goal();
+    // Someone the player was just being should not distrust them, and is
+    // obviously an acquaintance - on the first swap the placeholder npc-part has
+    // never met anyone, which would keep them off the faction member list.
+    np.op_of_u.trust = std::max( np.op_of_u.trust, 10 );
+    np.op_of_u.value = std::max( np.op_of_u.value, 10 );
+    np.set_known_to_u( true );
+}
+
 void avatar::control_npc( npc &np, const bool debug )
 {
     if( !np.is_player_ally() ) {
@@ -174,6 +220,7 @@ void avatar::control_npc( npc &np, const bool debug )
     // the previous avatar character is now a follower
     g->add_npc_follower( np.getID() );
     np.set_fac( faction_your_followers );
+    make_ex_avatar_a_follower( np );
     // perception and mutations may have changed, so reset light level caches
     g->reset_light_level();
     for( int z = -OVERMAP_DEPTH; z <= OVERMAP_HEIGHT; z++ ) {
