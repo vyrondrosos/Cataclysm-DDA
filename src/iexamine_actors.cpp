@@ -576,22 +576,6 @@ void mortar_examine_actor::finalize() const
 {
 }
 
-std::vector<ammotype> mortar_examine_actor::get_ammotypes() const
-{
-    // Upstream's mortar actor carried its ammo list as a JSON member; ours takes it
-    // from the mortar_type keyed off the furniture being examined.  This is only used
-    // by ammunition_type::check_consistency() to tell whether anything can fire a
-    // given ammo, and the actor has no furniture to key off at that point, so report
-    // the union over every mortar_type.
-    std::vector<ammotype> ammo_types;
-    for( const mortar_type &mortar : mortar_type::get_all() ) {
-        if( std::find( ammo_types.begin(), ammo_types.end(), mortar.ammo() ) == ammo_types.end() ) {
-            ammo_types.push_back( mortar.ammo() );
-        }
-    }
-    return ammo_types;
-}
-
 std::unique_ptr<iexamine_actor> mortar_examine_actor::clone() const
 {
     return std::make_unique<mortar_examine_actor>( *this );
