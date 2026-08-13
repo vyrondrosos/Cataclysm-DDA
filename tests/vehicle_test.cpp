@@ -26,6 +26,7 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "ret_val.h"
+#include "submap.h"
 #include "type_id.h"
 #include "units.h"
 #include "veh_appliance.h"
@@ -949,6 +950,25 @@ static void run_squish_test( const std::map<itype_id, double> &to_squish,
         CAPTURE( damage_chance );
         CHECK( damage_chance == Approx( expected_chance ).epsilon( allowed_variance ) );
     }
+}
+
+TEST_CASE( "map_item_display_prioritization", "[item][map][vehicle]" )
+{
+    clear_map_without_vision();
+    map &here = get_map();
+    const tripoint_bub_ms test_point( 60, 60, 0 );
+
+    here.add_item_or_charges( test_point, item( itype_test_guarantee_wheel_dmg ) );
+    here.add_item_or_charges( test_point, item( itype_test_squishy_fruit ) );
+    here.add_item_or_charges( test_point, item( itype_corpse_fake_TEST_NODMG ) );
+    REQUIRE( here.i_at( test_point ).size() == 3 );
+
+    const maptile tile = here.maptile_at( test_point );
+    item_display_context context;
+    CHECK( tile.get_displayed_item( context ).typeId() == itype_corpse_fake_TEST_NODMG );
+
+    context.driving = true;
+    CHECK( tile.get_displayed_item( context ).typeId() == itype_test_guarantee_wheel_dmg );
 }
 
 TEST_CASE( "vehicle_wheels_damaged_by_running_over_items", "[vehicle]" )

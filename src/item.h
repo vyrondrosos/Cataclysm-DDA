@@ -13,6 +13,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -199,6 +200,30 @@ struct stacking_info {
     // NOLINTNEXTLINE(google-explicit-constructor)
     operator bool() const {
         return bits.all();
+    }
+};
+
+struct item_display_context {
+    item_display_context() = default;
+    explicit item_display_context( const Character &viewer );
+
+    bool driving = false;
+
+    bool has_priorities() const {
+        return driving;
+    }
+};
+
+struct item_display_priority {
+    bool vehicle_wheel_puncture = false;
+    int vehicle_wheel_puncture_hardness = 0;
+
+    // Compare major priorities first, then increasingly minor tie-breakers.
+    friend bool operator<( const item_display_priority &lhs, const item_display_priority &rhs ) {
+        return std::tie( lhs.vehicle_wheel_puncture,
+                         lhs.vehicle_wheel_puncture_hardness ) <
+               std::tie( rhs.vehicle_wheel_puncture,
+                         rhs.vehicle_wheel_puncture_hardness );
     }
 };
 
@@ -666,6 +691,8 @@ class item : public visitable
         void deserialize( const JsonObject &data );
 
         const std::string &symbol() const;
+        /** Relative priority when choosing one item to represent a map tile. */
+        item_display_priority display_priority( const item_display_context &context ) const;
         /**
          * Returns the monetary value of an item.
          * If `practical` is false, returns pre-Cataclysm market value,

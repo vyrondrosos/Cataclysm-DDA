@@ -3375,6 +3375,7 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
         return false;
     };
 
+    const item *displayed_item = nullptr;
     auto draw_layer_item = [&]( const std::string & terfurn_key, const maptile & tile,
                                 std::string & variant,
     bool & drawtop ) {
@@ -3411,8 +3412,8 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
                         draw_from_id_string( sprite_to_draw, TILE_CATEGORY::ITEM, layer_it_category, p, 0,
                                              0, layer_lit, layer_nv, height_3d, 0, variant, layer_var.offset );
 
-                        // if the top item is already being layered don't draw it later
-                        if( i.typeId() == tile.get_uppermost_item().typeId() ) {
+                        // if the displayed item is already being layered don't draw it later
+                        if( displayed_item != nullptr && i.typeId() == displayed_item->typeId() ) {
                             drawtop = false;
                         }
 
@@ -3518,6 +3519,10 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
         bool drawtop = true;
         const itype *it_type;
         const maptile &tile = here.maptile_at( p );
+        Character &player_character = get_player_character();
+        const item_display_context display_context( player_character );
+        displayed_item = !it_overridden && !invisible[0] && tile.get_item_count() > 0 ?
+                         &tile.get_displayed_item( display_context ) : nullptr;
 
         if( !invisible[0] ) {
             bool has_drawn_item = draw_layer_item( tile.get_furn_t().id.str(), tile, variant, drawtop );
@@ -3545,8 +3550,8 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
                 mon_id = std::get<1>( it_override->second );
                 hilite = std::get<2>( it_override->second );
                 it_type = item::find_type( it_id );
-            } else if( !invisible[0] && here.sees_some_items( p, get_player_character() ) ) {
-                const item &itm = tile.get_uppermost_item();
+            } else if( displayed_item != nullptr && here.sees_some_items( p, player_character ) ) {
+                const item &itm = *displayed_item;
                 if( itm.has_itype_variant() ) {
                     variant = itm.itype_variant().id;
                 }
@@ -3574,7 +3579,7 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
             }
         }
         // we may still need to draw the highlight
-        else if( tile.get_item_count() > 1 && here.sees_some_items( p, get_player_character() ) ) {
+        else if( tile.get_item_count() > 1 && here.sees_some_items( p, player_character ) ) {
             draw_item_highlight( p, height_3d );
         }
     }

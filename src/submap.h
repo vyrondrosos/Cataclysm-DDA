@@ -213,6 +213,10 @@ class submap
             return m->itm[p.x()][p.y()];
         }
 
+        /** Assumes there is at least one item at the given point. */
+        const item &get_displayed_item( const point_sm_ms &p,
+                                        const item_display_context &context ) const;
+
         // TODO: Replace this as it essentially makes fld public
         field &get_field( const point_sm_ms &p ) {
             if( is_uniform() ) {
@@ -438,6 +442,14 @@ class maptile_impl
         // Assumes there is at least one item
         const item &get_uppermost_item() const {
             return *std::prev( sm->get_items( pos() ).cend() );
+        }
+
+        // Assumes there is at least one item
+        const item &get_displayed_item( const item_display_context &context ) const {
+            if( !context.has_priorities() ) {
+                return get_uppermost_item();
+            }
+            return sm->get_displayed_item( pos(), context );
         }
 
         // Gets all items

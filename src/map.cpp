@@ -7953,10 +7953,12 @@ bool map::draw_maptile( const catacurses::window &w, const tripoint_bub_ms &p,
         if( sym != '.' && sym != '%' && !draw_item_sym ) {
             hi = true;
         } else {
-            // otherwise override with the symbol of the last item
-            item_sym = curr_maptile.get_uppermost_item().symbol();
+            // otherwise override with the symbol of the selected item
+            const item_display_context display_context( player_character );
+            const item &displayed_item = curr_maptile.get_displayed_item( display_context );
+            item_sym = displayed_item.symbol();
             if( !draw_item_sym ) {
-                tercol = curr_maptile.get_uppermost_item().color();
+                tercol = displayed_item.color();
             }
             if( curr_maptile.get_item_count() > 1 ) {
                 param.highlight( !param.highlight() );

@@ -102,6 +102,8 @@ static const efftype_id effect_weed_high( "weed_high" );
 
 static const fault_id fault_emp_reboot( "fault_emp_reboot" );
 
+static const flag_id json_flag_PUNCTURE_VEHICLE_WHEELS( "PUNCTURE_VEHICLE_WHEELS" );
+
 static const furn_str_id furn_f_metal_smoking_rack_active( "f_metal_smoking_rack_active" );
 static const furn_str_id furn_f_smoking_rack_active( "f_smoking_rack_active" );
 static const furn_str_id furn_f_water_mill_active( "f_water_mill_active" );
@@ -153,6 +155,11 @@ class npc_class;
 using npc_class_id = string_id<npc_class>;
 
 light_emission nolight = {0, 0, 0};
+
+item_display_context::item_display_context( const Character &viewer ) :
+    driving( viewer.controlling_vehicle )
+{
+}
 
 // Returns the default item type, used for the null item (default constructed),
 // the returned pointer is always valid, it's never cleared by the @ref Item_factory.
@@ -1192,6 +1199,23 @@ const std::string &item::symbol() const
         return *_itype_variant->alt_sym;
     }
     return type->sym;
+}
+
+item_display_priority item::display_priority( const item_display_context &context ) const
+{
+    item_display_priority priority;
+    if( !context.driving || !has_flag( json_flag_PUNCTURE_VEHICLE_WHEELS ) ) {
+        return priority;
+    }
+
+    priority.vehicle_wheel_puncture = true;
+    for( const std::pair<const material_id, int> &material : made_of() ) {
+        // Match the item hardness cap used when resolving wheel damage.
+        priority.vehicle_wheel_puncture_hardness =
+            std::max( priority.vehicle_wheel_puncture_hardness,
+                      std::min( material.first->chip_resist(), 1000 ) );
+    }
+    return priority;
 }
 
 nc_color item::get_fault_color( const nc_color base_color ) const
