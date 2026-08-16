@@ -38,16 +38,16 @@ const item &submap::get_displayed_item( const point_sm_ms &p,
                                         const item_display_context &context ) const
 {
     const cata::colony<item> &items = get_items( p );
-    cata::colony<item>::const_reverse_iterator candidate = items.crbegin();
+    cata::colony<item>::const_iterator candidate = items.cbegin();
     if( !context.has_priorities() ) {
-        return *candidate;
+        return *std::prev( items.cend() );
     }
 
     const item *displayed_item = &*candidate;
     item_display_priority displayed_priority = displayed_item->display_priority( context );
-    for( ++candidate; candidate != items.crend(); ++candidate ) {
+    for( ++candidate; candidate != items.cend(); ++candidate ) {
         const item_display_priority candidate_priority = candidate->display_priority( context );
-        if( displayed_priority < candidate_priority ) {
+        if( !( candidate_priority < displayed_priority ) ) {
             displayed_item = &*candidate;
             displayed_priority = candidate_priority;
         }
