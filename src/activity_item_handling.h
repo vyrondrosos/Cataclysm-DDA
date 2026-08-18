@@ -41,6 +41,9 @@ namespace zone_sorting
 // the boolean in this pair being true indicates the item is from a vehicle storage space
 using zone_items = std::vector<std::pair<item *, bool>>;
 
+bool in_interaction_range( const tripoint_abs_ms &first, const tripoint_abs_ms &second );
+bool in_interaction_range( const tripoint_bub_ms &first, const tripoint_bub_ms &second );
+
 struct unload_sort_options {
     bool unload_mods = false;
     bool unload_molle = false;
