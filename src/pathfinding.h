@@ -176,6 +176,7 @@ struct pathfinding_settings {
 struct pathfinding_target {
     const tripoint_bub_ms center;
     const int r;
+    const bool same_z = false;
     bool contains( const tripoint_bub_ms &p ) const;
 
     // Finds a path that ends on a specific tile
@@ -186,6 +187,11 @@ struct pathfinding_target {
     // Finds a path that ends on either the given tile, or one of the tiles directly adjacent to it
     static pathfinding_target adjacent( const tripoint_bub_ms &p ) {
         return { p, 1 };
+    }
+
+    // Finds a path that ends on the target or an adjacent tile on the target's z-level
+    static pathfinding_target adjacent_same_z( const tripoint_bub_ms &p ) {
+        return { p, 1, true };
     }
 
     // Finds a path that ends on any tile within the given radius of the specified tile, calculated by square distance

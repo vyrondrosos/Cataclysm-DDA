@@ -778,6 +778,16 @@ static void move_item( Character &you, item &it, const int quantity, const tripo
 namespace zone_sorting
 {
 
+bool in_interaction_range( const tripoint_abs_ms &first, const tripoint_abs_ms &second )
+{
+    return first.z() == second.z() && square_dist( first, second ) <= 1;
+}
+
+bool in_interaction_range( const tripoint_bub_ms &first, const tripoint_bub_ms &second )
+{
+    return first.z() == second.z() && square_dist( first, second ) <= 1;
+}
+
 // Cache routes computed by route_length() for reuse by route_to_destination().
 // Avoids recomputing the same A* when the sorter probes route distance and
 // then immediately routes to the same destination.
@@ -881,9 +891,9 @@ bool route_to_destination( Character &you, player_activity &act,
             // treat as unreachable (don't fall back to player-only routing
             // which would cause cart collisions).
             used_grab_routing = true;
-            route = route_with_grab( here, you, pathfinding_target::adjacent( dest ) );
+            route = route_with_grab( here, you, pathfinding_target::adjacent_same_z( dest ) );
         } else {
-            route = here.route( you, pathfinding_target::adjacent( dest ) );
+            route = here.route( you, pathfinding_target::adjacent_same_z( dest ) );
         }
     }
 
@@ -1402,7 +1412,7 @@ void move_item( Character &you, const std::optional<vpart_reference> &vpr_src,
 }
 int route_length( const Character &you, const tripoint_bub_ms &dest )
 {
-    if( square_dist( you.pos_bub(), dest ) <= 1 ) {
+    if( in_interaction_range( you.pos_bub(), dest ) ) {
         return 0;
     }
 
@@ -1416,9 +1426,9 @@ int route_length( const Character &you, const tripoint_bub_ms &dest )
     std::vector<tripoint_bub_ms> route;
 
     if( has_grabbed_single_tile_vehicle( you, here ) ) {
-        route = route_with_grab( here, you, pathfinding_target::adjacent( dest ) );
+        route = route_with_grab( here, you, pathfinding_target::adjacent_same_z( dest ) );
     } else {
-        route = here.route( you, pathfinding_target::adjacent( dest ) );
+        route = here.route( you, pathfinding_target::adjacent_same_z( dest ) );
     }
 
     g_route_cache.store( dest, route );

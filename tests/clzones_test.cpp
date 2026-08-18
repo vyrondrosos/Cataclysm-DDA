@@ -1208,6 +1208,47 @@ TEST_CASE( "zone_sorting_adjacent_ground_delivery",
     CHECK( !dummy.activity );
 }
 
+TEST_CASE( "zone_sorting_does_not_interact_through_floor",
+           "[zones][items][activities][sorting]" )
+{
+    avatar &dummy = get_avatar();
+    map &here = get_map();
+
+    clear_avatar();
+    clear_map_without_vision();
+    zone_manager::get_manager().clear();
+
+    const int horizontal_offset = GENERATE( 0, 2 );
+    CAPTURE( horizontal_offset );
+
+    const tripoint_bub_ms src_pos( 60, 60, 0 );
+    const tripoint_bub_ms dest_pos = src_pos + tripoint( horizontal_offset, 0, -1 );
+    dummy.setpos( here, src_pos );
+    dummy.clear_destination();
+    here.ter_set( src_pos, ter_t_floor );
+    here.ter_set( dest_pos, ter_t_floor );
+
+    create_tile_zone( "Unsorted", zone_type_LOOT_UNSORTED, here.get_abs( src_pos ) );
+    create_tile_zone( "Food", zone_type_LOOT_FOOD, here.get_abs( dest_pos ) );
+    here.add_item_or_charges( src_pos, item( itype_test_apple ) );
+
+    here.invalidate_map_cache( src_pos.z() );
+    here.invalidate_map_cache( dest_pos.z() );
+    here.build_map_cache( src_pos.z(), true );
+    here.build_map_cache( dest_pos.z(), true );
+
+    dummy.assign_activity( zone_sort_activity_actor() );
+    process_activity( dummy );
+
+    CHECK( count_items_or_charges( src_pos, itype_test_apple, std::nullopt ) == 1 );
+    CHECK( count_items_or_charges( dest_pos, itype_test_apple, std::nullopt ) == 0 );
+    CHECK( !dummy.has_item_with( []( const item & it ) {
+        return it.typeId() == itype_test_apple;
+    } ) );
+    CHECK( !dummy.destination_point );
+    CHECK( !dummy.activity );
+}
+
 // Terrain UNSORTED zone with grabbed cart at source: ground items get sorted,
 // but the grabbed cart's cargo is protected (used for transport, not as source).
 TEST_CASE( "zone_sorting_vehicle_on_terrain_unsorted_both_items",

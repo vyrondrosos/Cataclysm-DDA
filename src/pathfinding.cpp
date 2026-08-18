@@ -435,7 +435,7 @@ std::vector<tripoint_bub_ms> map::route( const tripoint_bub_ms &f,
     if( !inbounds( t ) ) {
         tripoint_bub_ms clipped = t;
         clip_to_bounds( clipped );
-        const pathfinding_target clipped_target = { clipped, target.r };
+        const pathfinding_target clipped_target = { clipped, target.r, target.same_z };
         return route( f, clipped_target, settings, avoid );
     }
     // First, check for a simple straight line on flat ground
@@ -1228,6 +1228,9 @@ std::vector<tripoint_bub_ms> route_with_grab(
 
 bool pathfinding_target::contains( const tripoint_bub_ms &p ) const
 {
+    if( same_z && center.z() != p.z() ) {
+        return false;
+    }
     if( r == 0 ) {
         return center == p;
     }

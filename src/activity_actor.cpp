@@ -11258,7 +11258,7 @@ bool unload_loot_activity_actor::stage_think( player_activity &act, Character &y
             continue;
         }
 
-        bool is_adjacent_or_closer = square_dist( you.pos_bub(), src_bub ) <= 1;
+        bool is_adjacent_or_closer = zone_sorting::in_interaction_range( you.pos_bub(), src_bub );
         // before we unload any item, check if player is at or
         // adjacent to the loot source tile
         if( !is_adjacent_or_closer ) {
@@ -11282,7 +11282,7 @@ void unload_loot_activity_actor::stage_do( player_activity &, Character &you )
     const tripoint_bub_ms src_bub = here.get_bub( src );
     const faction_id fac_id = you.get_faction_id();
 
-    bool is_adjacent_or_closer = square_dist( you.pos_bub(), src_bub ) <= 1;
+    bool is_adjacent_or_closer = zone_sorting::in_interaction_range( you.pos_bub(), src_bub );
     // before we move any item, check if player is at or
     // adjacent to the loot source tile
     if( !is_adjacent_or_closer ) {
@@ -14308,7 +14308,7 @@ bool zone_sort_activity_actor::stage_think( player_activity &act, Character &you
             oob_tiles.emplace_back( candidates[i].second );
             continue;
         }
-        if( cheb <= 1 ) {
+        if( zone_sorting::in_interaction_range( you.pos_bub(), p_bub ) ) {
             // Already adjacent - no pathfinding needed
             computed.emplace_back( 0, candidates[i].second );
             best_route = 0;
@@ -14410,7 +14410,7 @@ bool zone_sort_activity_actor::stage_think( player_activity &act, Character &you
             continue;
         }
 
-        bool is_adjacent_or_closer = square_dist( you.pos_bub(), src_bub ) <= 1;
+        bool is_adjacent_or_closer = zone_sorting::in_interaction_range( you.pos_bub(), src_bub );
         if( !is_adjacent_or_closer ) {
             add_msg_debug( debugmode::DF_ACTIVITY,
                            "zone_sort THINK: routing to source (%d,%d,%d) from (%d,%d)",
@@ -14522,7 +14522,8 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
             const tripoint_abs_ms drop_dest = *dest_iter;
             // Sometimes we loop back to here while still picking stuff up (because we spent all our moves picking up)
             // Don't start trying to teleport-undrop at the destination until we're actually adjacent.
-            const bool is_adjacent_or_closer_to_dest = square_dist( abspos, drop_dest ) <= 1;
+            const bool is_adjacent_or_closer_to_dest =
+                zone_sorting::in_interaction_range( abspos, drop_dest );
 
             if( is_adjacent_or_closer_to_dest ) {
                 auto iter = picked_up_stuff.begin();
@@ -14595,7 +14596,8 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
         // Items remain but no adjacent destinations. Route to nearest reachable
         // dropoff, trying closest-first. Skip if still at source (keep picking up).
         if( !picked_up_stuff.empty() && !dropoff_coords.empty() &&
-            !you.has_destination() && square_dist( you.pos_bub(), src_bub ) > 1 ) {
+            !you.has_destination() &&
+            !zone_sorting::in_interaction_range( you.pos_bub(), src_bub ) ) {
             std::sort( dropoff_coords.begin(), dropoff_coords.end(),
             [&abspos]( const tripoint_abs_ms & a, const tripoint_abs_ms & b ) {
                 return square_dist( abspos, a ) < square_dist( abspos, b );
@@ -14632,7 +14634,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
         num_processed = 0;
     }
 
-    bool is_adjacent_or_closer = square_dist( you.pos_bub(), src_bub ) <= 1;
+    bool is_adjacent_or_closer = zone_sorting::in_interaction_range( you.pos_bub(), src_bub );
     // before we move any item, check if player is at or
     // adjacent to the loot source tile
     if( !is_adjacent_or_closer ) {
@@ -14733,7 +14735,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
                 if( dest == src ) {
                     continue;
                 }
-                if( square_dist( abspos, dest ) > 1 ) {
+                if( !zone_sorting::in_interaction_range( abspos, dest ) ) {
                     continue;
                 }
                 const tripoint_bub_ms dest_bub = here.get_bub( dest );
@@ -14817,7 +14819,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
                 return a.first < b.first;
             } );
             for( const auto &[cheb, possible_dest] : dest_candidates ) {
-                if( cheb <= 1 ) {
+                if( zone_sorting::in_interaction_range( abspos, possible_dest ) ) {
                     // Adjacent - always reachable, skip A* probe
                     dropoff_coords.emplace_back( possible_dest );
                     continue;
@@ -14956,7 +14958,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
                 return a.first < b.first;
             } );
             for( const auto &[cheb, possible_dest] : fallback_dests ) {
-                if( cheb <= 1 ) {
+                if( zone_sorting::in_interaction_range( abspos, possible_dest ) ) {
                     dropoff_coords.emplace_back( possible_dest );
                     continue;
                 }
@@ -15053,7 +15055,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
         int dest_dist = INT_MAX;
         if( picked_up_this_pass ) {
             for( const tripoint_abs_ms &dest : dropoff_coords ) {
-                if( square_dist( abspos, dest ) <= 1 ) {
+                if( zone_sorting::in_interaction_range( abspos, dest ) ) {
                     dest_dist = 0;
                     break;
                 }
@@ -15116,7 +15118,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
             // Compute actual A* route distances for survivors.
             std::vector<std::pair<int, tripoint_abs_ms>> batch_candidates;
             for( const auto &[cheb, candidate] : batch_presorted ) {
-                if( cheb <= 1 ) {
+                if( zone_sorting::in_interaction_range( abspos, candidate ) ) {
                     // Adjacent -- no pathfinding needed.
                     batch_candidates.emplace_back( 0, candidate );
                     continue;
@@ -15217,7 +15219,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
                                batch_target.x(), batch_target.y(), batch_target.z() );
                 placement = batch_target;
                 num_processed = 0;
-                if( square_dist( abspos, batch_target ) <= 1 ) {
+                if( zone_sorting::in_interaction_range( abspos, batch_target ) ) {
                     // Already adjacent, re-enter DO to process batch target
                     return;
                 }
@@ -15299,7 +15301,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
                        destination.x(), destination.y(), destination.z(),
                        picked_up_stuff.size() );
         // Already adjacent to destination - next do_turn enters the dropoff section directly.
-        if( square_dist( abspos, destination ) <= 1 ) {
+        if( zone_sorting::in_interaction_range( abspos, destination ) ) {
             return;
         }
         if( !zone_sorting::route_to_destination( you, act, here.get_bub( destination ), stage ) ) {
