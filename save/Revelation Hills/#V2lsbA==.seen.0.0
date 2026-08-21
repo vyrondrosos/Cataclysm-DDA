@@ -962,6 +962,11 @@
 ,[167,60,"mx_point_burned_ground"]
 ,[167,61,"mx_grass2"]
 ,[147,51,"mx_grass2"]
+,[148,52,"mx_grass2"]
+,[149,51,"mx_trees"]
+,[150,50,"mx_point_dead_vegetation"]
+,[151,50,"mx_grass2"]
+,[152,50,"mx_grass2"]
 ],[[101,151,"mx_dormant"]
 ,[157,145,"mx_dormant"]
 ],[],[],[],[],[],[],[],[],[]]}
