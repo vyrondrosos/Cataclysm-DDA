@@ -768,16 +768,8 @@
         { "item": "m203", "x": 10, "y": 11, "chance": 75, "repeat": 5 },
         { "item": "mgl", "x": 10, "y": 11, "chance": 75, "repeat": 3 },
         { "item": "40x46mm_m433", "x": 10, "y": 12, "chance": 75, "repeat": 20 },
-        { "group": "modular_m4a1", "x": 12, "y": [ 9, 11 ], "magazine": 100, "chance": 75, "repeat": 30 },
         { "group": "m27iar", "x": 12, "y": 9, "magazine": 100, "chance": 75, "repeat": 8 },
         { "item": "modular_m16a4", "x": 12, "y": 9, "magazine": 100, "chance": 75, "repeat": 2 },
-        { "item": "stanag30", "x": 12, "y": 12, "chance": 75, "repeat": 80 },
-        { "item": "stanag50", "x": 12, "y": 12, "chance": 75, "repeat": 20 },
-        { "group": "ammo_can_223_any_full", "x": 14, "y": [ 9, 12 ], "chance": 75, "repeat": 20 },
-        { "group": "modular_m4a1", "x": 16, "y": [ 9, 11 ], "magazine": 100, "chance": 75, "repeat": 36 },
-        { "item": "stanag30", "x": 16, "y": 12, "chance": 75, "repeat": 100 },
-        { "group": "ammo_can_223_any_full", "x": 18, "y": [ 9, 12 ], "chance": 75, "repeat": 20 },
-        { "item": "m249", "x": 20, "y": 9, "chance": 75, "repeat": 6 },
         { "item": "m240", "x": 20, "y": 9, "chance": 75, "repeat": 4 },
         { "item": "m1014", "x": 20, "y": 10, "chance": 75, "repeat": 10 },
         { "item": "mossberg_590", "x": 20, "y": 10, "chance": 75, "repeat": 8 },
@@ -788,7 +780,6 @@
         { "item": "hk417mag_20rd", "x": 20, "y": 12, "chance": 75, "repeat": 16 },
         { "item": "hk417mag_10rd", "x": 20, "y": 12, "chance": 75, "repeat": 8 },
         { "group": "ammo_can_300_full", "x": 22, "y": 12, "chance": 75, "repeat": 6 },
-        { "group": "ammo_can_223_mg_any_full", "x": 22, "y": 9, "chance": 75, "repeat": 5 },
         { "group": "ammo_can_308_mg_any_full", "x": 22, "y": 9, "chance": 75, "repeat": 5 },
         { "group": "ammo_shotgun_milspec", "x": 22, "y": 10, "chance": 75, "repeat": 10 },
         { "group": "ammo_can_308_any_full", "x": 22, "y": [ 11, 12 ], "chance": 75, "repeat": 18 },
@@ -825,6 +816,10 @@
       "place_specialized_loot": [
         { "specialization": "mil_site_base_armory", "x": [ 8, 23 ], "y": [ 9, 12 ], "chance": 100, "repeat": [ 1, 2 ] },
         { "specialization": "mil_site_base_armory", "x": [ 24, 30 ], "y": [ 9, 12 ], "chance": 100, "repeat": 1 }
+      ],
+      "place_nested": [
+        { "chunks": [ [ "mil_base_rifle_cache_m4", 90 ], [ "mil_base_rifle_cache_m7", 10 ] ], "x": 0, "y": 0 },
+        { "chunks": [ [ "mil_base_lmg_cache_m249", 85 ], [ "mil_base_lmg_cache_m250", 15 ] ], "x": 0, "y": 0 }
       ],
       "place_monsters": [
         { "monster": "GROUP_MIL_BASE", "x": [ 0, 23 ], "y": [ 26, 47 ], "repeat": [ 6, 8 ], "density": 0.1 },
