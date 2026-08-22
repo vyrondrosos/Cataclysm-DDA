@@ -597,10 +597,10 @@
         "  X  sssssssssssssssssssssssssssss  X            ss|6....|...|......|..77.|{sssXss     ,, b ,, x",
         "  X  sssssssssssssssssssssssssssss  X            ss|6....d...d......d..77.|{ss{Xss    ,,, b ,, x",
         "  X  ss/////////////////////////ss  X sssssssssssss|6...u|...|u....u|u.77.|{ss{Xsss   ,,, b ,, x",
-        "  X  ss/C.C]u.u]u.u]u.u]u.u]u.u/ss  X ssssssssssss~|u...u|...|l.p..u|u....|{ss{Xsss   ,,, b,,, x",
-        "  X  ss/C.C]u.u]u.u]u.u]u.u]u.u/ss  X ss--w---w---w------|...|-------------------ss    ,,,b,,,,x",
-        "  X  ss/C.C]u.u]u.u]u.u]u.u]u.u/ss  X ss|$.OOt##t..`O|uuu|...|S...+T|c.??..??..?|ss   ,,,,b ,, x",
-        "  X  ss/C.C]u.u]u.u]u.u]u.u]u.u/ss  X ss|$...h##h...O|u..z...|c...|-|c.??..??..?|ss    ,, b,,,,x",
+        "  X  ss/C.C]R.N]P.N]F.L]u.u]u.u/ss  X ssssssssssss~|u...u|...|l.p..u|u....|{ss{Xsss   ,,, b,,, x",
+        "  X  ss/C.C]R.N]P.N]u.u]u.u]u.u/ss  X ss--w---w---w------|...|-------------------ss    ,,,b,,,,x",
+        "  X  ss/C.C]R.N]P.N]u.u]u.u]u.u/ss  X ss|$.OOt##t..`O|uuu|...|S...+T|c.??..??..?|ss   ,,,,b ,, x",
+        "  X  ss/C.C]K.N]E.N]u.u]u.u]u.u/ss  X ss|$...h##h...O|u..z...|c...|-|c.??..??..?|ss    ,, b,,,,x",
         "  X  ss/](]]])]]])]]])]]])]]])]/ss  X ssw.....##....O|..h|...|S...+T|c.??..??..?|ss    ,, b ,, x",
         "  X  ss/......................./ss  X ss|$........Y.l|tVV|-d----d---|c.??..??..?|ss   ,,, b ,, x",
         "  X  ss/uuuuu.uuuuu.uuuuu....../ss  X ss|$..l------=------.........>|..........?|ss   ,,, b,,,,x",
@@ -661,7 +661,12 @@
         "ssssssssssssssssssssssssssssss  ____1112111__1____^1_______________111111111111111____,,,;b,,,,x",
         "ssss{{ssssssssssssssssssssssss  _____________1112111__________________________________ ,,;b,,, x"
       ],
-      "palettes": [ "mil_base_palette" ],
+      "palettes": [
+        "mil_base_palette",
+        "mil_base_ngsw_cache_shelves",
+        { "distribution": [ [ "mil_base_rifle_cache_m4", 90 ], [ "mil_base_rifle_cache_m7", 10 ] ] },
+        { "distribution": [ [ "mil_base_lmg_cache_m249", 85 ], [ "mil_base_lmg_cache_m250", 15 ] ] }
+      ],
       "furniture": { "p": "f_compact_ASRG_containment" },
       "items": {
         "M": [ { "item": "mil_base_bed_hospital", "chance": 50, "repeat": [ 1, 2 ] } ],
@@ -816,10 +821,6 @@
       "place_specialized_loot": [
         { "specialization": "mil_site_base_armory", "x": [ 8, 23 ], "y": [ 9, 12 ], "chance": 100, "repeat": [ 1, 2 ] },
         { "specialization": "mil_site_base_armory", "x": [ 24, 30 ], "y": [ 9, 12 ], "chance": 100, "repeat": 1 }
-      ],
-      "place_nested": [
-        { "chunks": [ [ "mil_base_rifle_cache_m4", 90 ], [ "mil_base_rifle_cache_m7", 10 ] ], "x": 0, "y": 0 },
-        { "chunks": [ [ "mil_base_lmg_cache_m249", 85 ], [ "mil_base_lmg_cache_m250", 15 ] ], "x": 0, "y": 0 }
       ],
       "place_monsters": [
         { "monster": "GROUP_MIL_BASE", "x": [ 0, 23 ], "y": [ 26, 47 ], "repeat": [ 6, 8 ], "density": 0.1 },
