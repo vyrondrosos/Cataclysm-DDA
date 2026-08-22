@@ -3001,9 +3001,10 @@ talk_topic dialogue::opt_imgui( dialogue_imgui_impl &d_img, const talk_topic &to
     std::string challenge = dynamic_line( topic );
     gen_responses( topic );
 
-        // Construct full line
-        std::string challenge = dynamic_line( topic );
-        gen_responses( topic );
+    // Put quotes around challenge (unless it's an action)
+    if( challenge[0] != '*' && challenge[0] != '&' ) {
+        challenge = string_format( _( "\"%s\"" ), challenge );
+    }
 
     // Parse any tags in challenge
     if( actor( true )->get_npc() ) {
@@ -3038,6 +3039,8 @@ talk_topic dialogue::opt_imgui( dialogue_imgui_impl &d_img, const talk_topic &to
         for( auto &line : dynamic_line_debug ) {
             d_img.add_to_history( line );
         }
+    }
+    apply_speaker_effects( topic );
 
     if( responses.empty() ) {
         debugmsg( "No dialogue responses" );
@@ -3130,66 +3133,21 @@ talk_topic dialogue::opt_imgui( dialogue_imgui_impl &d_img, const talk_topic &to
             } else if( action == "DEBUG_DIALOGUE_SHOW_ALL_RESPONSE" ) {
                 d_img.show_all_responses = !d_img.show_all_responses;
                 if( debug_mode ) {
-                    d_win.set_responses_debug( build_debug_info( d_win, topic, d_win.sel_response ) );
-                    d_win.debug_topic_name = topic.id;
-                }
-                ui_manager::redraw();
-                input_event evt;
-                action = ctxt.handle_input();
-                evt = ctxt.get_raw_input();
-                if( evt.type == input_event_t::error || evt.type == input_event_t::timeout ) {
-                    continue;
-                }
-                d_win.handle_scrolling( action, ctxt );
-                talk_topic st = special_talk( action );
-                if( st.id != "TALK_NONE" ) {
-                    return st;
-                }
-                if( action == "HELP_KEYBINDINGS" ) {
-                    // Reallocate hotkeys as keybindings may have changed
+                    this->debug_ignore_conditionals = !this->debug_ignore_conditionals;
+                    gen_responses( topic );
                     generate_response_lines();
-                } else if( action == "CONFIRM" ) {
-                    response_ind = d_win.sel_response;
-                    //response condition must be reverified since non-selectable responses can be displayed
-                    if( response_condition_exists[response_ind] && ( !response_condition_eval[response_ind] &&
-                            !debug_mode ) ) {
-                        action = "NONE";
-                    }
-                } else if( action == "DEBUG_DIALOGUE_DL_CONDITIONAL" ) {
-                    d_win.show_dynamic_line_conditionals = !d_win.show_dynamic_line_conditionals;
-                } else if( action == "DEBUG_DIALOGUE_RESP_CONDITIONAL" ) {
-                    d_win.show_response_conditionals = !d_win.show_response_conditionals;
-                } else if( action == "DEBUG_DIALOGUE_DL_EFFECT" ) {
-                    d_win.show_dynamic_line_effects = !d_win.show_dynamic_line_effects;
-                } else if( action == "DEBUG_DIALOGUE_RESP_EFFECT" ) {
-                    d_win.show_response_effects = !d_win.show_response_effects;
-                } else if( action == "DEBUG_DIALOGUE_SHOW_ALL_RESPONSE" ) {
-                    d_win.show_all_responses = !d_win.show_all_responses;
-                    if( debug_mode ) {
-                        this->debug_ignore_conditionals = !this->debug_ignore_conditionals;
-                        gen_responses( topic );
-                        generate_response_lines();
-                    }
-                } else if( action == "ANY_INPUT" ) {
-                    // Check real hotkeys; equivalent functionally to CONFIRM
-                    const auto hotkey_it = std::find( response_hotkeys.begin(),
-                                                      response_hotkeys.end(), evt );
-                    response_ind = std::distance( response_hotkeys.begin(), hotkey_it );
-                    if( response_condition_exists[response_ind] && ( !response_condition_eval[response_ind] &&
-                            !debug_mode ) ) {
-                        action = "NONE";
-                    }
-                } else if( action == "QUIT" ) {
-                    response_ind = get_best_quit_response();
                 }
-            } while( response_ind >= response_hotkeys.size() ||
-                     ( action != "ANY_INPUT" && action != "QUIT" && action != "CONFIRM" ) );
-            okay = true;
-            std::set<dialogue_consequence> consequences = responses[response_ind].get_consequences( *this );
-            if( consequences.count( dialogue_consequence::hostile ) > 0 ) {
-                okay = query_yn( _( "You may be attacked!  Proceed?" ) );
-            } else if( consequences.count( dialogue_consequence::helpless ) > 0 ) {
-                okay = query_yn( _( "You'll be helpless!  Proceed?" ) );
+            } else if( action == "ANY_INPUT" ) {
+                // Check real hotkeys; equivalent functionally to CONFIRM
+                const auto hotkey_it = std::find( response_hotkeys.begin(),
+                                                  response_hotkeys.end(), evt );
+                response_ind = std::distance( response_hotkeys.begin(), hotkey_it );
+                if( response_condition_exists[response_ind] && ( !response_condition_eval[response_ind] &&
+                        !debug_mode ) ) {
+                    action = "NONE";
+                }
+            } else if( action == "QUIT" ) {
+                response_ind = get_best_quit_response();
             }
 
             // Clamp sel_response (There is probably a better existing way to do this, but it's simple so I'm just reimplementing)
@@ -3208,6 +3166,7 @@ talk_topic dialogue::opt_imgui( dialogue_imgui_impl &d_img, const talk_topic &to
         } else if( consequences.count( dialogue_consequence::helpless ) > 0 ) {
             okay = query_yn( _( "You'll be helpless!  Proceed?" ) );
         }
+    } while( !okay );
 
     d_img.add_to_history( response_lines[response_ind].text, _( "You" ), c_light_blue );
 
