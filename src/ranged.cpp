@@ -29,6 +29,7 @@
 #include "color.h"
 #include "creature.h"
 #include "creature_tracker.h"
+#include "current_map.h"
 #include "cursesdef.h"
 #include "damage.h"
 #include "debug.h"
@@ -682,9 +683,15 @@ dispersion_sources Character::total_gun_dispersion( const item &gun, double reco
 int Character::gun_engagement_moves( const item &gun, int target, int start,
                                      const Target_attributes &attributes ) const
 {
+    return gun_engagement_moves( get_map(), gun, target, start, attributes );
+}
+
+int Character::gun_engagement_moves( const map &here, const item &gun, int target, int start,
+                                     const Target_attributes &attributes ) const
+{
     int mv = 0;
     double penalty = start;
-    const aim_mods_cache aim_cache = gen_aim_mods_cache( gun );
+    const aim_mods_cache aim_cache = gen_aim_mods_cache( here, gun );
     while( penalty > target ) {
         const double adj = aim_per_move( gun, penalty, attributes, aim_cache );
         if( adj <= MIN_RECOIL_IMPROVEMENT ) {
@@ -1105,6 +1112,33 @@ int Character::fire_gun( const tripoint_bub_ms &target, int shots )
 int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, item &gun,
                          item_location ammo )
 {
+    return fire_gun( here, here.get_abs( target ), shots, gun, ranged_attack_context(), ammo );
+}
+
+int Character::fire_gun( const tripoint_abs_ms &target, const int shots, item &gun,
+                         const ranged_attack_context &context )
+{
+    map &bubble = reality_bubble();
+    if( bubble.inbounds( pos_abs() ) ) {
+        return fire_gun( bubble, target, shots, gun, context );
+    }
+
+    map source_map;
+    const tripoint_abs_sm origin( project_to<coords::sm>( pos_abs() ) -
+                                  point_rel_sm{ HALF_MAPSIZE, HALF_MAPSIZE } );
+    source_map.load( origin, true, false );
+    int result = 0;
+    {
+        swap_map swap( source_map );
+        result = fire_gun( source_map, target, shots, gun, context );
+    }
+    source_map.save();
+    return result;
+}
+
+int Character::fire_gun( map &here, const tripoint_abs_ms &target, int shots, item &gun,
+                         const ranged_attack_context &context, item_location ammo )
+{
     if( !gun.is_gun() ) {
         debugmsg( "%s tried to fire non-gun (%s).", get_name(), gun.tname() );
         return 0;
@@ -1115,6 +1149,12 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
     }
     if( gun.ammo_required() > 0 && !gun.ammo_remaining( ) && !ammo ) {
         debugmsg( "%s is empty and has no ammo for reloading.", gun.tname() );
+        return 0;
+    }
+    const int target_distance = rl_dist( pos_abs(), target );
+    if( context.projectile_range && target_distance > *context.projectile_range ) {
+        debugmsg( "%s attempted to fire %d tiles with a physical range of %d.", get_name(),
+                  target_distance, *context.projectile_range );
         return 0;
     }
     bool is_mech_weapon = false;
@@ -1143,7 +1183,7 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
     }
 
     short times_shot_target = 0;
-    Creature *maybe_target = get_creature_tracker().creature_at( here.get_abs( target ) );
+    Creature *maybe_target = get_creature_tracker().creature_at( target );
     if( maybe_target && maybe_target->as_monster() ) {
         times_shot_target = maybe_target->as_monster()->times_combatted_player;
     }
@@ -1171,7 +1211,7 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
     skill_id gun_skill = gun.gun_skill();
     add_msg_debug( debugmode::DF_RANGED, "Gun skill (%s) %g", gun_skill.c_str(),
                    get_skill_level( gun_skill ) ) ;
-    tripoint_bub_ms aim = target;
+    const tripoint_abs_ms aim = target;
     int curshot = 0;
     int hits = 0; // total shots on target
     int delay = 0; // delayed recoil that has yet to be applied
@@ -1201,9 +1241,16 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         const vehicle *in_veh = has_effect( effect_on_roof ) ? veh_pointer_or_null( here.veh_at(
                                     pos_bub( here ) ) ) : nullptr;
 
-        // Add gunshot noise
-        make_gun_sound_effect( *this, shots > 1, &gun );
-        sfx::generate_gun_sound( *this, gun );
+        // Sounds are stored in reality-bubble coordinates even when an inactive shooter is being
+        // processed on a temporary map.
+        if( &get_map() == &reality_bubble() ) {
+            make_gun_sound_effect( *this, shots > 1, &gun );
+            sfx::generate_gun_sound( *this, gun );
+        } else {
+            swap_map bubble_swap( reality_bubble() );
+            make_gun_sound_effect( *this, shots > 1, &gun );
+            sfx::generate_gun_sound( *this, gun );
+        }
 
         weakpoint_attack wp_attack;
         wp_attack.weapon = &gun;
@@ -1211,6 +1258,9 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         itype_id projectile_use_ammo_id = gun.has_ammo_data() ? gun.ammo_data()->get_id() :
                                           itype_id::NULL_ID();
         projectile proj = make_gun_projectile( gun, *this );
+        if( context.projectile_range ) {
+            proj.range = std::max( 0, *context.projectile_range );
+        }
 
         for( damage_unit &elem : proj.impact.damage_units ) {
             elem.amount = enchantment_cache->modify_value( enchant_vals::mod::RANGED_DAMAGE, elem.amount );
@@ -1221,7 +1271,14 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         dispersion_sources dispersion = total_gun_dispersion( gun, recoil_total(), proj.shot_spread );
 
         dealt_projectile_attack shot;
-        projectile_attack( shot, proj, &here, pos_bub( here ), aim, dispersion, this, in_veh, wp_attack );
+        if( context.projectile_range || context.accuracy_distance || !here.inbounds( aim ) ) {
+            projectile_attack( shot, proj, &here, pos_abs(), aim, dispersion,
+                               std::max( 0.0, context.accuracy_distance.value_or( target_distance ) ),
+                               this, in_veh, wp_attack );
+        } else {
+            projectile_attack( shot, proj, &here, pos_bub( here ), here.get_bub( aim ), dispersion,
+                               this, in_veh, wp_attack );
+        }
         if( !shot.targets_hit.empty() ) {
             hits++;
         }

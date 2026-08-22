@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_RANGED_H
 #define CATA_SRC_RANGED_H
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,14 @@ struct vehicle_part;
 
 // Recoil change less or equal to this value (in MoA) stops further aiming
 constexpr double MIN_RECOIL_IMPROVEMENT = 0.01;
+
+/** Optional overrides for a ranged attack whose physical and accuracy ranges differ. */
+struct ranged_attack_context {
+    /** Maximum physical distance the projectile may travel. */
+    std::optional<int> projectile_range;
+    /** Distance used by dispersion and hit-chance calculations. */
+    std::optional<double> accuracy_distance;
+};
 
 namespace target_handler
 {

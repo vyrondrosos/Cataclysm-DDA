@@ -4114,6 +4114,10 @@ const char *timed_event_type_name( timed_event_type t )
             return "fpv_drone_terminal_impact";
         case timed_event_type::FPV_DRONE_PAYLOAD_DROP:
             return "fpv_drone_payload_drop";
+        case timed_event_type::OVERWATCH_RELOAD:
+            return "overwatch_reload";
+        case timed_event_type::OVERWATCH_FIRE:
+            return "overwatch_fire";
         case timed_event_type::NUM_TIMED_EVENT_TYPES:
             break;
     }

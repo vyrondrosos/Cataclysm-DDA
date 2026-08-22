@@ -52,6 +52,8 @@ enum class timed_event_type : int {
     FPV_DRONE_SCOUT_READY_MESSAGE,
     FPV_DRONE_TERMINAL_IMPACT,
     FPV_DRONE_PAYLOAD_DROP,
+    OVERWATCH_RELOAD,
+    OVERWATCH_FIRE,
     NUM_TIMED_EVENT_TYPES
 };
 
@@ -103,6 +105,19 @@ struct fpv_terminal_impact_event_data : timed_event_data {
     character_id target_character;
     int target_monster = -1;
     tripoint_rel_ms miss = tripoint_rel_ms::zero;
+};
+
+struct overwatch_fire_event_data : timed_event_data {
+    character_id gunner_id;
+    character_id target_character;
+    int target_monster = -1;
+    tripoint_abs_ms target_pos = tripoint_abs_ms::invalid;
+    std::string mode_id;
+    std::string order_key;
+    int aim_moves = 0;
+    int reload_moves = 0;
+    bool continue_fire = false;
+    bool repeat = false;
 };
 
 struct timed_event {
@@ -159,6 +174,7 @@ class timed_event_manager
 {
     private:
         std::list<timed_event> events;
+        const timed_event *currently_processing = nullptr;
 
     public:
         /**
@@ -205,6 +221,12 @@ class timed_event_manager
                                       const std::string &operator_name,
                                       const fpv_terminal_impact_event_data &impact_data,
                                       const explosion_data &expl_data );
+        void add_overwatch_fire( const time_point &when, const tripoint_abs_ms &target,
+                                 const std::string &gunner_name, const std::string &key,
+                                 const overwatch_fire_event_data &fire_data );
+        void add_overwatch_reload( const time_point &when, const tripoint_abs_ms &target,
+                                   const std::string &gunner_name, const std::string &key,
+                                   const overwatch_fire_event_data &reload_data );
         /// @returns Whether at least one element of the given type is queued.
         bool queued( timed_event_type type ) const;
         /// @returns One of the queued events of the given type, or `nullptr`

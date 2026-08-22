@@ -93,6 +93,7 @@
 
 static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
 static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
+static const activity_id ACT_PROVIDE_OVERWATCH( "ACT_PROVIDE_OVERWATCH" );
 static const activity_id ACT_TRY_SLEEP( "ACT_TRY_SLEEP" );
 
 static const efftype_id effect_bouldering( "bouldering" );
@@ -1166,11 +1167,13 @@ void npc::starting_inv_wear_item( npc *who, item &it )
 
 void npc::revert_after_activity()
 {
-    if( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ) {
+    if( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ||
+        activity.id() == ACT_PROVIDE_OVERWATCH ) {
         activity.canceled( *this );
     } else if( previous_mission != NPC_MISSION_GUARD_ALLY ) {
         clear_mortar_support();
         clear_fpv_support();
+        clear_overwatch_support();
     }
     mission = previous_mission;
     attitude = previous_attitude;
@@ -3268,6 +3271,7 @@ void npc::die( map *here, Creature *nkiller )
 
     clear_mortar_support();
     clear_fpv_support();
+    clear_overwatch_support();
 
     if( assigned_camp ) {
         std::optional<basecamp *> bcp = overmap_buffer.find_camp( ( *assigned_camp ).xy() );
@@ -3991,11 +3995,22 @@ std::string npc::get_unique_id() const
 
 void npc::set_mission( npc_mission new_mission )
 {
+    const bool leaving_support_activity = new_mission != NPC_MISSION_ACTIVITY &&
+            mission == NPC_MISSION_ACTIVITY &&
+            ( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ||
+              activity.id() == ACT_PROVIDE_OVERWATCH );
+    if( leaving_support_activity ) {
+        // A mission change stops NPC activity processing.  Revert first so the
+        // support actor, its saved state, and its queued events do not linger.
+        revert_after_activity();
+    }
     const bool preserving_support_activity = new_mission == NPC_MISSION_ACTIVITY &&
-            ( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE );
+            ( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ||
+              activity.id() == ACT_PROVIDE_OVERWATCH );
     if( new_mission != NPC_MISSION_GUARD_ALLY && !preserving_support_activity ) {
         clear_mortar_support();
         clear_fpv_support();
+        clear_overwatch_support();
     }
     if( new_mission != mission ) {
         previous_mission = mission;
@@ -4220,6 +4235,30 @@ int npc::clear_fpv_support( const bool notify )
         }
     }
     return released_items;
+}
+
+int npc::clear_overwatch_support( const bool notify )
+{
+    const diag_value assignment = get_value( "overwatch_assignment" );
+    const bool was_assigned = !assignment.is_empty() && assignment.str() == "yes";
+    const diag_value order_key = get_value( "overwatch_order_key" );
+    if( !order_key.is_empty() && order_key.is_str() ) {
+        get_timed_events().remove( timed_event_type::OVERWATCH_FIRE, order_key.str() );
+        get_timed_events().remove( timed_event_type::OVERWATCH_RELOAD, order_key.str() );
+    }
+    for( const char *key : {
+             "overwatch_assignment", "overwatch_post", "overwatch_mode",
+             "overwatch_order_key", "overwatch_repeat", "overwatch_target_type",
+             "overwatch_target_character_id", "overwatch_target_monster_id",
+             "overwatch_target_x", "overwatch_target_y", "overwatch_target_z",
+             "overwatch_ready_turn"
+         } ) {
+        remove_value( key );
+    }
+    if( notify && was_assigned ) {
+        add_msg( _( "%s stands down from overwatch." ), disp_name() );
+    }
+    return was_assigned ? 1 : 0;
 }
 
 bool npc::has_activity() const

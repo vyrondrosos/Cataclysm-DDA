@@ -47,6 +47,7 @@
 #include "mortar.h"
 #include "npc.h"
 #include "npctalk.h"
+#include "overwatch.h"
 #include "rng.h"
 #include "sounds.h"
 #include "string_formatter.h"
@@ -975,6 +976,23 @@ void timed_event::actualize()
         }
         break;
 
+        case timed_event_type::OVERWATCH_RELOAD:
+        case timed_event_type::OVERWATCH_FIRE: {
+            const overwatch_fire_event_data *fire_data =
+                get_data<overwatch_fire_event_data>();
+            if( fire_data == nullptr ) {
+                add_msg_debug( debugmode::DF_NPC,
+                               "Scheduled overwatch fire canceled: missing event payload." );
+                break;
+            }
+            if( type == timed_event_type::OVERWATCH_RELOAD ) {
+                overwatch::actualize_reload_event( *fire_data );
+            } else {
+                overwatch::actualize_fire_event( *fire_data );
+            }
+        }
+        break;
+
         case timed_event_type::EXPLOSION: {
             apply_timed_explosion( player_character.as_avatar(), here, map_square, expl_data );
         }
@@ -1088,11 +1106,14 @@ void timed_event::per_turn()
 void timed_event_manager::process()
 {
     for( auto it = events.begin(); it != events.end(); ) {
+        currently_processing = &*it;
         it->per_turn();
         if( it->when <= calendar::turn ) {
             it->actualize();
+            currently_processing = nullptr;
             it = events.erase( it );
         } else {
+            currently_processing = nullptr;
             ++it;
         }
     }
@@ -1205,6 +1226,24 @@ void timed_event_manager::add_fpv_terminal_impact( const time_point &when,
     event.expl_data = expl_data;
 }
 
+void timed_event_manager::add_overwatch_fire( const time_point &when,
+        const tripoint_abs_ms &target, const std::string &gunner_name, const std::string &key,
+        const overwatch_fire_event_data &fire_data )
+{
+    events.emplace_back( timed_event_type::OVERWATCH_FIRE, when, -1, target, -1,
+                         gunner_name, key );
+    events.back().data = std::make_unique<overwatch_fire_event_data>( fire_data );
+}
+
+void timed_event_manager::add_overwatch_reload( const time_point &when,
+        const tripoint_abs_ms &target, const std::string &gunner_name, const std::string &key,
+        const overwatch_fire_event_data &reload_data )
+{
+    events.emplace_back( timed_event_type::OVERWATCH_RELOAD, when, -1, target, -1,
+                         gunner_name, key );
+    events.back().data = std::make_unique<overwatch_fire_event_data>( reload_data );
+}
+
 void timed_event_manager::add( timed_event_type type, const time_point &when,
                                const int faction_id,
                                const tripoint_abs_ms &where,
@@ -1246,8 +1285,10 @@ std::list<timed_event> const &timed_event_manager::get_all() const
 
 void timed_event_manager::remove( const timed_event_type type, const std::string &key )
 {
-    events.remove_if( [type, &key]( const timed_event & event ) {
-        return event.type == type && event.key == key;
+    events.remove_if( [this, type, &key]( const timed_event & event ) {
+        // The process loop owns this node until per_turn/actualize returns.  Cleanup triggered
+        // from inside the event may remove matching follow-ups, but must not invalidate it.
+        return &event != currently_processing && event.type == type && event.key == key;
     } );
 }
 

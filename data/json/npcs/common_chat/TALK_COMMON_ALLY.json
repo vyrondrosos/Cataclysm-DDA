@@ -57,6 +57,11 @@
         "topic": "TALK_NPC_MORTAR_SUPPORT"
       },
       {
+        "text": "Overwatch support.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_NPC_OVERWATCH_SUPPORT"
+      },
+      {
         "text": "Drone support.",
         "condition": { "math": [ "has_var(n_fpv_assignment)" ] },
         "topic": "TALK_NPC_DRONE_SUPPORT",
@@ -126,6 +131,60 @@
         "condition": { "and": [ { "not": "is_by_radio" }, { "math": [ "has_var(n_mortar_assignment)" ] } ] },
         "topic": "TALK_DONE",
         "effect": "assign_mortar_crew"
+      },
+      { "text": "Back.", "topic": "TALK_NONE" },
+      { "text": "<lets_go>", "topic": "TALK_DONE" }
+    ]
+  },
+  {
+    "id": "TALK_NPC_OVERWATCH_SUPPORT",
+    "type": "talk_topic",
+    "dynamic_line": {
+      "is_by_radio": "Overwatch radio is open.  Send your order.",
+      "no": "I'm holding the overwatch post.  What do you need?"
+    },
+    "responses": [
+      {
+        "text": "Select your weapon mode.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_DONE",
+        "effect": "select_overwatch_fire_mode"
+      },
+      {
+        "text": "Fire once at a hostile target I mark.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_DONE",
+        "effect": "request_overwatch_fire"
+      },
+      {
+        "text": "Keep firing at a hostile target.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_DONE",
+        "effect": "request_overwatch_repeat_fire"
+      },
+      {
+        "text": "Reload your weapon.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_DONE",
+        "effect": "reload_overwatch"
+      },
+      {
+        "text": "Cease fire.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_DONE",
+        "effect": "cancel_overwatch_order"
+      },
+      {
+        "text": "Report overwatch status.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_DONE",
+        "effect": "report_overwatch"
+      },
+      {
+        "text": "Stand down from overwatch.",
+        "condition": { "math": [ "has_var(n_overwatch_assignment)" ] },
+        "topic": "TALK_DONE",
+        "effect": "stand_down_overwatch"
       },
       { "text": "Back.", "topic": "TALK_NONE" },
       { "text": "<lets_go>", "topic": "TALK_DONE" }
@@ -684,6 +743,12 @@
         "condition": { "and": [ { "not": "is_by_radio" }, { "not": "npc_has_activity" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
         "topic": "TALK_DONE",
         "effect": "assign_mortar"
+      },
+      {
+        "text": "Take up overwatch from your current position.",
+        "condition": { "and": [ { "not": "is_by_radio" }, { "not": "npc_has_activity" }, { "not": { "npc_has_trait": "HALLUCINATION" } } ] },
+        "topic": "TALK_DONE",
+        "effect": "assign_overwatch"
       },
       {
         "text": "Set up as a drone operator and take these drones.",

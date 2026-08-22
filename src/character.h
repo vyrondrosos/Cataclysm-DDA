@@ -811,7 +811,9 @@ class Character : public Creature, public visitable
         int most_accurate_aiming_method_limit( const item &gun ) const;
         double aim_factor_from_volume( const item &gun ) const;
         double aim_factor_from_length( const item &gun ) const;
-        aim_mods_cache gen_aim_mods_cache( const item &gun )const;
+        double aim_factor_from_length( const map &here, const item &gun ) const;
+        aim_mods_cache gen_aim_mods_cache( const item &gun ) const;
+        aim_mods_cache gen_aim_mods_cache( const map &here, const item &gun ) const;
 
         // Get the value of the specified character modifier.
         // (some modifiers require a skill_id, ex: aim_speed_skill_mod)
@@ -3306,6 +3308,9 @@ class Character : public Creature, public visitable
         /** How many moves does it take to aim gun to the target accuracy. */
         int gun_engagement_moves( const item &gun, int target = 0, int start = MAX_RECOIL,
                                   const Target_attributes &attributes = Target_attributes() ) const;
+        int gun_engagement_moves( const map &here, const item &gun, int target = 0,
+                                  int start = MAX_RECOIL,
+                                  const Target_attributes &attributes = Target_attributes() ) const;
 
         /**
          *  Fires a gun or auxiliary gunmod (ignoring any current mode)
@@ -3325,6 +3330,13 @@ class Character : public Creature, public visitable
          */
         int fire_gun( map &here, const tripoint_bub_ms &target, int shots, item &gun,
                       item_location ammo = item_location() );
+        /** Fire at an absolute target, optionally extending physical range independently of accuracy. */
+        int fire_gun( map &here, const tripoint_abs_ms &target, int shots, item &gun,
+                      const ranged_attack_context &context = ranged_attack_context(),
+                      item_location ammo = item_location() );
+        /** As above, loading a map around an inactive/off-bubble shooter when necessary. */
+        int fire_gun( const tripoint_abs_ms &target, int shots, item &gun,
+                      const ranged_attack_context &context = ranged_attack_context() );
         /** Execute a throw */
         dealt_projectile_attack throw_item( const tripoint_bub_ms &target, const item &to_throw,
                                             const std::optional<tripoint_bub_ms> &blind_throw_from_pos = std::nullopt );

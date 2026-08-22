@@ -1169,5 +1169,13 @@
     "based_on": "neither",
     "rooted": true,
     "verb": "operating drones"
+  },
+  {
+    "id": "ACT_PROVIDE_OVERWATCH",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "based_on": "neither",
+    "rooted": true,
+    "verb": "providing overwatch"
   }
 ]

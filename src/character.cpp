@@ -120,6 +120,7 @@ static const activity_id ACT_HAND_CRANK( "ACT_HAND_CRANK" );
 static const activity_id ACT_HEATING( "ACT_HEATING" );
 static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
 static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
+static const activity_id ACT_PROVIDE_OVERWATCH( "ACT_PROVIDE_OVERWATCH" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
 static const activity_id ACT_MOVE_ITEMS( "ACT_MOVE_ITEMS" );
 static const activity_id ACT_MOVE_LOOT( "ACT_MOVE_LOOT" );
@@ -893,10 +894,15 @@ int Character::point_shooting_limit( const item &gun )const
     }
 }
 
-aim_mods_cache Character::gen_aim_mods_cache( const item &gun )const
+aim_mods_cache Character::gen_aim_mods_cache( const item &gun ) const
+{
+    return gen_aim_mods_cache( get_map(), gun );
+}
+
+aim_mods_cache Character::gen_aim_mods_cache( const map &here, const item &gun ) const
 {
     parallax_cache parallaxes{ get_character_parallax( true ), get_character_parallax( false ) };
-    return { get_modifier( character_modifier_aim_speed_skill_mod, gun.gun_skill() ), get_modifier( character_modifier_aim_speed_dex_mod ), get_modifier( character_modifier_aim_speed_mod ), most_accurate_aiming_method_limit( gun ), aim_factor_from_volume( gun ), aim_factor_from_length( gun ), parallaxes };
+    return { get_modifier( character_modifier_aim_speed_skill_mod, gun.gun_skill() ), get_modifier( character_modifier_aim_speed_dex_mod ), get_modifier( character_modifier_aim_speed_mod ), most_accurate_aiming_method_limit( gun ), aim_factor_from_volume( gun ), aim_factor_from_length( here, gun ), parallaxes };
 }
 
 double Character::fastest_aiming_method_speed( const item &gun, double recoil,
@@ -1012,22 +1018,27 @@ double Character::aim_factor_from_volume( const item &gun ) const
     return std::max( factor, 0.2 ) ;
 }
 
-static bool is_obstacle( tripoint_bub_ms pos )
+static bool is_obstacle( const map &here, const tripoint_bub_ms &pos )
 {
-    return get_map().coverage( pos ) >= 50;
+    return here.coverage( pos ) >= 50;
 }
 
 double Character::aim_factor_from_length( const item &gun ) const
 {
-    tripoint_bub_ms cur_pos = pos_bub();
-    bool nw_to_se = is_obstacle( cur_pos + tripoint::south_east ) &&
-                    is_obstacle( cur_pos + tripoint::north_west );
-    bool w_to_e = is_obstacle( cur_pos + tripoint::west ) &&
-                  is_obstacle( cur_pos + tripoint::east );
-    bool sw_to_ne = is_obstacle( cur_pos + tripoint::south_west ) &&
-                    is_obstacle( cur_pos + tripoint::north_east );
-    bool n_to_s = is_obstacle( cur_pos + tripoint::north ) &&
-                  is_obstacle( cur_pos + tripoint::south );
+    return aim_factor_from_length( get_map(), gun );
+}
+
+double Character::aim_factor_from_length( const map &here, const item &gun ) const
+{
+    const tripoint_bub_ms cur_pos = pos_bub( here );
+    bool nw_to_se = is_obstacle( here, cur_pos + tripoint::south_east ) &&
+                    is_obstacle( here, cur_pos + tripoint::north_west );
+    bool w_to_e = is_obstacle( here, cur_pos + tripoint::west ) &&
+                  is_obstacle( here, cur_pos + tripoint::east );
+    bool sw_to_ne = is_obstacle( here, cur_pos + tripoint::south_west ) &&
+                    is_obstacle( here, cur_pos + tripoint::north_east );
+    bool n_to_s = is_obstacle( here, cur_pos + tripoint::north ) &&
+                  is_obstacle( here, cur_pos + tripoint::south );
     double wielded_length = gun.length() / 1_mm;
     double factor = 1.0;
 
@@ -5299,7 +5310,8 @@ void Character::assign_activity( const player_activity &act )
         activity.set_resume_values( act, *this );
     } else {
         if( activity ) {
-            if( is_npc() && ( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ) &&
+            if( is_npc() && ( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ||
+                              activity.id() == ACT_PROVIDE_OVERWATCH ) &&
                 activity.id() != act.id() ) {
                 activity.canceled( *this );
             } else {
@@ -6446,7 +6458,7 @@ void Character::echo_pulse()
             sounds::sound( origin, 5, sounds::sound_t::sensory, _( "clack." ), true,
                            "none", "none" );
             // This only counts obstacles which can be moved through, so the echo is pretty quiet.
-        } else if( is_obstacle( origin ) && here.sees( pos_bub(), origin, pulse_range, false ) ) {
+        } else if( is_obstacle( here, origin ) && here.sees( pos_bub(), origin, pulse_range, false ) ) {
             sounds::sound( origin, 1, sounds::sound_t::sensory, _( "click." ), true,
                            "none", "none" );
         }

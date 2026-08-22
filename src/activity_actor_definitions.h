@@ -4070,6 +4070,37 @@ class operate_drone_activity_actor : public activity_actor
 };
 
 /**
+ * NPC-only activity that roots a follower at the exact tile where overwatch was assigned.
+ */
+class provide_overwatch_activity_actor : public activity_actor
+{
+    public:
+        provide_overwatch_activity_actor() = default;
+        explicit provide_overwatch_activity_actor( const tripoint_abs_ms &assigned_post ) :
+            post( assigned_post ) {}
+
+        void start( player_activity &act, Character &who ) override;
+        void do_turn( player_activity &act, Character &who ) override;
+        void finish( player_activity &, Character & ) override {}
+        void canceled( player_activity &, Character &who ) override;
+
+        const activity_id &get_type() const override {
+            static const activity_id ACT_PROVIDE_OVERWATCH( "ACT_PROVIDE_OVERWATCH" );
+            return ACT_PROVIDE_OVERWATCH;
+        }
+
+        std::unique_ptr<activity_actor> clone() const override {
+            return std::make_unique<provide_overwatch_activity_actor>( *this );
+        }
+
+        void serialize( JsonOut &jsout ) const override;
+        static std::unique_ptr<activity_actor> deserialize( JsonValue &jsin );
+
+    private:
+        tripoint_abs_ms post = tripoint_abs_ms::invalid;
+};
+
+/**
 * Player activity for sustained laser target designation.
 */
 class laser_designator_activity_actor : public activity_actor

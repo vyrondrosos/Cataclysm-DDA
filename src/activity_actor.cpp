@@ -108,6 +108,7 @@
 #include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
+#include "overwatch.h"
 #include "pickup.h"
 #include "pimpl.h"
 #include "player_activity.h"
@@ -204,6 +205,7 @@ static const activity_id ACT_LOCKPICK( "ACT_LOCKPICK" );
 static const activity_id ACT_LONGSALVAGE( "ACT_LONGSALVAGE" );
 static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
 static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
+static const activity_id ACT_PROVIDE_OVERWATCH( "ACT_PROVIDE_OVERWATCH" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
 static const activity_id ACT_MEND_ITEM( "ACT_MEND_ITEM" );
 static const activity_id ACT_MIGRATION_CANCEL( "ACT_MIGRATION_CANCEL" );
@@ -13961,6 +13963,70 @@ std::unique_ptr<activity_actor> operate_drone_activity_actor::deserialize( JsonV
     return operate_drone_activity_actor().clone();
 }
 
+void provide_overwatch_activity_actor::start( player_activity &act, Character &who )
+{
+    if( !who.is_npc() ) {
+        act.set_to_null();
+        return;
+    }
+    act.moves_total = calendar::INDEFINITELY_LONG;
+    act.moves_left = calendar::INDEFINITELY_LONG;
+}
+
+void provide_overwatch_activity_actor::do_turn( player_activity &act, Character &who )
+{
+    if( !who.is_npc() ) {
+        act.set_to_null();
+        return;
+    }
+    npc &gunner = dynamic_cast<npc &>( who );
+    const diag_value assignment = gunner.get_value( "overwatch_assignment" );
+    const diag_value stored_post = gunner.get_value( "overwatch_post" );
+    if( assignment.is_empty() || assignment.str() != "yes" || !stored_post.is_tripoint() ||
+        stored_post.tripoint() != post || gunner.pos_abs() != post ) {
+        gunner.revert_after_activity();
+        return;
+    }
+    const diag_value active_order = gunner.get_value( "overwatch_order_key" );
+    if( !active_order.is_empty() &&
+        ( !active_order.is_str() ||
+          ( get_timed_events().get( timed_event_type::OVERWATCH_FIRE,
+                                    active_order.str() ) == nullptr &&
+            get_timed_events().get( timed_event_type::OVERWATCH_RELOAD,
+                                    active_order.str() ) == nullptr ) ) ) {
+        // Reconcile an interrupted or partially loaded save instead of
+        // reporting an order forever when no event can complete it.
+        overwatch::cancel_order( gunner, false );
+    }
+    // Holding the post consumes the turn without resetting recoil.  A normal
+    // pause() would discard the weapon's post-shot recoil every turn and make
+    // repeat-fire aim timing disagree with ordinary gun handling.
+    gunner.set_moves( 0 );
+    act.moves_left = calendar::INDEFINITELY_LONG;
+}
+
+void provide_overwatch_activity_actor::canceled( player_activity &, Character &who )
+{
+    if( who.is_npc() ) {
+        dynamic_cast<npc &>( who ).clear_overwatch_support( true );
+    }
+}
+
+void provide_overwatch_activity_actor::serialize( JsonOut &jsout ) const
+{
+    jsout.start_object();
+    jsout.member( "post", post );
+    jsout.end_object();
+}
+
+std::unique_ptr<activity_actor> provide_overwatch_activity_actor::deserialize( JsonValue &jsin )
+{
+    JsonObject data = jsin.get_object();
+    provide_overwatch_activity_actor actor;
+    data.read( "post", actor.post );
+    return actor.clone();
+}
+
 void wait_activity_actor::start( player_activity &act, Character & )
 {
     act.moves_total = to_moves<int>( initial_wait_time );
@@ -15458,6 +15524,7 @@ deserialize_functions = {
     { ACT_LONGSALVAGE, &longsalvage_activity_actor::deserialize },
     { ACT_MAN_MORTAR, &man_mortar_activity_actor::deserialize },
     { ACT_OPERATE_DRONE, &operate_drone_activity_actor::deserialize },
+    { ACT_PROVIDE_OVERWATCH, &provide_overwatch_activity_actor::deserialize },
     { ACT_MEDITATE, &meditate_activity_actor::deserialize },
     { ACT_MEND_ITEM, &mend_item_activity_actor::deserialize },
     { ACT_MIGRATION_CANCEL, &migration_cancel_activity_actor::deserialize },

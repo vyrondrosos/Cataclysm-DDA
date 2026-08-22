@@ -124,6 +124,7 @@
 #include "options.h"
 #include "output.h"
 #include "omdata.h"
+#include "overwatch.h"
 #include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
@@ -239,6 +240,13 @@ static void request_mortar_fire( npc &gunner, bool repeat_target );
 static void request_mortar_fire_for_effect( npc &gunner );
 static void select_mortar_ammo( npc &gunner );
 static void toggle_mortar_adjustment( npc &gunner );
+static void assign_overwatch( npc &gunner );
+static void select_overwatch_fire_mode( npc &gunner );
+static void request_overwatch_fire( npc &gunner, bool repeat );
+static void reload_overwatch( npc &gunner );
+static void cancel_overwatch_order( npc &gunner );
+static void report_overwatch( npc &gunner );
+static void stand_down_overwatch( npc &gunner );
 } // namespace talk_effect_fun
 
 using item_menu = std::function<item_location( const item_location_filter & )>;
@@ -753,6 +761,14 @@ enum npc_chat_menu {
     NPC_CHAT_MORTAR_SUPPORT_REPORT_AMMO,
     NPC_CHAT_MORTAR_SUPPORT_TOGGLE_ADJUSTMENT,
     NPC_CHAT_MORTAR_SUPPORT_ASSIGN_CREW,
+    NPC_CHAT_OVERWATCH_SUPPORT,
+    NPC_CHAT_OVERWATCH_SELECT_MODE,
+    NPC_CHAT_OVERWATCH_FIRE,
+    NPC_CHAT_OVERWATCH_REPEAT_FIRE,
+    NPC_CHAT_OVERWATCH_RELOAD,
+    NPC_CHAT_OVERWATCH_CEASE_FIRE,
+    NPC_CHAT_OVERWATCH_REPORT,
+    NPC_CHAT_OVERWATCH_STAND_DOWN,
     NPC_CHAT_ACTIVITIES,
     NPC_CHAT_ACTIVITIES_MOVE_LOOT,
     NPC_CHAT_ACTIVITIES_BUTCHERY,
@@ -766,6 +782,7 @@ enum npc_chat_menu {
     NPC_CHAT_ACTIVITIES_MINING,
     NPC_CHAT_ACTIVITIES_MOPPING,
     NPC_CHAT_ACTIVITIES_MAN_MORTAR,
+    NPC_CHAT_ACTIVITIES_PROVIDE_OVERWATCH,
     NPC_CHAT_ACTIVITIES_READ_REPEATEDLY,
     NPC_CHAT_ACTIVITIES_STUDY,
     NPC_CHAT_ACTIVITIES_VEHICLE_DECONSTRUCTION,
@@ -1054,6 +1071,8 @@ static int npc_activities_menu()
     nmenu.addentry( NPC_CHAT_ACTIVITIES_UNASSIGN, true, '-',
                     _( "Taking it easy (Stop what they are working on)" ) );
     nmenu.addentry( NPC_CHAT_ACTIVITIES_MAN_MORTAR, true, 'o', _( "Manning a nearby mortar" ) );
+    nmenu.addentry( NPC_CHAT_ACTIVITIES_PROVIDE_OVERWATCH, true, 'w',
+                    _( "Providing overwatch from their current position" ) );
 
     nmenu.query();
 
@@ -1082,6 +1101,32 @@ static int npc_mortar_support_menu()
 
     nmenu.query();
 
+    return nmenu.ret;
+}
+
+static int npc_overwatch_support_menu( const npc &gunner )
+{
+    const std::vector<overwatch::firing_mode> modes = overwatch::eligible_modes( gunner );
+
+    uilist nmenu;
+    nmenu.text = _( "What overwatch order?" );
+    nmenu.desc_enabled = true;
+    nmenu.footer_text = overwatch::status( gunner );
+    nmenu.addentry( NPC_CHAT_OVERWATCH_SELECT_MODE, !modes.empty(), 'm',
+                    _( "Select weapon mode" ) );
+    nmenu.addentry( NPC_CHAT_OVERWATCH_FIRE, true, 'f',
+                    _( "Fire once at a hostile target" ) );
+    nmenu.addentry( NPC_CHAT_OVERWATCH_REPEAT_FIRE, true, 'r',
+                    _( "Keep firing at a hostile target" ) );
+    nmenu.addentry( NPC_CHAT_OVERWATCH_RELOAD, true, 'l',
+                    _( "Reload the selected weapon" ) );
+    nmenu.addentry( NPC_CHAT_OVERWATCH_CEASE_FIRE, true, 'c',
+                    _( "Cease fire" ) );
+    nmenu.addentry( NPC_CHAT_OVERWATCH_REPORT, true, 'p',
+                    _( "Report overwatch status" ) );
+    nmenu.addentry( NPC_CHAT_OVERWATCH_STAND_DOWN, true, 'd',
+                    _( "Stand down from overwatch" ) );
+    nmenu.query();
     return nmenu.ret;
 }
 
@@ -1196,6 +1241,12 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                !mortar_assignment.is_empty() && !mortar_assignment.str().empty();
     } );
     const int available_mortar_support_count = available_mortar_support.size();
+    const std::vector<npc *> available_overwatch_support = get_npcs_if( [&]( const npc & guy ) {
+        return overwatch::is_assigned( guy ) &&
+               guy.can_hear( player_character.pos_bub(), volume ) &&
+               guy.companion_mission_role_id != "FACTION_CAMP";
+    } );
+    const int available_overwatch_support_count = available_overwatch_support.size();
 
     if( player_character.has_trait( trait_PROF_FOODP ) &&
         !( player_character.is_wearing( itype_foodperson_mask ) ||
@@ -1265,6 +1316,13 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                                        available_mortar_support.front()->get_name() ) :
                         _( "Give someone a mortar order…" )
                       );
+    }
+    if( !available_overwatch_support.empty() ) {
+        nmenu.addentry( NPC_CHAT_OVERWATCH_SUPPORT, true, 'W',
+                        available_overwatch_support_count == 1 ?
+                        string_format( _( "Give %s an overwatch order" ),
+                                       available_overwatch_support.front()->get_name() ) :
+                        _( "Give someone an overwatch order…" ) );
     }
 
     nmenu.addentry( NPC_CHAT_YELL, true, 'a', _( "Yell" ) );
@@ -1574,6 +1632,49 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
             }
             break;
         }
+        case NPC_CHAT_OVERWATCH_SUPPORT: {
+            std::vector<npc *> sorted_npcs( available_overwatch_support.begin(),
+                                            available_overwatch_support.end() );
+            std::sort( sorted_npcs.begin(), sorted_npcs.end(), []( const npc * a, const npc * b ) {
+                return localized_compare( a->get_name(), b->get_name() );
+            } );
+            int npcselect = 0;
+            if( available_overwatch_support_count > 1 ) {
+                npcselect = npc_select_menu( sorted_npcs,
+                                             _( "Who should receive the overwatch order?" ), false );
+                if( npcselect < 0 ) {
+                    return;
+                }
+            }
+            npc &gunner = *sorted_npcs[npcselect];
+            const int order = npc_overwatch_support_menu( gunner );
+            switch( order ) {
+                case NPC_CHAT_OVERWATCH_SELECT_MODE:
+                    talk_effect_fun::select_overwatch_fire_mode( gunner );
+                    break;
+                case NPC_CHAT_OVERWATCH_FIRE:
+                    talk_effect_fun::request_overwatch_fire( gunner, false );
+                    break;
+                case NPC_CHAT_OVERWATCH_REPEAT_FIRE:
+                    talk_effect_fun::request_overwatch_fire( gunner, true );
+                    break;
+                case NPC_CHAT_OVERWATCH_RELOAD:
+                    talk_effect_fun::reload_overwatch( gunner );
+                    break;
+                case NPC_CHAT_OVERWATCH_CEASE_FIRE:
+                    talk_effect_fun::cancel_overwatch_order( gunner );
+                    break;
+                case NPC_CHAT_OVERWATCH_REPORT:
+                    talk_effect_fun::report_overwatch( gunner );
+                    break;
+                case NPC_CHAT_OVERWATCH_STAND_DOWN:
+                    talk_effect_fun::stand_down_overwatch( gunner );
+                    break;
+                default:
+                    break;
+            }
+            break;
+        }
         case NPC_CHAT_ACTIVITIES: {
             const int activity = npc_activities_menu();
             if( activity == UILIST_CANCEL ) {
@@ -1654,6 +1755,10 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                     }
                     case NPC_CHAT_ACTIVITIES_MAN_MORTAR: {
                         talk_effect_fun::assign_mortar_support( *selected_npc );
+                        break;
+                    }
+                    case NPC_CHAT_ACTIVITIES_PROVIDE_OVERWATCH: {
+                        talk_effect_fun::assign_overwatch( *selected_npc );
                         break;
                     }
                     case NPC_CHAT_ACTIVITIES_VEHICLE_DECONSTRUCTION: {
@@ -7537,6 +7642,7 @@ void assign_mortar_support_impl( npc &gunner )
     }
 
     gunner.clear_fpv_support( true );
+    gunner.clear_overwatch_support( true );
 
     if( gunner.has_player_activity() ) {
         gunner.revert_after_activity();
@@ -7624,6 +7730,8 @@ void assign_mortar_crew_impl( npc &gunner )
 
     npc &assistant = *candidates[npcselect];
     assistant.clear_mortar_support( true );
+    assistant.clear_fpv_support( true );
+    assistant.clear_overwatch_support( true );
     assistant.set_value( "mortar_crew_gunner_id", gunner.getID().get_value() );
     assistant.set_value( "mortar_crew_gunner_name", gunner.disp_name() );
     assistant.set_value( "mortar_crew_mortar_type", mortar->type->id.str() );
@@ -9732,6 +9840,7 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
             operator_npc->revert_after_activity();
         }
         operator_npc->clear_mortar_support( true );
+        operator_npc->clear_overwatch_support( true );
 
         const bool needs_controller = operator_npc->amount_of( itype_remotevehcontrol, false ) <= 0 &&
         count_support_items( *operator_npc, []( const item & it ) {
@@ -10670,6 +10779,85 @@ talk_effect_fun_t::func f_make_radio_representative( const bool is_beta )
         } else {
             debugmsg( "Trying to make radio representative, but %s talker is nullptr.  %s",
                       is_beta ? "beta" : "alpha", d.get_callstack() );
+        }
+    };
+}
+
+npc *overwatch_dialogue_npc( const dialogue &d, const char *effect )
+{
+    npc *gunner = d.actor( true )->get_npc();
+    if( gunner == nullptr ) {
+        debugmsg( "Trying to %s, but beta talker is not an NPC.  %s", effect,
+                  d.get_callstack() );
+    }
+    return gunner;
+}
+
+talk_effect_fun_t::func f_assign_overwatch()
+{
+    return []( dialogue const & d ) {
+        npc *gunner = overwatch_dialogue_npc( d, "assign overwatch" );
+        if( gunner == nullptr ) {
+            return;
+        }
+        if( d.by_radio ) {
+            add_msg( _( "You need to assign an overwatch post in person." ) );
+            return;
+        }
+        assign_overwatch( *gunner );
+    };
+}
+
+talk_effect_fun_t::func f_select_overwatch_fire_mode()
+{
+    return []( dialogue const & d ) {
+        if( npc *gunner = overwatch_dialogue_npc( d, "select overwatch fire mode" ) ) {
+            select_overwatch_fire_mode( *gunner );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_request_overwatch_fire( const bool repeat )
+{
+    return [repeat]( dialogue const & d ) {
+        if( npc *gunner = overwatch_dialogue_npc( d, "request overwatch fire" ) ) {
+            request_overwatch_fire( *gunner, repeat );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_reload_overwatch()
+{
+    return []( dialogue const & d ) {
+        if( npc *gunner = overwatch_dialogue_npc( d, "request overwatch reload" ) ) {
+            reload_overwatch( *gunner );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_cancel_overwatch_order()
+{
+    return []( dialogue const & d ) {
+        if( npc *gunner = overwatch_dialogue_npc( d, "cancel overwatch order" ) ) {
+            cancel_overwatch_order( *gunner );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_report_overwatch()
+{
+    return []( dialogue const & d ) {
+        if( npc *gunner = overwatch_dialogue_npc( d, "report overwatch status" ) ) {
+            report_overwatch( *gunner );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_stand_down_overwatch()
+{
+    return []( dialogue const & d ) {
+        if( npc *gunner = overwatch_dialogue_npc( d, "stand down overwatch" ) ) {
+            stand_down_overwatch( *gunner );
         }
     };
 }
@@ -13297,6 +13485,119 @@ static void toggle_mortar_adjustment( npc &gunner )
     toggle_mortar_adjustment_impl( gunner );
 }
 
+static void assign_overwatch( npc &gunner )
+{
+    std::string failure;
+    if( overwatch::assign( gunner, &failure ) ) {
+        add_msg( _( "%s takes up overwatch at their current position." ), gunner.disp_name() );
+    } else {
+        add_msg( m_info, "%s", failure );
+    }
+}
+
+static void select_overwatch_fire_mode( npc &gunner )
+{
+    const std::vector<overwatch::firing_mode> modes = overwatch::eligible_modes( gunner );
+    if( modes.empty() ) {
+        add_msg( _( "%s no longer has an eligible rifle or launcher mode." ), gunner.disp_name() );
+        return;
+    }
+
+    const diag_value current = gunner.get_value( "overwatch_mode" );
+    uilist menu;
+    menu.text = _( "Select overwatch weapon mode" );
+    menu.desc_enabled = true;
+    for( size_t index = 0; index < modes.size(); ++index ) {
+        const overwatch::firing_mode &mode = modes[index];
+        std::string firing_type;
+        if( mode.automatic ) {
+            firing_type = string_format( _( "full auto (%d rounds)" ), mode.shots );
+        } else if( mode.shots == 1 ) {
+            firing_type = _( "single shot" );
+        } else {
+            firing_type = string_format( _( "%d-round burst" ), mode.shots );
+        }
+        menu.addentry( static_cast<int>( index ), true, MENU_AUTOASSIGN,
+                       string_format( _( "%1$s — %2$s" ), mode.name, firing_type ) );
+        if( current.is_str() && current.str() == mode.id.str() ) {
+            menu.selected = menu.fselected = static_cast<int>( index );
+        }
+    }
+    menu.query();
+    if( menu.ret < 0 || static_cast<size_t>( menu.ret ) >= modes.size() ) {
+        return;
+    }
+
+    std::string failure;
+    const overwatch::firing_mode &selected = modes[menu.ret];
+    if( overwatch::select_fire_mode( gunner, selected.id, &failure ) ) {
+        add_msg( _( "%1$s sets overwatch mode to %2$s." ), gunner.disp_name(), selected.name );
+    } else {
+        add_msg( m_info, "%s", failure );
+    }
+}
+
+static void request_overwatch_fire( npc &gunner, const bool repeat )
+{
+    avatar &you = get_avatar();
+    add_msg( m_info, _( "Select a hostile target for %s.  Use Tab to cycle targets." ),
+             gunner.disp_name() );
+    const target_handler::trajectory trajectory =
+        target_handler::mode_select_only( you, MAX_VIEW_DISTANCE );
+    if( trajectory.empty() ) {
+        return;
+    }
+    Creature *target = get_creature_tracker().creature_at<Creature>( trajectory.back() );
+    if( target == nullptr ) {
+        add_msg( m_info, _( "Select a living hostile creature, not an empty tile." ) );
+        return;
+    }
+
+    std::string failure;
+    if( overwatch::issue_order( gunner, *target, repeat, &failure ) ) {
+        add_msg( repeat ?
+                 _( "%1$s confirms they will keep firing at %2$s until it is dead or lost from sight." ) :
+                 _( "%1$s confirms a single engagement against %2$s." ),
+                 gunner.disp_name(), target->disp_name() );
+    } else {
+        add_msg( m_info, "%s", failure );
+    }
+}
+
+static void reload_overwatch( npc &gunner )
+{
+    std::string failure;
+    if( overwatch::issue_reload( gunner, &failure ) ) {
+        add_msg( _( "%s confirms the reload order." ), gunner.disp_name() );
+    } else {
+        add_msg( m_info, "%s", failure );
+    }
+}
+
+static void cancel_overwatch_order( npc &gunner )
+{
+    const diag_value key = gunner.get_value( "overwatch_order_key" );
+    if( key.is_empty() ) {
+        add_msg( _( "%s reports they are already holding fire." ), gunner.disp_name() );
+        return;
+    }
+    overwatch::cancel_order( gunner, true );
+}
+
+static void report_overwatch( npc &gunner )
+{
+    overwatch::report( gunner );
+}
+
+static void stand_down_overwatch( npc &gunner )
+{
+    if( !overwatch::is_assigned( gunner ) ) {
+        add_msg( _( "%s is no longer assigned to overwatch." ), gunner.disp_name() );
+        return;
+    }
+    overwatch::stand_down( gunner, true );
+}
+
 } // namespace talk_effect_fun
 
 namespace talk_effect_fun
@@ -13810,6 +14111,38 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     }
     if( effect_id == "assign_mortar" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_assign_mortar() ) );
+        return;
+    }
+    if( effect_id == "assign_overwatch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_assign_overwatch() ) );
+        return;
+    }
+    if( effect_id == "select_overwatch_fire_mode" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_select_overwatch_fire_mode() ) );
+        return;
+    }
+    if( effect_id == "request_overwatch_fire" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_overwatch_fire( false ) ) );
+        return;
+    }
+    if( effect_id == "request_overwatch_repeat_fire" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_request_overwatch_fire( true ) ) );
+        return;
+    }
+    if( effect_id == "reload_overwatch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_reload_overwatch() ) );
+        return;
+    }
+    if( effect_id == "cancel_overwatch_order" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_cancel_overwatch_order() ) );
+        return;
+    }
+    if( effect_id == "report_overwatch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_report_overwatch() ) );
+        return;
+    }
+    if( effect_id == "stand_down_overwatch" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_stand_down_overwatch() ) );
         return;
     }
     if( effect_id == "assign_mortar_crew" ) {

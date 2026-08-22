@@ -81,6 +81,8 @@ struct dealt_projectile_attack {
     bool shrapnel = false; // True if the projectile is generated from an explosive
     // Critters that hit by the projectile or null
     std::map<Creature *, std::pair<int, int>> targets_hit;
+    // Absolute counterpart of end_point, used when a trajectory spans more than one loaded map.
+    tripoint_abs_ms end_point_abs = tripoint_abs_ms::invalid;
 };
 
 void apply_ammo_effects( Creature *source, const tripoint_bub_ms &p,

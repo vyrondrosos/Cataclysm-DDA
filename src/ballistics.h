@@ -20,6 +20,12 @@ class vehicle;
 struct dealt_projectile_attack;
 struct projectile;
 
+/**
+ * Returns distance with no discount through @p full_range, half credit through twice that
+ * range, and one-third credit thereafter.
+ */
+double discounted_range( double distance, double full_range );
+
 /** Aim result for a single projectile attack */
 struct projectile_attack_aim {
     ///< Hit quality, where 0.0 is a perfect hit and 1.0 is a miss
@@ -49,6 +55,16 @@ void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_
 void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_arg,
                         map *here, const tripoint_bub_ms &source, const tripoint_bub_ms &target_arg,
                         const dispersion_sources &dispersion, Creature *origin = nullptr, const vehicle *in_veh = nullptr,
+                        const weakpoint_attack &wp_attack = weakpoint_attack() );
+
+/**
+ * Fires a projectile along an absolute-coordinate trajectory, loading normal-sized map windows
+ * as needed.  @p accuracy_distance affects dispersion without shortening the physical trace.
+ */
+void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_arg,
+                        map *source_map, const tripoint_abs_ms &source, const tripoint_abs_ms &target_arg,
+                        const dispersion_sources &dispersion, double accuracy_distance,
+                        Creature *origin = nullptr, const vehicle *in_veh = nullptr,
                         const weakpoint_attack &wp_attack = weakpoint_attack() );
 
 /* Used for selecting which part to target in a projectile attack

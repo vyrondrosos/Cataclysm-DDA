@@ -2024,6 +2024,27 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                 jo.get_member( "fpv_terminal_miss" ).read( impact_data->miss, true );
                 break;
             }
+            case timed_event_type::OVERWATCH_RELOAD:
+            case timed_event_type::OVERWATCH_FIRE: {
+                if( !jo.has_member( "overwatch_gunner" ) ||
+                    !jo.has_member( "overwatch_target_pos" ) ) {
+                    continue;
+                }
+                event.data = std::make_unique<overwatch_fire_event_data>();
+                overwatch_fire_event_data *fire_data =
+                    event.get_data<overwatch_fire_event_data>();
+                jo.read( "overwatch_gunner", fire_data->gunner_id, true );
+                jo.read( "overwatch_target_character", fire_data->target_character );
+                jo.read( "overwatch_target_monster", fire_data->target_monster );
+                jo.read( "overwatch_target_pos", fire_data->target_pos, true );
+                jo.read( "overwatch_mode", fire_data->mode_id );
+                jo.read( "overwatch_order_key", fire_data->order_key );
+                jo.read( "overwatch_aim_moves", fire_data->aim_moves );
+                jo.read( "overwatch_reload_moves", fire_data->reload_moves );
+                jo.read( "overwatch_continue_fire", fire_data->continue_fire );
+                jo.read( "overwatch_repeat", fire_data->repeat );
+                break;
+            }
             default:
                 break;
         }
@@ -2217,6 +2238,27 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
                 jsout.member( "fpv_terminal_target_character", impact_data->target_character );
                 jsout.member( "fpv_terminal_target_monster", impact_data->target_monster );
                 jsout.member( "fpv_terminal_miss", impact_data->miss );
+                break;
+            }
+            case timed_event_type::OVERWATCH_RELOAD:
+            case timed_event_type::OVERWATCH_FIRE: {
+                const overwatch_fire_event_data *fire_data =
+                    elem.get_data<overwatch_fire_event_data>();
+                if( fire_data == nullptr || !fire_data->gunner_id.is_valid() ||
+                    fire_data->target_pos.is_invalid() ) {
+                    debugmsg( "Overwatch fire event missing targeting data." );
+                    break;
+                }
+                jsout.member( "overwatch_gunner", fire_data->gunner_id );
+                jsout.member( "overwatch_target_character", fire_data->target_character );
+                jsout.member( "overwatch_target_monster", fire_data->target_monster );
+                jsout.member( "overwatch_target_pos", fire_data->target_pos );
+                jsout.member( "overwatch_mode", fire_data->mode_id );
+                jsout.member( "overwatch_order_key", fire_data->order_key );
+                jsout.member( "overwatch_aim_moves", fire_data->aim_moves );
+                jsout.member( "overwatch_reload_moves", fire_data->reload_moves );
+                jsout.member( "overwatch_continue_fire", fire_data->continue_fire );
+                jsout.member( "overwatch_repeat", fire_data->repeat );
                 break;
             }
             default:
