@@ -48,6 +48,8 @@
 #include "character_martial_arts.h"
 #include "city.h"
 #include "color.h"
+#include "computer.h"
+#include "computer_session.h"
 #include "coordinate_conversions.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -163,6 +165,7 @@ static const faction_id faction_your_followers( "your_followers" );
 
 static const itype_id itype_architect_cube( "architect_cube" );
 static const itype_id itype_debug_backpack( "debug_backpack" );
+static const itype_id itype_militarymap( "militarymap" );
 
 static const matype_id style_none( "style_none" );
 
@@ -307,6 +310,7 @@ std::string enum_to_string<debug_menu::debug_menu_index>( debug_menu::debug_menu
         case debug_menu::debug_menu_index::VEHICLE_EFFECTS: return "VEHICLE_EFFECTS";
         case debug_menu::debug_menu_index::WISHPROFICIENCY: return "WISHPROFICIENCY";
         case debug_menu::debug_menu_index::RELOAD_GPU_SHADERS: return "RELOAD_GPU_SHADERS";
+        case debug_menu::debug_menu_index::VIEW_MILITARY_MAP_LOGISTICS: return "VIEW_MILITARY_MAP_LOGISTICS";
         // *INDENT-ON*
         case debug_menu::debug_menu_index::last:
             break;
@@ -975,6 +979,7 @@ static int info_uilist()
     // always displayed
     std::vector<uilist_entry> uilist_initializer = {
         { uilist_entry( debug_menu_index::SAVE_SCREENSHOT, true, 'H', _( "Take screenshot" ) ) },
+        { uilist_entry( debug_menu_index::VIEW_MILITARY_MAP_LOGISTICS, true, 'L', _( "View held military operations map logistics" ) ) },
         { uilist_entry( debug_menu_index::GAME_REPORT, true, 'r', _( "Generate game report" ) ) },
         { uilist_entry( debug_menu_index::GAME_MIN_ARCHIVE, true, '!', _( "Generate minimized save archive" ) ) },
         { uilist_entry( debug_menu_index::GAME_STATE, true, 'g', _( "Check game state" ) ) },
@@ -4075,6 +4080,20 @@ static void write_city_list()
     popup( string_format( _( "city list written to cities.output" ) ) );
 }
 
+static void view_military_map_logistics()
+{
+    const item_location held = get_avatar().get_wielded_item();
+    if( !held || held->typeId() != itype_militarymap ) {
+        popup( _( "Wield a military operations map to view its logistics index." ) );
+        return;
+    }
+
+    computer terminal( _( "MILITARY SITE LOGISTICS TERMINAL" ), 0, get_avatar().pos_abs() );
+    terminal.add_option( _( "Access military site logistics index" ),
+                         COMPACT_MILITARY_SITE_INDEX, 0 );
+    computer_session( terminal ).use();
+}
+
 static void write_global_vars()
 {
     write_to_file( "var_list.output", [&]( std::ostream & testfile ) {
@@ -4517,6 +4536,15 @@ const std::vector<debug_action_entry> &all_actions()
         },
 
         // Data
+        {
+            debug_menu_index::VIEW_MILITARY_MAP_LOGISTICS,
+            translate_marker( "View held military operations map logistics" ),
+            "military operations map logistics cache", "Data", []()
+            {
+                view_military_map_logistics();
+            },
+            translate_marker( "Open the logistics index associated with the wielded military operations map" )
+        },
         {
             debug_menu_index::EDIT_GLOBAL_VARS, translate_marker( "Edit global vars" ), "global var variable edit", "Data", []()
             {
