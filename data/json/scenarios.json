@@ -819,7 +819,6 @@
     "start_name": "Emergency Landing Site",
     "allowed_locs": [ "sloc_field" ],
     "map_extra": "mx_apache_farm_landing",
-    "missions": [ "MISSION_APACHE_FIND_MILITARY_HELIPORT", "MISSION_APACHE_RETURN_TO_CARRIER" ],
     "professions": [ "marine_apache_pilot" ],
     "distance_initial_visibility": 0
   },
