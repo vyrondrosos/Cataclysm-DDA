@@ -507,6 +507,5 @@ if (( RUN_BUILD == 1 )); then
         TESTS=0 \
         LTO=$(( USE_LTO )) \
         GOLD=0 \
-        "${MAKE_ARGS[@]}" \
-        SDL3=0
+        "${MAKE_ARGS[@]}"
 fi
