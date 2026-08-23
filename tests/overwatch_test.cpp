@@ -731,6 +731,42 @@ TEST_CASE( "overwatch_repeat_order_holds_fire_and_resumes_on_regained_sight",
     CHECK( overwatch::is_assigned( gunner ) );
 }
 
+TEST_CASE( "overwatch_single_order_reports_lost_sight", "[overwatch][timed_event]" )
+{
+    npc &gunner = make_overwatch_gunner();
+    arm_shooter( gunner, itype_modular_m16_auto_rifle );
+    REQUIRE( overwatch::assign( gunner ) );
+
+    map &here = get_map();
+    monster &target = spawn_test_monster( "mon_zombie_hulk",
+                                         gunner.pos_bub( here ) + tripoint( 8, 0, 0 ), false );
+    REQUIRE( overwatch::issue_order( gunner, target, false ) );
+
+    clear_overwatch_events();
+    const auto remove_events = on_out_of_scope( []() {
+        clear_overwatch_events();
+    } );
+    REQUIRE( overwatch::issue_order( gunner, target, false ) );
+    const std::string key = gunner.get_value( "overwatch_order_key" ).str();
+    timed_event *event = get_timed_events().get( timed_event_type::OVERWATCH_FIRE, key );
+    REQUIRE( event != nullptr );
+    const overwatch_fire_event_data fire_data = *event->get_data<overwatch_fire_event_data>();
+    get_timed_events().remove( timed_event_type::OVERWATCH_FIRE, key );
+
+    REQUIRE( here.ter_set( gunner.pos_bub( here ) + tripoint( 4, 0, 0 ),
+                           ter_t_brick_wall ) );
+    here.invalidate_map_cache( 0 );
+    here.build_map_cache( 0, true );
+    Messages::clear_messages();
+    CHECK_FALSE( overwatch::actualize_fire_event( fire_data ) );
+    CHECK( gunner.get_value( "overwatch_order_key" ).is_empty() );
+    REQUIRE( Messages::size() == 1 );
+    CHECK( Messages::recent_messages( 1 ).back().second.find( "Aborting overwatch order" ) !=
+           std::string::npos );
+    CHECK( Messages::recent_messages( 1 ).back().second.find( "left my sight" ) !=
+           std::string::npos );
+}
+
 TEST_CASE( "overwatch_repeat_shot_recovery_precedes_automatic_reload",
            "[overwatch][reload][timed_event]" )
 {

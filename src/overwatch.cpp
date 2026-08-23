@@ -400,6 +400,14 @@ void report_regained_sight( npc &gunner, const Creature &target )
              gunner.disp_name(), target.disp_name() );
 }
 
+void report_order_abort( const npc &gunner, const std::string &reason )
+{
+    if( overwatch::operator_available( gunner ) ) {
+        add_msg( _( "%1$s reports: \"Aborting overwatch order; %2$s.\"" ),
+                 gunner.disp_name(), reason );
+    }
+}
+
 std::optional<int> reload_moves_for_mode( npc &gunner, const gun_mode &mode )
 {
     const auto select = [&gunner, &mode]() -> std::optional<int> {
@@ -937,26 +945,39 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
         active_key.str() != event_data.order_key ) {
         return false;
     }
-    const auto cancel_current = [gunner]() {
+    const auto cancel_current = [gunner]( const std::string & reason = std::string() ) {
         // The currently actualizing event must not remove itself from the manager's list.
         clear_order_values( *gunner );
+        if( !reason.empty() ) {
+            report_order_abort( *gunner, reason );
+        }
     };
     Creature *target = resolve_target( event_data.target_character, event_data.target_monster );
-    if( !operator_available( *gunner ) || !is_assigned( *gunner ) || target == nullptr ||
-        target->is_dead_state() || target->is_hallucination() || !target_is_hostile( *target ) ||
-        rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ) {
+    if( !operator_available( *gunner ) || !is_assigned( *gunner ) ) {
         cancel_current();
+        return false;
+    }
+    if( target == nullptr ) {
+        cancel_current( _( "the target can no longer be tracked" ) );
+        return false;
+    }
+    if( target->is_dead_state() || target->is_hallucination() || !target_is_hostile( *target ) ) {
+        cancel_current( _( "the target is no longer a living hostile" ) );
+        return false;
+    }
+    if( rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ) {
+        cancel_current( _( "the target is beyond overwatch range" ) );
         return false;
     }
     const gun_mode_id mode_id( event_data.mode_id );
     if( !observer_can_see( *gunner, *target ) ) {
         if( !event_data.repeat ) {
-            cancel_current();
+            cancel_current( string_format( _( "%s has left my sight" ), target->disp_name() ) );
             return false;
         }
         const std::optional<target_reference> target_ref = make_target_reference( *target );
         if( !target_ref ) {
-            cancel_current();
+            cancel_current( _( "the target can no longer be tracked" ) );
             return false;
         }
         store_target( *gunner, *target_ref );
@@ -971,12 +992,12 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
     const std::optional<std::pair<gun_mode_id, gun_mode>> selected = selected_mode( *gunner );
     if( !selected || selected->first != mode_id ||
         !mode_is_eligible( *gunner, mode_id, &failure ) ) {
-        cancel_current();
+        cancel_current( failure.empty() ? _( "the selected weapon mode is no longer available" ) : failure );
         return false;
     }
     item_location wielded = gunner->get_wielded_item();
     if( !wielded || !wielded->gun_set_mode( mode_id ) ) {
-        cancel_current();
+        cancel_current( _( "the selected weapon mode is no longer available" ) );
         return false;
     }
     gun_mode mode = wielded->gun_get_mode( mode_id );
@@ -998,7 +1019,7 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
     if( maximum_aim_moves( *gunner, mode, *target ) > 0 ) {
         const std::optional<target_reference> target_ref = make_target_reference( *target );
         if( !target_ref ) {
-            cancel_current();
+            cancel_current( _( "the target can no longer be tracked" ) );
             return false;
         }
         store_target( *gunner, *target_ref );
@@ -1019,7 +1040,7 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
     // move debt for the rooted activity to discard on its next turn.
     gunner->set_moves( moves_before_firing );
     if( fired <= 0 ) {
-        cancel_current();
+        cancel_current( _( "I was unable to fire the selected weapon" ) );
         return false;
     }
     if( gunner->is_dead_state() ) {
@@ -1028,12 +1049,12 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
     }
 
     if( !event_data.repeat || target->is_dead_state() ) {
-        cancel_current();
+        cancel_current( event_data.repeat ? _( "the target is down" ) : std::string() );
         return true;
     }
     const std::optional<target_reference> target_ref = make_target_reference( *target );
     if( !target_ref ) {
-        cancel_current();
+        cancel_current( _( "the target can no longer be tracked" ) );
         return true;
     }
     store_target( *gunner, *target_ref );
@@ -1067,8 +1088,11 @@ bool actualize_reload_event( const overwatch_fire_event_data &event_data )
         active_key.str() != event_data.order_key ) {
         return false;
     }
-    const auto cancel_current = [gunner]() {
+    const auto cancel_current = [gunner]( const std::string & reason = std::string() ) {
         clear_order_values( *gunner );
+        if( !reason.empty() ) {
+            report_order_abort( *gunner, reason );
+        }
     };
     if( !operator_available( *gunner ) || !is_assigned( *gunner ) ) {
         cancel_current();
@@ -1091,9 +1115,16 @@ bool actualize_reload_event( const overwatch_fire_event_data &event_data )
         return true;
     }
     Creature *target = resolve_target( event_data.target_character, event_data.target_monster );
-    if( target == nullptr || target->is_dead_state() || !target_is_hostile( *target ) ||
-        rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ) {
-        cancel_current();
+    if( target == nullptr ) {
+        cancel_current( _( "the target can no longer be tracked" ) );
+        return false;
+    }
+    if( target->is_dead_state() || !target_is_hostile( *target ) ) {
+        cancel_current( _( "the target is no longer a living hostile" ) );
+        return false;
+    }
+    if( rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ) {
+        cancel_current( _( "the target is beyond overwatch range" ) );
         return false;
     }
     const std::optional<target_reference> target_ref = make_target_reference( *target );
@@ -1104,7 +1135,7 @@ bool actualize_reload_event( const overwatch_fire_event_data &event_data )
     store_target( *gunner, *target_ref );
     if( !observer_can_see( *gunner, *target ) ) {
         if( !event_data.repeat ) {
-            cancel_current();
+            cancel_current( string_format( _( "%s has left my sight" ), target->disp_name() ) );
             return false;
         }
         report_lost_sight( *gunner, *target );
