@@ -52,10 +52,13 @@ enum class lit_level : uint8_t;
 cata_shader::variant_kind compute_variant_kind( lit_level ll, bool use_nv_tiles );
 
 class Character;
+class map;
+class map_viewpoint;
 class memorized_tile;
 class monster;
 class nc_color;
 class pixel_minimap;
+struct map_view_ui_overlay;
 struct sprite_screen_bounds;
 struct tint_sprite_record;
 enum class direction : unsigned int;
@@ -586,6 +589,11 @@ class cata_tiles
         void draw( const point &dest, const tripoint_bub_ms &center, int width, int height,
                    std::multimap<point, formatted_text> &overlay_strings,
                    color_block_overlay_container &color_blocks );
+        /** Draw an explicit map viewpoint without borrowing avatar vision or map memory. */
+        void draw_view( const point &dest, map &viewed_map, const tripoint_bub_ms &center,
+                        int width, int height, const map_viewpoint &viewpoint,
+                        const std::optional<tripoint_bub_ms> &cursor,
+                        const std::vector<map_view_ui_overlay> &overlays );
         void draw_om( const point &dest, const tripoint_abs_omt &center_abs_omt, bool blink );
 
         /** Minimap functionality */
@@ -1025,6 +1033,8 @@ class cata_tiles
         // point represents the mount direction
         std::map<tripoint_bub_ms, std::tuple<vpart_id, int, units::angle, bool, point_rel_ms>>
                 vpart_override;
+        // Suppress avatar-only memory and item-perception behavior while drawing an explicit view.
+        bool map_view_mode = false;
         // int represents spawn count
         std::map<tripoint_bub_ms, std::tuple<mtype_id, int, bool, Creature::Attitude>> monster_override;
 
