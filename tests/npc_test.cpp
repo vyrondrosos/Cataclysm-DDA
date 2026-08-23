@@ -905,6 +905,27 @@ TEST_CASE( "FPV_mission_cleanup_removes_all_scoped_values", "[npc][drone]" )
     CHECK( guy.get_value( "fpv_payload_type" ).str() == "grenade" );
 }
 
+TEST_CASE( "unconscious_drone_operator_loses_airborne_drone", "[npc][drone][activity]" )
+{
+    clear_map_without_vision();
+    npc &guy = spawn_npc( { 50, 50 }, "test_talker" );
+    clear_character( guy );
+
+    guy.set_value( "fpv_assignment", "operator" );
+    guy.set_value( "fpv_status", "on_station" );
+    guy.fpv_active_drone = item( itype_fpv_scout_drone );
+    guy.assign_activity( operate_drone_activity_actor() );
+    REQUIRE( guy.activity );
+
+    guy.add_effect( effect_sleep, 1_hours );
+    guy.activity.do_turn( guy );
+
+    CHECK_FALSE( guy.activity );
+    CHECK( guy.get_value( "fpv_assignment" ).is_empty() );
+    CHECK( guy.get_value( "fpv_status" ).is_empty() );
+    CHECK_FALSE( guy.fpv_active_drone.has_value() );
+}
+
 TEST_CASE( "FPV_drone_capabilities_are_defined_by_items", "[npc][drone]" )
 {
     for( const itype_id &drone_id : {

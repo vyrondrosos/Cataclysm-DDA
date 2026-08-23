@@ -9269,6 +9269,11 @@ static void schedule_fpv_status_messages( const npc &operator_npc,
 
 static bool require_fpv_radio_link( const dialogue &d, const npc &operator_npc )
 {
+    if( operator_npc.is_dead() || operator_npc.in_sleep_state() ||
+        operator_npc.has_effect( effect_narcosis ) ) {
+        add_msg( _( "%s is unable to operate drones right now." ), operator_npc.disp_name() );
+        return false;
+    }
     if( !d.by_radio ) {
         return true;
     }
@@ -9811,6 +9816,9 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
             add_msg( _( "You need to do that in person." ) );
             return;
         }
+        if( !require_fpv_radio_link( d, *operator_npc ) ) {
+            return;
+        }
         if( !operator_npc->is_player_ally() ) {
             add_msg( _( "%s is not willing to operate drones for you." ),
                      operator_npc->disp_name() );
@@ -9934,6 +9942,9 @@ talk_effect_fun_t::func f_unassign_fpv_drone_operator()
         }
         if( d.by_radio ) {
             add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) ) {
             return;
         }
         cancel_fpv_assignment_for_new_duty( *operator_npc );
