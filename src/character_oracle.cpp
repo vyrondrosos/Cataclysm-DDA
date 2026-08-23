@@ -401,6 +401,8 @@ float character_oracle_t::duty_urgency( std::string_view ) const
     }
     if( n->activity.id() == ACT_MAN_MORTAR || n->activity.id() == ACT_OPERATE_DRONE ||
         n->activity.id() == ACT_PROVIDE_OVERWATCH ) {
+        // Active support duties are equivalent to a guard standing at their
+        // post.  Severe needs can still override them.
         return 0.45f;
     }
     std::optional<tripoint_abs_ms> gp = n->get_guard_post();

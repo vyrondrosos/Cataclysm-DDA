@@ -122,6 +122,7 @@ static const activity_id ACT_FIRSTAID( "ACT_FIRSTAID" );
 static const activity_id ACT_FORAGE( "ACT_FORAGE" );
 static const activity_id ACT_HARVEST( "ACT_HARVEST" );
 static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
+static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
 static const activity_id ACT_MOVE_LOOT( "ACT_MOVE_LOOT" );
 static const activity_id ACT_MULTIPLE_BUTCHER( "ACT_MULTIPLE_BUTCHER" );
 static const activity_id ACT_MULTIPLE_CHOP_PLANKS( "ACT_MULTIPLE_CHOP_PLANKS" );
