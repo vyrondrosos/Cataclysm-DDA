@@ -59,6 +59,7 @@ constexpr const char *assignment_key = "overwatch_assignment";
 constexpr const char *mode_key = "overwatch_mode";
 constexpr const char *post_key = "overwatch_post";
 constexpr const char *order_key = "overwatch_order_key";
+constexpr const char *sight_lost_key = "overwatch_sight_lost";
 
 static const efftype_id effect_no_sight( "no_sight" );
 static const efftype_id effect_narcosis( "narcosis" );
@@ -208,7 +209,7 @@ void clear_order_values( npc &gunner )
              "overwatch_order_key", "overwatch_repeat", "overwatch_target_type",
              "overwatch_target_character_id", "overwatch_target_monster_id",
              "overwatch_target_x", "overwatch_target_y", "overwatch_target_z",
-             "overwatch_ready_turn"
+             "overwatch_ready_turn", "overwatch_sight_lost"
          } ) {
         gunner.remove_value( key );
     }
@@ -356,9 +357,47 @@ void schedule_fire( npc &gunner, Creature &target, const target_reference &targe
     data.order_key = key;
     data.aim_moves = aim_moves;
     data.repeat = repeat;
+    get_timed_events().add_overwatch_fire( ready, data.target_pos, gunner.disp_name(), key,
+            data );
+    gunner.set_value( "overwatch_ready_turn",
+                      to_turns<int>( ready - calendar::turn_zero ) );
+}
+
+void schedule_sight_check( npc &gunner, Creature &target, const target_reference &target_ref,
+                           const gun_mode_id &mode_id, const std::string &key )
+{
+    overwatch_fire_event_data data;
+    data.gunner_id = gunner.getID();
+    data.target_character = target_ref.character;
+    data.target_monster = target_ref.monster;
+    data.target_pos = target.pos_abs();
+    data.mode_id = mode_id.str();
+    data.order_key = key;
+    data.repeat = true;
+    const time_point ready = calendar::turn + 1_turns;
     get_timed_events().add_overwatch_fire( ready, data.target_pos, gunner.disp_name(), key, data );
     gunner.set_value( "overwatch_ready_turn",
                       to_turns<int>( ready - calendar::turn_zero ) );
+}
+
+void report_lost_sight( npc &gunner, const Creature &target )
+{
+    if( gunner.get_value( sight_lost_key ).is_str() ) {
+        return;
+    }
+    gunner.set_value( sight_lost_key, "yes" );
+    add_msg( _( "%1$s reports: \"I have lost sight of %2$s; holding fire.\"" ),
+             gunner.disp_name(), target.disp_name() );
+}
+
+void report_regained_sight( npc &gunner, const Creature &target )
+{
+    if( !gunner.get_value( sight_lost_key ).is_str() ) {
+        return;
+    }
+    gunner.remove_value( sight_lost_key );
+    add_msg( _( "%1$s reports: \"I have %2$s in sight again.\"" ),
+             gunner.disp_name(), target.disp_name() );
 }
 
 std::optional<int> reload_moves_for_mode( npc &gunner, const gun_mode &mode )
@@ -868,8 +907,10 @@ std::string status( const npc &gunner )
     const std::optional<target_reference> target = stored_target( gunner );
     Creature *live_target = target ? resolve_target( target->character, target->monster ) : nullptr;
     const diag_value repeat = gunner.get_value( "overwatch_repeat" );
-    const std::string order = live_target ?
-                              string_format( repeat.is_str() && repeat.str() == "yes" ?
+    const std::string order = live_target && gunner.get_value( sight_lost_key ).is_str() ?
+                              string_format( _( "holding fire; %s is out of sight" ),
+                                             live_target->disp_name() ) :
+                              live_target ? string_format( repeat.is_str() && repeat.str() == "yes" ?
                                              _( "engaging %s repeatedly" ) : _( "aiming at %s" ),
                                              live_target->disp_name() ) : _( "holding fire" );
     return string_format( _( "%1$s is on overwatch with %2$s, %3$s, %4$d rounds ready; %5$s." ),
@@ -902,14 +943,30 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
     };
     Creature *target = resolve_target( event_data.target_character, event_data.target_monster );
     if( !operator_available( *gunner ) || !is_assigned( *gunner ) || target == nullptr ||
-        target->is_dead_state() ||
-        target->is_hallucination() || !target_is_hostile( *target ) ||
-        rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ||
-        !observer_can_see( *gunner, *target ) ) {
+        target->is_dead_state() || target->is_hallucination() || !target_is_hostile( *target ) ||
+        rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ) {
         cancel_current();
         return false;
     }
     const gun_mode_id mode_id( event_data.mode_id );
+    if( !observer_can_see( *gunner, *target ) ) {
+        if( !event_data.repeat ) {
+            cancel_current();
+            return false;
+        }
+        const std::optional<target_reference> target_ref = make_target_reference( *target );
+        if( !target_ref ) {
+            cancel_current();
+            return false;
+        }
+        store_target( *gunner, *target_ref );
+        report_lost_sight( *gunner, *target );
+        schedule_sight_check( *gunner, *target, *target_ref, mode_id, event_data.order_key );
+        return true;
+    }
+    if( event_data.repeat ) {
+        report_regained_sight( *gunner, *target );
+    }
     std::string failure;
     const std::optional<std::pair<gun_mode_id, gun_mode>> selected = selected_mode( *gunner );
     if( !selected || selected->first != mode_id ||
@@ -970,7 +1027,7 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
         return true;
     }
 
-    if( !event_data.repeat || target->is_dead_state() || !observer_can_see( *gunner, *target ) ) {
+    if( !event_data.repeat || target->is_dead_state() ) {
         cancel_current();
         return true;
     }
@@ -980,6 +1037,11 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
         return true;
     }
     store_target( *gunner, *target_ref );
+    if( !observer_can_see( *gunner, *target ) ) {
+        report_lost_sight( *gunner, *target );
+        schedule_sight_check( *gunner, *target, *target_ref, mode_id, event_data.order_key );
+        return true;
+    }
     wielded = gunner->get_wielded_item();
     mode = wielded ? wielded->gun_get_mode( mode_id ) : gun_mode();
     if( mode && mode->ammo_sufficient( gunner ) ) {
@@ -1030,8 +1092,7 @@ bool actualize_reload_event( const overwatch_fire_event_data &event_data )
     }
     Creature *target = resolve_target( event_data.target_character, event_data.target_monster );
     if( target == nullptr || target->is_dead_state() || !target_is_hostile( *target ) ||
-        rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ||
-        !observer_can_see( *gunner, *target ) ) {
+        rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ) {
         cancel_current();
         return false;
     }
@@ -1041,6 +1102,18 @@ bool actualize_reload_event( const overwatch_fire_event_data &event_data )
         return false;
     }
     store_target( *gunner, *target_ref );
+    if( !observer_can_see( *gunner, *target ) ) {
+        if( !event_data.repeat ) {
+            cancel_current();
+            return false;
+        }
+        report_lost_sight( *gunner, *target );
+        schedule_sight_check( *gunner, *target, *target_ref, mode_id, event_data.order_key );
+        return true;
+    }
+    if( event_data.repeat ) {
+        report_regained_sight( *gunner, *target );
+    }
     schedule_fire( *gunner, *target, *target_ref, mode_id, event_data.repeat,
                    event_data.order_key );
     return true;

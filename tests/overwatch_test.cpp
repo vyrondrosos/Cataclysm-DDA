@@ -25,6 +25,7 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "map_scale_constants.h"
+#include "messages.h"
 #include "monster.h"
 #include "npc.h"
 #include "overwatch.h"
@@ -650,7 +651,7 @@ TEST_CASE( "unconscious_overwatch_gunner_cannot_complete_scheduled_fire",
     CHECK( gunner.get_value( "overwatch_order_key" ).is_empty() );
 }
 
-TEST_CASE( "overwatch_repeat_order_reschedules_and_stops_on_lost_sight",
+TEST_CASE( "overwatch_repeat_order_holds_fire_and_resumes_on_regained_sight",
            "[overwatch][timed_event]" )
 {
     npc &gunner = make_overwatch_gunner();
@@ -706,10 +707,27 @@ TEST_CASE( "overwatch_repeat_order_reschedules_and_stops_on_lost_sight",
     here.invalidate_map_cache( 0 );
     here.build_map_cache( 0, true );
     const int ammunition_after_first = gunner.get_wielded_item()->ammo_remaining();
-    CHECK_FALSE( overwatch::actualize_fire_event( second_fire ) );
+    Messages::clear_messages();
+    CHECK( overwatch::actualize_fire_event( second_fire ) );
     CHECK( gunner.get_wielded_item()->ammo_remaining() == ammunition_after_first );
-    CHECK( gunner.get_value( "overwatch_order_key" ).is_empty() );
-    CHECK( events.get( timed_event_type::OVERWATCH_FIRE, key ) == nullptr );
+    CHECK( gunner.get_value( "overwatch_order_key" ).str() == key );
+    CHECK( gunner.get_value( "overwatch_sight_lost" ).str() == "yes" );
+    REQUIRE( Messages::size() == 1 );
+    CHECK( Messages::recent_messages( 1 ).back().second.find( "lost sight" ) != std::string::npos );
+    timed_event *sight_check = events.get( timed_event_type::OVERWATCH_FIRE, key );
+    REQUIRE( sight_check != nullptr );
+    const overwatch_fire_event_data sight_check_data =
+        *sight_check->get_data<overwatch_fire_event_data>();
+    events.remove( timed_event_type::OVERWATCH_FIRE, key );
+    REQUIRE( here.ter_set( gunner.pos_bub( here ) + tripoint( 4, 0, 0 ), ter_t_floor ) );
+    here.invalidate_map_cache( 0 );
+    here.build_map_cache( 0, true );
+    CHECK( overwatch::actualize_fire_event( sight_check_data ) );
+    CHECK( gunner.get_value( "overwatch_sight_lost" ).is_empty() );
+    REQUIRE( Messages::size() == 2 );
+    CHECK( Messages::recent_messages( 1 ).back().second.find( "in sight again" ) !=
+           std::string::npos );
+    CHECK( events.get( timed_event_type::OVERWATCH_FIRE, key ) != nullptr );
     CHECK( overwatch::is_assigned( gunner ) );
 }
 
