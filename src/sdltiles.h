@@ -64,6 +64,12 @@ window_dimensions get_window_dimensions( const catacurses::window &win );
 // position and size. Unlike real catacurses::window, size can be zero.
 window_dimensions get_window_dimensions( const point &pos, const point &size );
 
+// Register the window occupied by an explicit-map tiles view.  Its position and
+// bounds still use the normal terminal font, while mouse-to-map conversion uses
+// the active tileset's tile dimensions.
+void set_map_view_window( const catacurses::window &win );
+void clear_map_view_window();
+
 const SDL_Renderer_Ptr &get_sdl_renderer();
 // Clears the SDL renderer to black. Returns false without clearing when a
 // recovery/pause/resize is queued or the buffer bind failed, so the caller can

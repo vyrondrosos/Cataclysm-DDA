@@ -51,6 +51,7 @@ static const itype_id itype_disinfectant( "disinfectant" );
 
 static const ter_str_id ter_t_brick_wall( "t_brick_wall" );
 static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
 
 static const vproto_id vehicle_prototype_obstacle_test( "obstacle_test" );
 
@@ -192,6 +193,29 @@ TEST_CASE( "map_viewpoint_on_non_current_map", "[map][map_viewpoint]" )
     CHECK( view.sees( remote_map, target ) );
     view.set_range( 0 );
     CHECK_FALSE( view.sees( remote_map, target ) );
+
+    const tripoint_bub_ms elevated_origin = origin + tripoint_rel_ms::above;
+    const tripoint_bub_ms nearby_ground( 5, 4, 0 );
+    remote_map.ter_set( elevated_origin, ter_t_open_air );
+    remote_map.ter_set( nearby_ground + tripoint_rel_ms::above, ter_t_open_air );
+    remote_map.build_los_cache( elevated_origin.z() );
+    view.set_origin( remote_map.get_abs( elevated_origin ) );
+    view.set_range( 6 );
+    CHECK( view.sees( remote_map, nearby_ground ) );
+
+    // A roof between an airborne viewpoint and the observed surface blocks the
+    // downward trace even though the same surface is visible at ground level.
+    remote_map.ter_set( nearby_ground + tripoint_rel_ms::above, ter_t_floor );
+    remote_map.build_los_cache( elevated_origin.z() );
+    CHECK_FALSE( view.sees( remote_map, nearby_ground ) );
+
+    // The roof itself remains a visible surface when the viewpoint is above it.
+    const tripoint_bub_ms roof = nearby_ground + tripoint_rel_ms::above;
+    const tripoint_bub_ms above_roof = roof + tripoint_rel_ms::above;
+    remote_map.ter_set( above_roof, ter_t_open_air );
+    remote_map.build_los_cache( above_roof.z() );
+    view.set_origin( remote_map.get_abs( above_roof ) );
+    CHECK( view.sees( remote_map, roof ) );
 
     vehicle *obstacle = remote_map.add_vehicle( vehicle_prototype_obstacle_test,
                         tripoint_bub_ms( 16, 16, 0 ), 0_degrees, 0,

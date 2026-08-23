@@ -140,6 +140,7 @@ static Font_Ptr font;
 static Font_Ptr gui_font;
 static Font_Ptr map_font;
 static Font_Ptr overmap_font;
+static catacurses::window map_view_window;
 
 static SDL_Window_Ptr window;
 static SDL_Renderer_Ptr renderer;
@@ -6551,7 +6552,8 @@ static window_dimensions get_window_dimensions( const catacurses::window &win,
         const point &pos, const point &size )
 {
     window_dimensions dim;
-    if( use_tiles && g && win == g->w_terrain ) {
+    const bool is_map_view = use_tiles && win && map_view_window && win == map_view_window;
+    if( use_tiles && ( ( g && win == g->w_terrain ) || is_map_view ) ) {
         // tiles might have different dimensions than standard font
         dim.scaled_font_size.x = tilecontext->get_tile_width();
         dim.scaled_font_size.y = tilecontext->get_tile_height();
@@ -6594,6 +6596,11 @@ static window_dimensions get_window_dimensions( const catacurses::window &win,
         // The terrain GUI has special size during rendering.
         dim.window_size_pixel.x = TERRAIN_WINDOW_TERM_WIDTH * fontwidth;
         dim.window_size_pixel.y = TERRAIN_WINDOW_TERM_HEIGHT * fontheight;
+    } else if( is_map_view ) {
+        // The modal's terminal-cell rectangle is its clipping area.  Tiles are
+        // fitted inside it instead of changing the modal's physical extent.
+        dim.window_size_pixel.x = dim.window_size_cell.x * fontwidth;
+        dim.window_size_pixel.y = dim.window_size_cell.y * fontheight;
     } else if( use_tiles && use_tiles_overmap && g && win == g->w_overmap ) {
         // The overmap GUI has special size during rendering.
         dim.window_size_pixel.x = OVERMAP_WINDOW_TERM_WIDTH * fontwidth;
@@ -6628,6 +6635,16 @@ window_dimensions get_window_dimensions( const point &pos, const point &size )
     return get_window_dimensions( {}, pos, size );
 }
 
+void set_map_view_window( const catacurses::window &win )
+{
+    map_view_window = win;
+}
+
+void clear_map_view_window()
+{
+    map_view_window = {};
+}
+
 std::optional<tripoint_bub_ms> input_context::get_coordinates( const catacurses::window
         &capture_win_, const point &offset, const bool center_cursor ) const
 {
@@ -6651,7 +6668,9 @@ std::optional<tripoint_bub_ms> input_context::get_coordinates( const catacurses:
         logical_coordinate.x /= scaling_factor;
         logical_coordinate.y /= scaling_factor;
 
+        const bool is_map_view = use_tiles && map_view_window && capture_win == map_view_window;
         const bool is_terrain_or_overmap = ( use_tiles && g && capture_win == g->w_terrain ) ||
+                                           is_map_view ||
                                            ( use_tiles && use_tiles_overmap && g && capture_win == g->w_overmap );
         if( !is_terrain_or_overmap ) {
             win_size.x /= scaling_factor;
@@ -6676,7 +6695,9 @@ std::optional<tripoint_bub_ms> input_context::get_coordinates( const catacurses:
     // convert tile size to logical if UI is scaled
     point logical_tile_size;
     if( scaling_factor > 1 ) {
-        const bool is_terrain = use_tiles && g && capture_win == g->w_terrain;
+        const bool is_terrain = use_tiles &&
+                                ( ( g && capture_win == g->w_terrain ) ||
+                                  ( map_view_window && capture_win == map_view_window ) );
         const bool is_overmap = use_tiles && use_tiles_overmap && g && capture_win == g->w_overmap;
 
         if( is_terrain ) {

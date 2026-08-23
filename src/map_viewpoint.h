@@ -9,8 +9,10 @@ class map;
 /**
  * A geometric viewpoint at an explicit map-square location.
  *
- * This only considers range and map line of sight.  Character senses and
- * creature detection are separate concerns for callers to apply.
+ * This only considers range and map line of sight.  Downward sight also stops
+ * at floors in the target column, since map::sees() normally treats its opaque
+ * endpoint as visible.  Character senses and creature detection are separate
+ * concerns for callers to apply.
  * The supplied map must have current LOS caches; call map::build_los_cache()
  * after loading or changing it.
  */
