@@ -13934,6 +13934,12 @@ void operate_drone_activity_actor::do_turn( player_activity &act, Character &who
         return;
     }
     npc &operator_npc = dynamic_cast<npc &>( who );
+    if( operator_npc.in_sleep_state() || operator_npc.has_effect( effect_narcosis ) ) {
+        // Lost control makes an airborne FPV unrecoverable.  canceled() clears
+        // the assignment and deliberately treats the active drone as lost.
+        operator_npc.revert_after_activity();
+        return;
+    }
     const diag_value assignment = operator_npc.get_value( "fpv_assignment" );
     if( assignment.is_empty() || assignment.str().empty() ) {
         act.set_to_null();

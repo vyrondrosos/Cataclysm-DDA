@@ -6612,6 +6612,21 @@ bool mortar_npc_can_crew( const npc &guy )
            guy.get_working_arm_count() > 0;
 }
 
+bool mortar_operator_available( const npc &gunner )
+{
+    return !gunner.is_dead() && !gunner.in_sleep_state() &&
+           !gunner.has_effect( effect_narcosis );
+}
+
+bool require_mortar_operator_available( const npc &gunner )
+{
+    if( mortar_operator_available( gunner ) ) {
+        return true;
+    }
+    add_msg( _( "%s is unable to operate the mortar right now." ), gunner.disp_name() );
+    return false;
+}
+
 int mortar_max_secondary_crew( const mortar_type &mortar )
 {
     return mortar.max_assistants();
@@ -7917,9 +7932,10 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
         add_msg( _( "%s has not been assigned to a mortar." ), gunner.disp_name() );
         return;
     }
-    if( !mortar_npc_can_crew( gunner ) ) {
-        add_msg( _( "%s is unable to operate the mortar right now." ), gunner.disp_name() );
-        gunner.clear_mortar_support( true );
+    if( !mortar_operator_available( gunner ) ) {
+        if( !from_queue ) {
+            require_mortar_operator_available( gunner );
+        }
         return;
     }
     const tripoint_abs_ms &mortar_abs = mortar->pos;
@@ -8335,6 +8351,9 @@ void request_mortar_fire_impl( npc &gunner, const bool repeat_target,
 
 void report_mortar_support_impl( npc &gunner )
 {
+    if( !require_mortar_operator_available( gunner ) ) {
+        return;
+    }
     const std::optional<assigned_mortar> mortar = get_assigned_mortar( gunner );
     if( !mortar ) {
         add_msg( _( "%s has not been assigned to a mortar." ), gunner.disp_name() );
@@ -8366,6 +8385,9 @@ void report_mortar_support_impl( npc &gunner )
 
 void toggle_mortar_adjustment_impl( npc &gunner )
 {
+    if( !require_mortar_operator_available( gunner ) ) {
+        return;
+    }
     const std::optional<assigned_mortar> mortar = get_assigned_mortar( gunner );
     if( !mortar ) {
         add_msg( _( "%s has not been assigned to a mortar." ), gunner.disp_name() );
@@ -8408,6 +8430,9 @@ void toggle_mortar_adjustment_impl( npc &gunner )
 
 void select_mortar_ammo_impl( npc &gunner )
 {
+    if( !require_mortar_operator_available( gunner ) ) {
+        return;
+    }
     const std::optional<assigned_mortar> mortar = get_assigned_mortar( gunner );
     if( !mortar ) {
         add_msg( _( "%s has not been assigned to a mortar." ), gunner.disp_name() );
@@ -8474,6 +8499,9 @@ talk_effect_fun_t::func f_request_mortar_repeat_fire()
 
 void request_mortar_fire_for_effect_impl( npc &gunner )
 {
+    if( !require_mortar_operator_available( gunner ) ) {
+        return;
+    }
     const std::optional<assigned_mortar> mortar = get_assigned_mortar( gunner );
     if( !mortar ) {
         add_msg( _( "%s has not been assigned to a mortar." ), gunner.disp_name() );
@@ -9284,6 +9312,11 @@ static void schedule_fpv_status_messages( const npc &operator_npc,
 
 static bool require_fpv_radio_link( const dialogue &d, const npc &operator_npc )
 {
+    if( operator_npc.is_dead() || operator_npc.in_sleep_state() ||
+        operator_npc.has_effect( effect_narcosis ) ) {
+        add_msg( _( "%s is unable to operate drones right now." ), operator_npc.disp_name() );
+        return false;
+    }
     if( !d.by_radio ) {
         return true;
     }
@@ -9826,6 +9859,9 @@ talk_effect_fun_t::func f_assign_fpv_drone_operator()
             add_msg( _( "You need to do that in person." ) );
             return;
         }
+        if( !require_fpv_radio_link( d, *operator_npc ) ) {
+            return;
+        }
         if( !operator_npc->is_player_ally() ) {
             add_msg( _( "%s is not willing to operate drones for you." ),
                      operator_npc->disp_name() );
@@ -9950,6 +9986,9 @@ talk_effect_fun_t::func f_unassign_fpv_drone_operator()
         }
         if( d.by_radio ) {
             add_msg( _( "You need to do that in person." ) );
+            return;
+        }
+        if( !require_fpv_radio_link( d, *operator_npc ) ) {
             return;
         }
         cancel_fpv_assignment_for_new_duty( *operator_npc );
@@ -13555,8 +13594,8 @@ static void request_overwatch_fire( npc &gunner, const bool repeat )
 
     std::string failure;
     if( overwatch::issue_order( gunner, *target, repeat, &failure ) ) {
-        add_msg( repeat ?
-                 _( "%1$s confirms they will keep firing at %2$s until it is dead or lost from sight." ) :
+        add_msg( repeat ? _( "%1$s confirms they will keep firing at %2$s until it is dead, "
+                             "holding fire if it leaves sight." ) :
                  _( "%1$s confirms a single engagement against %2$s." ),
                  gunner.disp_name(), target->disp_name() );
     } else {

@@ -121,6 +121,7 @@ static const activity_id ACT_CRAFT( "ACT_CRAFT" );
 static const activity_id ACT_FIRSTAID( "ACT_FIRSTAID" );
 static const activity_id ACT_FORAGE( "ACT_FORAGE" );
 static const activity_id ACT_HARVEST( "ACT_HARVEST" );
+static const activity_id ACT_MAN_MORTAR( "ACT_MAN_MORTAR" );
 static const activity_id ACT_MOVE_LOOT( "ACT_MOVE_LOOT" );
 static const activity_id ACT_MULTIPLE_BUTCHER( "ACT_MULTIPLE_BUTCHER" );
 static const activity_id ACT_MULTIPLE_CHOP_PLANKS( "ACT_MULTIPLE_CHOP_PLANKS" );
@@ -133,6 +134,8 @@ static const activity_id ACT_MULTIPLE_FISH( "ACT_MULTIPLE_FISH" );
 static const activity_id ACT_MULTIPLE_READ( "ACT_MULTIPLE_READ" );
 static const activity_id ACT_MULTIPLE_STUDY( "ACT_MULTIPLE_STUDY" );
 static const activity_id ACT_OPERATION( "ACT_OPERATION" );
+static const activity_id ACT_OPERATE_DRONE( "ACT_OPERATE_DRONE" );
+static const activity_id ACT_PROVIDE_OVERWATCH( "ACT_PROVIDE_OVERWATCH" );
 static const activity_id ACT_SPELLCASTING( "ACT_SPELLCASTING" );
 static const activity_id ACT_START_FIRE( "ACT_START_FIRE" );
 static const activity_id ACT_VEHICLE_DECONSTRUCTION( "ACT_VEHICLE_DECONSTRUCTION" );
@@ -1861,10 +1864,15 @@ void npc::move()
             } else if( new_goal == "goto_ordered_position" ) {
                 action = npc_goto_to_this_pos;
             } else if( new_goal == "hold_position" ) {
-                action = address_needs( NPC_DANGER_VERY_LOW + 1 );
-                if( action == npc_undecided ) {
-                    // Otherwise legacy cascade overrides BT's duty decision.
-                    action = npc_pause;
+                if( activity.id() == ACT_MAN_MORTAR || activity.id() == ACT_OPERATE_DRONE ||
+                    activity.id() == ACT_PROVIDE_OVERWATCH ) {
+                    action = npc_player_activity;
+                } else {
+                    action = address_needs( NPC_DANGER_VERY_LOW + 1 );
+                    if( action == npc_undecided ) {
+                        // Otherwise legacy cascade overrides BT's duty decision.
+                        action = npc_pause;
+                    }
                 }
             } else if( new_goal == "camp_work" ) {
                 last_job_scan = calendar::turn;

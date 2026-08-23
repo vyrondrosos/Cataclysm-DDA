@@ -25,6 +25,7 @@ struct firing_mode {
 };
 
 bool is_assigned( const npc &gunner );
+bool operator_available( const npc &gunner );
 std::vector<firing_mode> eligible_modes( const npc &gunner );
 bool mode_is_eligible( const npc &gunner, const gun_mode_id &mode_id,
                        std::string *failure = nullptr );

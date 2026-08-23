@@ -61,6 +61,7 @@ constexpr const char *post_key = "overwatch_post";
 constexpr const char *order_key = "overwatch_order_key";
 
 static const efftype_id effect_no_sight( "no_sight" );
+static const efftype_id effect_narcosis( "narcosis" );
 static const flag_id flag_INVISIBLE( "INVISIBLE" );
 
 enum class target_kind : int {
@@ -495,6 +496,11 @@ bool is_assigned( const npc &gunner )
            assignment.str() == "yes" && post.is_tripoint() && post.tripoint() == gunner.pos_abs();
 }
 
+bool operator_available( const npc &gunner )
+{
+    return !gunner.is_dead() && !gunner.in_sleep_state() && !gunner.has_effect( effect_narcosis );
+}
+
 std::vector<firing_mode> eligible_modes( const npc &gunner )
 {
     std::vector<firing_mode> result;
@@ -538,6 +544,13 @@ bool mode_is_eligible( const npc &gunner, const gun_mode_id &mode_id, std::strin
 
 bool assign( npc &gunner, std::string *failure )
 {
+    if( !operator_available( gunner ) ) {
+        if( failure != nullptr ) {
+            *failure = string_format( _( "%s is unable to provide overwatch right now." ),
+                                      gunner.disp_name() );
+        }
+        return false;
+    }
     if( !gunner.is_player_ally() || gunner.is_hallucination() ) {
         if( failure != nullptr ) {
             *failure = string_format( _( "%s is not willing to provide overwatch." ),
@@ -594,6 +607,13 @@ bool select_fire_mode( npc &gunner, const bool automatic, std::string *failure )
 
 bool select_fire_mode( npc &gunner, const gun_mode_id &mode_id, std::string *failure )
 {
+    if( !operator_available( gunner ) ) {
+        if( failure != nullptr ) {
+            *failure = string_format( _( "%s is unable to operate overwatch right now." ),
+                                      gunner.disp_name() );
+        }
+        return false;
+    }
     if( !is_assigned( gunner ) ) {
         if( failure != nullptr ) {
             *failure = _( "That follower is no longer holding an overwatch position." );
@@ -694,6 +714,13 @@ bool observer_can_see( const npc &gunner, const Creature &target )
 
 bool issue_order( npc &gunner, Creature &target, const bool repeat, std::string *failure )
 {
+    if( !operator_available( gunner ) ) {
+        if( failure != nullptr ) {
+            *failure = string_format( _( "%s is unable to operate overwatch right now." ),
+                                      gunner.disp_name() );
+        }
+        return false;
+    }
     if( !is_assigned( gunner ) ) {
         if( failure != nullptr ) {
             *failure = _( "That follower is no longer holding an overwatch position." );
@@ -750,6 +777,13 @@ bool issue_order( npc &gunner, Creature &target, const bool repeat, std::string 
 
 bool issue_reload( npc &gunner, std::string *failure )
 {
+    if( !operator_available( gunner ) ) {
+        if( failure != nullptr ) {
+            *failure = string_format( _( "%s is unable to operate overwatch right now." ),
+                                      gunner.disp_name() );
+        }
+        return false;
+    }
     if( !is_assigned( gunner ) ) {
         if( failure != nullptr ) {
             *failure = _( "That follower is no longer holding an overwatch position." );
@@ -782,6 +816,10 @@ bool issue_reload( npc &gunner, std::string *failure )
 
 void cancel_order( npc &gunner, const bool notify )
 {
+    if( notify && !operator_available( gunner ) ) {
+        add_msg( _( "%s is unable to operate overwatch right now." ), gunner.disp_name() );
+        return;
+    }
     const diag_value key = gunner.get_value( order_key );
     const bool had_order = !key.is_empty() && key.is_str();
     if( had_order ) {
@@ -796,6 +834,10 @@ void cancel_order( npc &gunner, const bool notify )
 
 void stand_down( npc &gunner, const bool notify )
 {
+    if( notify && !operator_available( gunner ) ) {
+        add_msg( _( "%s is unable to operate overwatch right now." ), gunner.disp_name() );
+        return;
+    }
     if( gunner.activity.id() == ACT_PROVIDE_OVERWATCH ) {
         if( !notify ) {
             gunner.clear_overwatch_support( false );
@@ -836,6 +878,10 @@ std::string status( const npc &gunner )
 
 void report( const npc &gunner )
 {
+    if( !operator_available( gunner ) ) {
+        add_msg( _( "%s is unable to operate overwatch right now." ), gunner.disp_name() );
+        return;
+    }
     add_msg( "%s", status( gunner ) );
 }
 
@@ -855,7 +901,8 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
         clear_order_values( *gunner );
     };
     Creature *target = resolve_target( event_data.target_character, event_data.target_monster );
-    if( !is_assigned( *gunner ) || target == nullptr || target->is_dead_state() ||
+    if( !operator_available( *gunner ) || !is_assigned( *gunner ) || target == nullptr ||
+        target->is_dead_state() ||
         target->is_hallucination() || !target_is_hostile( *target ) ||
         rl_dist( gunner->pos_abs(), target->pos_abs() ) > max_range ||
         !observer_can_see( *gunner, *target ) ) {
@@ -955,12 +1002,16 @@ bool actualize_reload_event( const overwatch_fire_event_data &event_data )
     }
     const diag_value active_key = gunner->get_value( order_key );
     if( active_key.is_empty() || !active_key.is_str() ||
-        active_key.str() != event_data.order_key || !is_assigned( *gunner ) ) {
+        active_key.str() != event_data.order_key ) {
         return false;
     }
     const auto cancel_current = [gunner]() {
         clear_order_values( *gunner );
     };
+    if( !operator_available( *gunner ) || !is_assigned( *gunner ) ) {
+        cancel_current();
+        return false;
+    }
     const gun_mode_id mode_id( event_data.mode_id );
     std::string failure;
     const std::optional<std::pair<gun_mode_id, gun_mode>> selected = selected_mode( *gunner );

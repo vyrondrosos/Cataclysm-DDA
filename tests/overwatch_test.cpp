@@ -14,6 +14,7 @@
 #include "coordinates.h"
 #include "damage.h"
 #include "dispersion.h"
+#include "effect.h"
 #include "faction.h"
 #include "game.h"
 #include "gun_mode.h"
@@ -38,6 +39,7 @@
 static const activity_id ACT_PROVIDE_OVERWATCH( "ACT_PROVIDE_OVERWATCH" );
 
 static const ammo_effect_str_id ammo_effect_JET( "JET" );
+static const efftype_id effect_sleep( "sleep" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
@@ -620,6 +622,32 @@ TEST_CASE( "overwatch_single_order_event_lifecycle", "[overwatch][timed_event]" 
     CHECK( gunner.get_value( "overwatch_order_key" ).is_empty() );
     CHECK( events.get( timed_event_type::OVERWATCH_FIRE, key ) == nullptr );
     CHECK( overwatch::is_assigned( gunner ) );
+}
+
+TEST_CASE( "unconscious_overwatch_gunner_cannot_complete_scheduled_fire",
+           "[overwatch][timed_event]" )
+{
+    npc &gunner = make_overwatch_gunner();
+    arm_shooter( gunner, itype_modular_m16_auto_rifle );
+    REQUIRE( overwatch::assign( gunner ) );
+
+    map &here = get_map();
+    monster &target = spawn_test_monster( "mon_zombie_hulk",
+                                         gunner.pos_bub( here ) + tripoint( 8, 0, 0 ), false );
+    REQUIRE( overwatch::issue_order( gunner, target, false ) );
+
+    timed_event_manager &events = get_timed_events();
+    const std::string key = gunner.get_value( "overwatch_order_key" ).str();
+    timed_event *event = events.get( timed_event_type::OVERWATCH_FIRE, key );
+    REQUIRE( event != nullptr );
+    const overwatch_fire_event_data fire_data = *event->get_data<overwatch_fire_event_data>();
+    events.remove( timed_event_type::OVERWATCH_FIRE, key );
+
+    const int ammunition_before = gunner.get_wielded_item()->ammo_remaining();
+    gunner.add_effect( effect_sleep, 1_hours );
+    CHECK_FALSE( overwatch::actualize_fire_event( fire_data ) );
+    CHECK( gunner.get_wielded_item()->ammo_remaining() == ammunition_before );
+    CHECK( gunner.get_value( "overwatch_order_key" ).is_empty() );
 }
 
 TEST_CASE( "overwatch_repeat_order_reschedules_and_stops_on_lost_sight",
