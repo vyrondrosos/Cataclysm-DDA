@@ -67,6 +67,7 @@ class field;
 class field_entry;
 class item_location;
 class mapgendata;
+class map_viewpoint;
 class monster;
 class relic_procgen_data;
 class submap;
@@ -180,10 +181,12 @@ struct drawsq_params {
         furn_str_id furn_override = furn_str_id::NULL_ID();
         bool do_highlight = false;
         bool do_show_items = true;
+        bool do_show_traps = true;
         bool do_low_light = false;
         bool do_bright_light = false;
         bool do_memorize = false;
         bool do_output = true;
+        bool do_player_vision = true;
 
     public:
         drawsq_params() = default;
@@ -213,6 +216,20 @@ struct drawsq_params {
         }
         constexpr bool show_items() const {
             return do_show_items;
+        }
+        //@}
+
+        /**
+         * Whether to draw detected traps on the tile.
+         * Default: true.
+         */
+        //@{
+        constexpr drawsq_params &show_traps( bool v ) {
+            do_show_traps = v;
+            return *this;
+        }
+        constexpr bool show_traps() const {
+            return do_show_traps;
         }
         //@}
 
@@ -270,6 +287,20 @@ struct drawsq_params {
         }
         constexpr bool output() const {
             return do_output;
+        }
+        //@}
+
+        /**
+         * Whether the avatar's current vision mode should tint the tile.
+         * Default: true.
+         */
+        //@{
+        constexpr drawsq_params &player_vision( bool v ) {
+            do_player_vision = v;
+            return *this;
+        }
+        constexpr bool player_vision() const {
+            return do_player_vision;
         }
         //@}
 
@@ -561,6 +592,11 @@ class map
          *               be different from the player coordinate.
          */
         void draw( const catacurses::window &w, const tripoint_bub_ms &center );
+
+        /** Draw this map through an explicit geometric viewpoint. */
+        void draw_view( const catacurses::window &w, const tripoint_bub_ms &center,
+                        const map_viewpoint &viewpoint,
+                        const std::optional<tripoint_bub_ms> &cursor = std::nullopt ) const;
 
         /**
          * Draw the map tile at the given coordinate. Called by `map::draw()`.
