@@ -239,6 +239,7 @@ static void request_mortar_fire( npc &gunner, bool repeat_target );
 static void request_mortar_fire_for_effect( npc &gunner );
 static void select_mortar_ammo( npc &gunner );
 static void toggle_mortar_adjustment( npc &gunner );
+static bool issue_fpv_support_order( npc &operator_npc );
 } // namespace talk_effect_fun
 
 using item_menu = std::function<item_location( const item_location_filter & )>;
@@ -750,6 +751,7 @@ enum npc_chat_menu {
     NPC_CHAT_COMMAND_MAGIC_VEHICLE_FOLLOW,
     NPC_CHAT_COMMAND_MAGIC_VEHICLE_STOP_FOLLOW,
     NPC_CHAT_MORTAR_SUPPORT,
+    NPC_CHAT_FPV_SUPPORT,
     NPC_CHAT_MORTAR_SUPPORT_FIRE,
     NPC_CHAT_MORTAR_SUPPORT_REPEAT_FIRE,
     NPC_CHAT_MORTAR_SUPPORT_FIRE_FOR_EFFECT,
@@ -1200,6 +1202,13 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                !mortar_assignment.is_empty() && !mortar_assignment.str().empty();
     } );
     const int available_mortar_support_count = available_mortar_support.size();
+    const std::vector<npc *> available_fpv_support = get_npcs_if( [&]( const npc & guy ) {
+        const diag_value fpv_assignment = guy.get_value( "fpv_assignment" );
+        return guy.is_player_ally() && guy.can_hear( player_character.pos_bub(), volume ) &&
+               guy.companion_mission_role_id != "FACTION_CAMP" &&
+               !fpv_assignment.is_empty() && !fpv_assignment.str().empty();
+    } );
+    const int available_fpv_support_count = available_fpv_support.size();
 
     if( player_character.has_trait( trait_PROF_FOODP ) &&
         !( player_character.is_wearing( itype_foodperson_mask ) ||
@@ -1268,6 +1277,13 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                         string_format( _( "Give %s a mortar order" ),
                                        available_mortar_support.front()->get_name() ) :
                         _( "Give someone a mortar order…" )
+                      );
+    }
+    if( !available_fpv_support.empty() ) {
+        nmenu.addentry( NPC_CHAT_FPV_SUPPORT, true, 'd', available_fpv_support_count == 1 ?
+                        string_format( _( "Give %s a drone order" ),
+                                       available_fpv_support.front()->get_name() ) :
+                        _( "Give someone a drone order…" )
                       );
     }
 
@@ -1575,6 +1591,26 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                     break;
                 default:
                     break;
+            }
+            break;
+        }
+        case NPC_CHAT_FPV_SUPPORT: {
+            std::vector<npc *> sorted_npcs( available_fpv_support.begin(),
+                                            available_fpv_support.end() );
+            std::sort( sorted_npcs.begin(), sorted_npcs.end(), []( const npc * a, const npc * b ) {
+                return localized_compare( a->get_name(), b->get_name() );
+            } );
+
+            int npcselect = 0;
+            if( available_fpv_support_count > 1 ) {
+                npcselect = npc_select_menu( sorted_npcs, _( "Who should receive the drone order?" ),
+                                             false );
+                if( npcselect < 0 ) {
+                    return;
+                }
+            }
+            if( !talk_effect_fun::issue_fpv_support_order( *sorted_npcs[npcselect] ) ) {
+                return;
             }
             break;
         }
@@ -9692,7 +9728,18 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
             return std::nullopt;
         }
     }
-    viewed_map->build_los_cache( scout_abs.z() );
+    // The saved scout point is the surface the feed is centered on.  Model the
+    // airborne camera one full z-level above it so map::sees performs a real
+    // three-dimensional trace over nearby obstacles and through roof openings.
+    // At the world ceiling, retain the surface viewpoint as a safe fallback.
+    tripoint_abs_ms camera_abs = scout_abs;
+    if( viewed_map->supports_zlevels() && scout_abs.z() < OVERMAP_HEIGHT ) {
+        const tripoint_abs_ms elevated = scout_abs + tripoint_rel_ms::above;
+        if( viewed_map->inbounds( elevated ) ) {
+            camera_abs = elevated;
+        }
+    }
+    viewed_map->build_los_cache( camera_abs.z() );
 
     map_view_ui_params params;
     if( select ) {
@@ -9703,6 +9750,7 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
         params.title = _( "Drone scout feed" );
     }
     params.select = select;
+    params.center = scout_abs;
     for( Creature &critter : g->all_creatures() ) {
         if( fpv_camera_detects( critter ) ) {
             params.overlays.push_back( { critter.pos_abs(), critter.symbol(),
@@ -9710,7 +9758,7 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
                                         critter.disp_name() } );
         }
     }
-    return query_map_view( *viewed_map, map_viewpoint( scout_abs, MAX_VIEW_DISTANCE ), params );
+    return query_map_view( *viewed_map, map_viewpoint( camera_abs, MAX_VIEW_DISTANCE ), params );
 }
 
 static std::optional<fpv_designation_target> select_fpv_scout_designation_target(
@@ -13399,6 +13447,164 @@ static void select_mortar_ammo( npc &gunner )
 static void toggle_mortar_adjustment( npc &gunner )
 {
     toggle_mortar_adjustment_impl( gunner );
+}
+
+static bool issue_fpv_support_order( npc &operator_npc )
+{
+    reconcile_fpv_mission( operator_npc );
+    if( support_value_string( operator_npc, "fpv_assignment" ).empty() ) {
+        add_msg( _( "%s is no longer available for drone orders." ), operator_npc.disp_name() );
+        return false;
+    }
+
+    enum fpv_quick_order {
+        fpv_launch_attack,
+        fpv_launch_military,
+        fpv_launch_scout,
+        fpv_launch_bomber,
+        fpv_one_way,
+        fpv_abort_one_way,
+        fpv_recover,
+        fpv_attack,
+        fpv_payload_drop,
+        fpv_scout,
+        fpv_scout_report,
+        fpv_thermal_report,
+        fpv_designate
+    };
+
+    const std::string status = support_value_string( operator_npc, "fpv_status" );
+    const std::string drone_type = active_fpv_drone_type( operator_npc );
+    const bool idle = status.empty();
+    const bool on_station = status == "on_station";
+    const bool one_way = support_value_string( operator_npc, "fpv_one_way" ) == "yes";
+    const bool has_scout_feed =
+        support_value_string( operator_npc, "fpv_scout_active" ) == "yes" ||
+        support_value_string( operator_npc, "fpv_scout_report_active" ) == "yes";
+    const bool scout_package = drone_type == "scout" || drone_type == "baba_yaga";
+
+    uilist menu;
+    menu.text = string_format( _( "What drone order for %s?" ), operator_npc.disp_name() );
+    if( idle ) {
+        menu.addentry( fpv_launch_attack, true, 'f',
+                       _( "Launch an FPV attack drone to my position" ) );
+        menu.addentry( fpv_launch_military, true, 'm',
+                       _( "Launch a military explosive FPV drone to my position" ) );
+        menu.addentry( fpv_launch_scout, true, 's',
+                       _( "Launch a scout drone to my position" ) );
+        menu.addentry( fpv_launch_bomber, true, 'b',
+                       _( "Launch a bomber drone to my position" ) );
+    }
+    if( on_station && !one_way ) {
+        menu.addentry( fpv_one_way, true, 'o',
+                       _( "Ignore bingo fuel and keep the drone on station" ) );
+        menu.addentry( fpv_recover, true, 'r', _( "Recover the drone now" ) );
+    } else if( on_station ) {
+        menu.addentry( fpv_abort_one_way, true, 'a',
+                       _( "Abort the one-way order and recover on bingo fuel" ) );
+    }
+    if( on_station && ( drone_type == "suicide" || drone_type == "military_suicide" ) ) {
+        menu.addentry( fpv_attack, true, 'k', _( "Command the airborne FPV drone to attack" ) );
+    }
+    if( on_station && drone_type == "baba_yaga" ) {
+        menu.addentry( fpv_payload_drop, true, 'p', _( "Drop the bomber drone payload" ) );
+    }
+    if( on_station && scout_package ) {
+        menu.addentry( fpv_scout, true, 'c', _( "Task the airborne drone to scout a point" ) );
+    }
+    if( has_scout_feed ) {
+        menu.addentry( fpv_scout_report, true, 'v', _( "View the drone scout report" ) );
+        if( scout_package ) {
+            menu.addentry( fpv_thermal_report, true, 'h',
+                           _( "View the thermal drone scout report" ) );
+        }
+        menu.addentry( fpv_designate, true, 'd',
+                       _( "Designate a target from the drone scout feed" ) );
+    }
+
+    if( menu.entries.empty() ) {
+        menu.addentry( -1, false, MENU_AUTOASSIGN,
+                       _( "No orders are available in the drone's current flight state" ) );
+    }
+
+    if( idle ) {
+        menu.footer_text = string_format(
+                               _( "Ready: %1$d attack, %2$d military, %3$d scout, %4$d bomber" ),
+                               fpv_drone_count( operator_npc, "suicide" ),
+                               fpv_drone_count( operator_npc, "military_suicide" ),
+                               fpv_drone_count( operator_npc, "scout" ),
+                               fpv_drone_count( operator_npc, "baba_yaga" ) );
+    } else if( status == "enroute" ) {
+        menu.footer_text = string_format( _( "Drone en route; ETA %s" ),
+                                          format_fpv_duration( get_fpv_turn_value(
+                                                  operator_npc, "fpv_arrival_turn" ) -
+                                                  current_turn_number() ) );
+    } else if( on_station ) {
+        menu.footer_text = string_format( one_way ?
+                                          _( "Drone on station; %s battery remaining (one-way)" ) :
+                                          _( "Drone on station; %s battery remaining" ),
+                                          format_fpv_duration( fpv_mission_remaining_battery_seconds(
+                                                  operator_npc, current_turn_number() ) ) );
+    } else if( status == "returning" ) {
+        menu.footer_text = string_format( _( "Drone returning; recovery ETA %s" ),
+                                          format_fpv_duration( get_fpv_turn_value(
+                                                  operator_npc, "fpv_return_end_turn" ) -
+                                                  current_turn_number() ) );
+    }
+
+    menu.query();
+    if( menu.ret < 0 ) {
+        return false;
+    }
+
+    talk_effect_fun_t::func order;
+    switch( menu.ret ) {
+        case fpv_launch_attack:
+            order = f_request_fpv_launch();
+            break;
+        case fpv_launch_military:
+            order = f_request_fpv_military_launch();
+            break;
+        case fpv_launch_scout:
+            order = f_request_fpv_scout_launch();
+            break;
+        case fpv_launch_bomber:
+            order = f_request_fpv_baba_yaga_launch();
+            break;
+        case fpv_one_way:
+            order = f_request_fpv_one_way();
+            break;
+        case fpv_abort_one_way:
+            order = f_request_fpv_abort_one_way();
+            break;
+        case fpv_recover:
+            order = f_request_fpv_recover();
+            break;
+        case fpv_attack:
+            order = f_request_fpv_attack();
+            break;
+        case fpv_payload_drop:
+            order = f_request_fpv_payload_drop();
+            break;
+        case fpv_scout:
+            order = f_request_fpv_scout();
+            break;
+        case fpv_scout_report:
+            order = f_request_fpv_scout_report( false );
+            break;
+        case fpv_thermal_report:
+            order = f_request_fpv_scout_report( true );
+            break;
+        case fpv_designate:
+            order = f_request_fpv_designation();
+            break;
+        default:
+            return false;
+    }
+
+    dialogue d( get_talker_for( get_avatar() ), get_talker_for( operator_npc ), {} );
+    order( d );
+    return true;
 }
 
 } // namespace talk_effect_fun
