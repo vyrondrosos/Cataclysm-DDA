@@ -9772,12 +9772,14 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
         }
     }
     // The saved scout point is the surface the feed is centered on.  Model the
-    // airborne camera one full z-level above it so map::sees performs a real
+    // airborne camera three z-levels above it so map::sees performs a real
     // three-dimensional trace over nearby obstacles and through roof openings.
-    // At the world ceiling, retain the surface viewpoint as a safe fallback.
+    // Near the world ceiling, use the highest available z-level.
     tripoint_abs_ms camera_abs = scout_abs;
     if( viewed_map->supports_zlevels() && scout_abs.z() < OVERMAP_HEIGHT ) {
-        const tripoint_abs_ms elevated = scout_abs + tripoint_rel_ms::above;
+        constexpr int scout_camera_height = 3;
+        const int camera_z = std::min( scout_abs.z() + scout_camera_height, OVERMAP_HEIGHT );
+        const tripoint_abs_ms elevated( scout_abs.xy(), camera_z );
         if( viewed_map->inbounds( elevated ) ) {
             camera_abs = elevated;
         }
@@ -9793,6 +9795,7 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
         params.title = _( "Drone scout feed" );
     }
     params.select = select;
+    params.window_percentage = 80;
     params.center = scout_abs;
     for( Creature &critter : g->all_creatures() ) {
         if( fpv_camera_detects( critter ) ) {

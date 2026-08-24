@@ -49,20 +49,22 @@ std::optional<tripoint_abs_ms> query_map_view( map &viewed_map,
     ctxt.register_action( "CENTER" );
     ctxt.register_action( "LEVEL_UP" );
     ctxt.register_action( "LEVEL_DOWN" );
+    ctxt.register_action( "zoom_in" );
+    ctxt.register_action( "zoom_out" );
     ctxt.register_action( "SELECT" );
     ctxt.register_action( "CONFIRM" );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "HELP_KEYBINDINGS" );
 
     ui_adaptor ui;
-    ui.on_screen_resize( [&w_border, &w_view, &w_info]( ui_adaptor & ui ) {
+    ui.on_screen_resize( [&params, &w_border, &w_view, &w_info]( ui_adaptor & ui ) {
         const int screen_height = getmaxy( catacurses::stdscr );
         const int screen_width = getmaxx( catacurses::stdscr );
-        const int margin_x = screen_width > 4 ? 1 : 0;
-        const int margin_y = screen_height > 8 ? 1 : 0;
-        const int frame_height = screen_height - margin_y * 2;
-        const int frame_width = screen_width - margin_x * 2;
-        const point frame_pos( margin_x, margin_y );
+        const int window_percentage = std::clamp( params.window_percentage, 1, 100 );
+        const int frame_height = std::max( 1, screen_height * window_percentage / 100 );
+        const int frame_width = std::max( 1, screen_width * window_percentage / 100 );
+        const point frame_pos( ( screen_width - frame_width ) / 2,
+                               ( screen_height - frame_height ) / 2 );
         const int info_height = frame_height >= 7 ? 2 : 1;
         const int view_height = std::max( 1, frame_height - info_height - 3 );
         const int view_width = std::max( 1, frame_width - 2 );
@@ -234,6 +236,15 @@ std::optional<tripoint_abs_ms> query_map_view( map &viewed_map,
         }
         if( action == "TOGGLE_FAST_SCROLL" ) {
             fast_scroll = !fast_scroll;
+            continue;
+        }
+        if( action == "zoom_in" || action == "zoom_out" ) {
+            if( action == "zoom_in" ) {
+                g->zoom_in();
+            } else {
+                g->zoom_out();
+            }
+            ui.mark_resize();
             continue;
         }
         if( action == "LEVEL_UP" || action == "LEVEL_DOWN" ) {

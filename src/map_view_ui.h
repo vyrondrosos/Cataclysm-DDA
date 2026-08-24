@@ -23,6 +23,8 @@ struct map_view_ui_overlay {
 struct map_view_ui_params {
     std::string title;
     bool select = false;
+    /** Percentage of the terminal occupied along each axis. */
+    int window_percentage = 100;
     /** Initial display plane; defaults to the viewpoint origin. */
     std::optional<tripoint_abs_ms> center;
     std::vector<map_view_ui_overlay> overlays;
