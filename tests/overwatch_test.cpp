@@ -17,6 +17,7 @@
 #include "effect.h"
 #include "faction.h"
 #include "game.h"
+#include "game_constants.h"
 #include "gun_mode.h"
 #include "item.h"
 #include "item_location.h"
@@ -142,6 +143,19 @@ static item_location give_loaded_rifle_magazine( npc &gunner, const int rounds )
     REQUIRE( result );
     REQUIRE( result->ammo_remaining() == rounds );
     return result;
+}
+
+static npc &make_ledge_gunner( const tripoint_bub_ms &post )
+{
+    // Build the ledge before the gunner stands on it, or they fall through the open air.
+    npc &gunner = make_overwatch_gunner( tripoint_bub_ms( post.xy(), 0 ) );
+    map &here = get_map();
+    REQUIRE( here.ter_set( post, ter_t_floor ) );
+    here.invalidate_map_cache( post.z() );
+    here.build_map_cache( post.z(), true );
+    gunner.setpos( here, post );
+    REQUIRE( gunner.pos_bub( here ).z() == post.z() );
+    return gunner;
 }
 
 static void make_clear_remote_corridor( const tripoint_abs_ms &from,
@@ -546,6 +560,65 @@ TEST_CASE( "overwatch_observer_visibility_checks_light_and_walls", "[overwatch][
         gunner.recalc_sight_limits();
         CHECK( overwatch::observer_can_see( gunner, target ) );
     }
+}
+
+TEST_CASE( "overwatch_observer_sees_across_z_levels", "[overwatch][vision]" )
+{
+    // A gunner posted on a ledge looks down onto open ground one level below.
+    npc &gunner = make_ledge_gunner( tripoint_bub_ms( 50, 60, 1 ) );
+    map &here = get_map();
+    const tripoint_bub_ms post = gunner.pos_bub( here );
+
+    const tripoint_bub_ms target_pos = post + tripoint( 8, 0, -1 );
+    monster &target = spawn_test_monster( "mon_zombie", target_pos, false );
+    here.invalidate_map_cache( 0 );
+    here.build_map_cache( 0, true );
+    here.invalidate_map_cache( 1 );
+    here.build_map_cache( 1, true );
+
+    CAPTURE( gunner.pos_abs() );
+    CAPTURE( target.pos_abs() );
+    REQUIRE( gunner.pos_abs().z() != target.pos_abs().z() );
+
+    SECTION( "open air below the ledge leaves the target visible" ) {
+        CHECK( overwatch::observer_can_see( gunner, target ) );
+    }
+
+    SECTION( "a roof over the lane blocks the descent" ) {
+        for( int offset = 1; offset <= 8; ++offset ) {
+            REQUIRE( here.ter_set( post + tripoint( offset, 0, 0 ), ter_t_floor ) );
+        }
+        here.invalidate_map_cache( 1 );
+        here.build_map_cache( 1, true );
+        CHECK_FALSE( overwatch::observer_can_see( gunner, target ) );
+    }
+
+    SECTION( "a target too far below the ledge is out of vertical range" ) {
+        target.setpos( gunner.pos_abs() + tripoint( 8, 0, -( fov_3d_z_range + 1 ) ), false );
+        CHECK_FALSE( overwatch::observer_can_see( gunner, target ) );
+    }
+}
+
+TEST_CASE( "overwatch_observer_sees_across_z_levels_at_long_range", "[overwatch][vision][range]" )
+{
+    npc &gunner = make_ledge_gunner( tripoint_bub_ms( 50, 60, 1 ) );
+    arm_shooter( gunner, itype_modular_m16_auto_rifle, { itype_rifle_scope } );
+    map &here = get_map();
+    const tripoint_bub_ms post = gunner.pos_bub( here );
+
+    // Past MAX_VIEW_DISTANCE the spotting check walks the lane itself instead of map::sees.
+    const tripoint_abs_ms perch = gunner.pos_abs();
+    const tripoint_abs_ms below = perch + tripoint( MAX_VIEW_DISTANCE + 20, 0, -1 );
+    make_clear_remote_corridor( perch, below + tripoint::east );
+
+    monster &target = spawn_test_monster( "mon_zombie_hulk", post + tripoint::east, false );
+    target.setpos( below, false );
+
+    CAPTURE( gunner.pos_abs() );
+    CAPTURE( target.pos_abs() );
+    REQUIRE( rl_dist( gunner.pos_abs(), target.pos_abs() ) > MAX_VIEW_DISTANCE );
+    REQUIRE( gunner.pos_abs().z() != target.pos_abs().z() );
+    CHECK( overwatch::observer_can_see( gunner, target ) );
 }
 
 TEST_CASE( "overwatch_order_honors_maximum_range_boundary", "[overwatch][range]" )

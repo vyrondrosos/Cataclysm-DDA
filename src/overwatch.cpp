@@ -23,6 +23,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "game.h"
+#include "game_constants.h"
 #include "flag.h"
 #include "gun_mode.h"
 #include "item.h"
@@ -678,21 +679,29 @@ bool select_fire_mode( npc &gunner, const gun_mode_id &mode_id, std::string *fai
 bool observer_can_see( const npc &gunner, const Creature &target )
 {
     const int distance = rl_dist( gunner.pos_abs(), target.pos_abs() );
+    const int observer_z = gunner.pos_abs().z();
+    const int target_z = target.pos_abs().z();
     if( target.is_dead_state() || target.is_hallucination() || gunner.is_hallucination() ||
         distance > max_range ||
-        gunner.pos_abs().z() != target.pos_abs().z() ) {
+        std::abs( observer_z - target_z ) > fov_3d_z_range ) {
         return false;
     }
 
     map &reality = get_map();
     if( distance <= MAX_VIEW_DISTANCE ) {
         if( reality.inbounds( gunner.pos_abs() ) && reality.inbounds( target.pos_abs() ) ) {
-            reality.build_map_cache( gunner.pos_abs().z() );
+            reality.build_map_cache( observer_z );
+            if( target_z != observer_z ) {
+                reality.build_map_cache( target_z );
+            }
             return gunner.sees( reality, target );
         }
         std::unique_ptr<map> local = load_map_centered_on( gunner.pos_abs() );
         if( !local->inbounds( target.pos_abs() ) ) {
             return false;
+        }
+        if( target_z != observer_z ) {
+            local->build_map_cache( target_z );
         }
         swap_map swapped( *local );
         return gunner.sees( *local, target );
@@ -736,19 +745,54 @@ bool observer_can_see( const npc &gunner, const Creature &target )
     const std::vector<tripoint> trajectory =
         line_to( gunner.pos_abs().raw(), target.pos_abs().raw() );
     std::unique_ptr<map> segment_map;
+    // A z-step is gated on the floors between levels, like a projectile's path.
+    const auto crossing_is_open = [&segment_map]( const tripoint_abs_ms & from,
+    const tripoint_abs_ms & to ) {
+        const int max_z = std::max( from.z(), to.z() );
+        const auto blocked = [&segment_map]( const tripoint_abs_ms & floor,
+        const tripoint_abs_ms & side ) {
+            map &floor_map = map_containing( floor, segment_map );
+            const tripoint_bub_ms floor_bub = floor_map.get_bub( floor );
+            floor_map.build_map_cache( floor_bub.z() );
+            if( floor_map.has_floor_or_support( floor_bub ) ) {
+                return true;
+            }
+            map &side_map = map_containing( side, segment_map );
+            const tripoint_bub_ms side_bub = side_map.get_bub( side );
+            side_map.build_map_cache( side_bub.z() );
+            return side_map.light_transparency( side_bub ) <= LIGHT_TRANSPARENCY_SOLID;
+        };
+        const bool to_blocked = blocked( tripoint_abs_ms( to.xy(), max_z ),
+                                         tripoint_abs_ms( to.xy(), from.z() ) );
+        const bool from_blocked = blocked( tripoint_abs_ms( from.xy(), max_z ),
+                                           tripoint_abs_ms( from.xy(), to.z() ) );
+        return !to_blocked || !from_blocked;
+    };
+
+    tripoint_abs_ms previous = gunner.pos_abs();
     for( size_t index = 0; index + 1 < trajectory.size(); ++index ) {
         const tripoint_abs_ms point( trajectory[index] );
         if( point == gunner.pos_abs() ) {
+            previous = point;
             continue;
         }
         map &segment = map_containing( point, segment_map );
         const tripoint_bub_ms bub = segment.get_bub( point );
         segment.build_map_cache( bub.z() );
         const float transparency = segment.light_transparency( bub );
-        if( transparency <= LIGHT_TRANSPARENCY_SOLID ) {
+        if( point.z() == previous.z() ) {
+            if( transparency <= LIGHT_TRANSPARENCY_SOLID ) {
+                return false;
+            }
+        } else if( !crossing_is_open( previous, point ) ) {
             return false;
         }
+        // Solid tiles read as zero attenuation, so a blocked z-step adds nothing.
         extra_attenuation += std::max( 0.0f, transparency - LIGHT_TRANSPARENCY_OPEN_AIR );
+        previous = point;
+    }
+    if( target.pos_abs().z() != previous.z() && !crossing_is_open( previous, target.pos_abs() ) ) {
+        return false;
     }
     // ZOOM optics make the full four-bubble support envelope usable in clear daylight.
     // Keep smoke, fields, and other non-air opacity undiscounted.
