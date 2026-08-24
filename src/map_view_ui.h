@@ -11,6 +11,7 @@
 
 class map;
 class map_viewpoint;
+class Creature;
 
 /** A one-cell marker drawn over a visible map tile. */
 struct map_view_ui_overlay {
@@ -18,6 +19,8 @@ struct map_view_ui_overlay {
     std::string symbol;
     nc_color color;
     std::string description;
+    /** Live creature represented by this marker, when one is available. */
+    const Creature *creature = nullptr;
 };
 
 struct map_view_ui_params {

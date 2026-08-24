@@ -1702,6 +1702,33 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
                 !viewpoint.sees( viewed_map, pos ) ) {
                 continue;
             }
+            int overlay_height = 0;
+            bool drew_creature = false;
+            if( const monster *const mon = overlay.creature ?
+                    overlay.creature->as_monster() : nullptr ) {
+                std::string subcategory;
+                if( !mon->type->species.empty() ) {
+                    subcategory = mon->type->species.begin()->str();
+                }
+                int rotation = 0;
+                if( mon->facing == FacingDirection::LEFT ) {
+                    rotation = -1;
+                }
+                drew_creature = draw_from_id_string( mon->type->id.str(),
+                                                     TILE_CATEGORY::MONSTER, subcategory,
+                                                     pos, corner, rotation, lit_level::LIT,
+                                                     false, overlay_height );
+                if( drew_creature ) {
+                    draw_entity_with_overlays( *mon, pos, lit_level::LIT, overlay_height );
+                }
+            } else if( const Character *const character = overlay.creature ?
+                       overlay.creature->as_character() : nullptr ) {
+                draw_entity_with_overlays( *character, pos, lit_level::LIT, overlay_height );
+                drew_creature = true;
+            }
+            if( drew_creature ) {
+                continue;
+            }
             const uint32_t symbol = UTF8_getch( overlay.symbol );
             if( symbol > 0xff ) {
                 continue;
@@ -1710,7 +1737,6 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
             const cata_cursesport::pairs &color_pair =
                 cata_cursesport::colorpairs[pair_number];
             const int foreground = color_pair.FG + ( overlay.color.is_bold() ? 8 : 0 );
-            int overlay_height = 0;
             const std::string colored_id = get_ascii_tile_id( symbol, foreground, -1 );
             const std::string uncolored_id = get_ascii_tile_id( symbol, -1, -1 );
             const bool drew_colored = tileset_ptr->find_tile_type( colored_id ) &&

@@ -9801,7 +9801,7 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
         if( fpv_camera_detects( critter ) ) {
             params.overlays.push_back( { critter.pos_abs(), critter.symbol(),
                                         thermal ? c_light_red : critter.symbol_color(),
-                                        critter.disp_name() } );
+                                        critter.disp_name(), &critter } );
         }
     }
     return query_map_view( *viewed_map, map_viewpoint( camera_abs, MAX_VIEW_DISTANCE ), params );
