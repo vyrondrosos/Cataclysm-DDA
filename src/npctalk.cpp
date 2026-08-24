@@ -9747,8 +9747,17 @@ static bool fpv_camera_detects( const Creature &critter )
            critter.has_effect_with_flag( json_flag_SUPPRESS_INVISIBILITY );
 }
 
+static int fpv_scout_view_range( const npc &operator_npc )
+{
+    constexpr int scout_package_range = 40;
+    constexpr int fpv_camera_range = 25;
+    return active_fpv_drone_has_scout_package( operator_npc ) ? scout_package_range :
+           fpv_camera_range;
+}
+
 static std::optional<tripoint_abs_ms> query_fpv_scout_view(
-    const tripoint_abs_ms &scout_abs, const bool thermal, const bool select )
+    const tripoint_abs_ms &scout_abs, const bool thermal, const bool select,
+    const int view_range )
 {
     if( scout_abs.z() < -OVERMAP_DEPTH || scout_abs.z() > OVERMAP_HEIGHT ) {
         add_msg( m_bad, _( "The drone scout feed coordinates are invalid." ) );
@@ -9758,7 +9767,7 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
     map *viewed_map = &get_map();
     std::unique_ptr<map> remote_map;
     const tripoint_bub_ms scout_bub = viewed_map->get_bub( scout_abs );
-    const tripoint_rel_ms view_margin( MAX_VIEW_DISTANCE, MAX_VIEW_DISTANCE, 0 );
+    const tripoint_rel_ms view_margin( view_range, view_range, 0 );
     if( !viewed_map->inbounds( scout_bub - view_margin ) ||
         !viewed_map->inbounds( scout_bub + view_margin ) ) {
         remote_map = std::make_unique<map>();
@@ -9796,6 +9805,7 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
     }
     params.select = select;
     params.window_percentage = 80;
+    params.render_one_zlevel_above = true;
     params.center = scout_abs;
     for( Creature &critter : g->all_creatures() ) {
         if( fpv_camera_detects( critter ) ) {
@@ -9804,22 +9814,24 @@ static std::optional<tripoint_abs_ms> query_fpv_scout_view(
                                         critter.disp_name(), &critter } );
         }
     }
-    return query_map_view( *viewed_map, map_viewpoint( camera_abs, MAX_VIEW_DISTANCE ), params );
+    return query_map_view( *viewed_map, map_viewpoint( camera_abs, view_range ), params );
 }
 
 static std::optional<fpv_designation_target> select_fpv_scout_designation_target(
-    const tripoint_abs_ms &scout_abs, const bool thermal )
+    const tripoint_abs_ms &scout_abs, const bool thermal, const int view_range )
 {
-    const std::optional<tripoint_abs_ms> target = query_fpv_scout_view( scout_abs, thermal, true );
+    const std::optional<tripoint_abs_ms> target = query_fpv_scout_view( scout_abs, thermal, true,
+            view_range );
     if( !target ) {
         return std::nullopt;
     }
     return make_fpv_designation_target( *target, true );
 }
 
-static void show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool thermal )
+static void show_fpv_scout_view( const tripoint_abs_ms &scout_abs, const bool thermal,
+                                 const int view_range )
 {
-    ( void )query_fpv_scout_view( scout_abs, thermal, false );
+    ( void )query_fpv_scout_view( scout_abs, thermal, false, view_range );
 }
 
 static void practice_fpv_operation( npc &operator_npc )
@@ -10777,7 +10789,7 @@ talk_effect_fun_t::func f_request_fpv_scout_report( const bool thermal )
         if( scout_drone ) {
             reveal_fpv_scout_overmap_vision( scout_abs );
         }
-        show_fpv_scout_view( scout_abs, thermal );
+        show_fpv_scout_view( scout_abs, thermal, fpv_scout_view_range( *operator_npc ) );
     };
 }
 
@@ -10842,7 +10854,8 @@ talk_effect_fun_t::func f_request_fpv_designation()
             get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_y" : "fpv_scout_report_y" ),
             get_fpv_turn_value( *operator_npc, use_current_scout ? "fpv_scout_z" : "fpv_scout_report_z" ) );
         const std::optional<fpv_designation_target> target =
-            select_fpv_scout_designation_target( scout_abs, false );
+            select_fpv_scout_designation_target( scout_abs, false,
+                    fpv_scout_view_range( *operator_npc ) );
         if( !target ) {
             return;
         }

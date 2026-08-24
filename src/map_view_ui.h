@@ -28,6 +28,8 @@ struct map_view_ui_params {
     bool select = false;
     /** Percentage of the terminal occupied along each axis. */
     int window_percentage = 100;
+    /** Render the viewed surface with the normal one-z-level-above presentation. */
+    bool render_one_zlevel_above = false;
     /** Initial display plane; defaults to the viewpoint origin. */
     std::optional<tripoint_abs_ms> center;
     std::vector<map_view_ui_overlay> overlays;

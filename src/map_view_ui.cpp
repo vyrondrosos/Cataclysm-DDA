@@ -111,7 +111,8 @@ std::optional<tripoint_abs_ms> query_map_view( map &viewed_map,
             const window_dimensions dim = get_window_dimensions( w_view );
             tilecontext->draw_view( dim.window_pos_pixel, viewed_map, center,
                                     dim.window_size_pixel.x, dim.window_size_pixel.y,
-                                    viewpoint, cursor, params.overlays );
+                                    viewpoint, cursor, params.overlays,
+                                    params.render_one_zlevel_above );
         } else
 #endif
         {

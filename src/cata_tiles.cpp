@@ -1560,7 +1560,8 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
                             const tripoint_bub_ms &center, const int width, const int height,
                             const map_viewpoint &viewpoint,
                             const std::optional<tripoint_bub_ms> &cursor,
-                            const std::vector<map_view_ui_overlay> &overlays )
+                            const std::vector<map_view_ui_overlay> &overlays,
+                            const bool render_one_zlevel_above )
 {
     display_buffer_draw_scope draw_scope;
     if( display_buffer_scope_is_invalid() || !g || width <= 0 || height <= 0 ) {
@@ -1611,8 +1612,10 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
     screentile_width = base_tile_count.x;
     screentile_height = base_tile_count.y;
 
+    const int display_height = render_one_zlevel_above ? 1 : 0;
+    const int base_height_3d = -display_height * zlevel_height;
     const half_open_rectangle<point> tile_range = get_window_any_tile_range(
-                point( width, height ), 0 );
+                point( width, height ), display_height );
     std::map<int, std::vector<tile_render_info>> draw_rows;
     for( int row = tile_range.p_min.y; row < tile_range.p_max.y; ++row ) {
         std::vector<tile_render_info> &draw_row = draw_rows[row];
@@ -1644,7 +1647,7 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
                 invisible[1 + i] = !viewed_map.inbounds( neighbor ) ||
                                    !viewpoint.sees( viewed_map, neighbor );
             }
-            draw_row.emplace_back( tile_render_info::common{ draw_pos, 0 },
+            draw_row.emplace_back( tile_render_info::common{ draw_pos, base_height_3d },
                                    tile_render_info::sprite{ lit_level::LIT, invisible } );
         }
     }
@@ -1682,7 +1685,7 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
                 if( layer == &cata_tiles::draw_vpart_no_roof ||
                     layer == &cata_tiles::draw_vpart_roof ) {
                     const int previous_height = draw_info.com.height_3d;
-                    draw_info.com.height_3d = 0;
+                    draw_info.com.height_3d = base_height_3d;
                     if( !( this->*layer )( draw_info.com.pos, sprite->ll,
                                            draw_info.com.height_3d, sprite->invisible, false ) ) {
                         draw_info.com.height_3d = previous_height;
@@ -1702,7 +1705,7 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
                 !viewpoint.sees( viewed_map, pos ) ) {
                 continue;
             }
-            int overlay_height = 0;
+            int overlay_height = base_height_3d;
             bool drew_creature = false;
             if( const monster *const mon = overlay.creature ?
                     overlay.creature->as_monster() : nullptr ) {
@@ -1746,6 +1749,27 @@ void cata_tiles::draw_view( const point &dest, map &viewed_map,
             if( !drew_colored && tileset_ptr->find_tile_type( uncolored_id ) ) {
                 draw_from_id_string( uncolored_id, TILE_CATEGORY::NONE, empty_string,
                                      pos, 0, 0, lit_level::LIT, false, overlay_height );
+            }
+        }
+        if( display_height > 0 ) {
+#if SDL_MAJOR_VERSION >= 3
+            if( cata_shader::variant_pass *vp = get_shared_variant_pass() ) {
+                if( !vp->flush() ) {
+                    draw_scope.abort_unbind();
+                    display_buffer_scope_signal_recovery_required();
+                    throw std::runtime_error(
+                        "cata_tiles::draw_view: variant_pass flush failed before z-level haze; renderer in undefined state" );
+                }
+            }
+#endif
+            for( auto &[row, draw_row] : draw_rows ) {
+                ( void )row;
+                for( const tile_render_info &draw_info : draw_row ) {
+                    if( std::holds_alternative<tile_render_info::sprite>( draw_info.var ) ) {
+                        int haze_height = 0;
+                        draw_zlevel_overlay( draw_info.com.pos, lit_level::LIT, haze_height );
+                    }
+                }
             }
         }
         if( cursor && cursor->z() == center.z() && viewed_map.inbounds( *cursor ) ) {

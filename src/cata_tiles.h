@@ -593,7 +593,8 @@ class cata_tiles
         void draw_view( const point &dest, map &viewed_map, const tripoint_bub_ms &center,
                         int width, int height, const map_viewpoint &viewpoint,
                         const std::optional<tripoint_bub_ms> &cursor,
-                        const std::vector<map_view_ui_overlay> &overlays );
+                        const std::vector<map_view_ui_overlay> &overlays,
+                        bool render_one_zlevel_above );
         void draw_om( const point &dest, const tripoint_abs_omt &center_abs_omt, bool blink );
 
         /** Minimap functionality */
