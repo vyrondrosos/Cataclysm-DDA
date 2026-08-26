@@ -2036,6 +2036,7 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
                 jo.read( "overwatch_gunner", fire_data->gunner_id, true );
                 jo.read( "overwatch_target_character", fire_data->target_character );
                 jo.read( "overwatch_target_monster", fire_data->target_monster );
+                fire_data->target_monster_needs_resolution = fire_data->target_monster >= 0;
                 jo.read( "overwatch_target_pos", fire_data->target_pos, true );
                 jo.read( "overwatch_mode", fire_data->mode_id );
                 jo.read( "overwatch_order_key", fire_data->order_key );
@@ -2251,7 +2252,15 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
                 }
                 jsout.member( "overwatch_gunner", fire_data->gunner_id );
                 jsout.member( "overwatch_target_character", fire_data->target_character );
-                jsout.member( "overwatch_target_monster", fire_data->target_monster );
+                int target_monster = -1;
+                if( const shared_ptr_fast<monster> mon = fire_data->target_monster_ptr.lock() ) {
+                    target_monster = get_creature_tracker().temporary_id( *mon );
+                } else if( fire_data->target_monster_needs_resolution ) {
+                    // The event was loaded but has not yet had an opportunity to resolve its
+                    // serialization token.  It is still valid until gameplay mutates the tracker.
+                    target_monster = fire_data->target_monster;
+                }
+                jsout.member( "overwatch_target_monster", target_monster );
                 jsout.member( "overwatch_target_pos", fire_data->target_pos );
                 jsout.member( "overwatch_mode", fire_data->mode_id );
                 jsout.member( "overwatch_order_key", fire_data->order_key );

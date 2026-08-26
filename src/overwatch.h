@@ -44,6 +44,7 @@ std::string status( const npc &gunner );
 void report( const npc &gunner );
 
 bool observer_can_see( const npc &gunner, const Creature &target );
+void prepare_event_target( const overwatch_fire_event_data &event_data );
 bool actualize_fire_event( const overwatch_fire_event_data &event_data );
 bool actualize_reload_event( const overwatch_fire_event_data &event_data );
 

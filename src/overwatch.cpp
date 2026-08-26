@@ -74,7 +74,8 @@ enum class target_kind : int {
 struct target_reference {
     target_kind kind = target_kind::monster;
     character_id character;
-    int monster = -1;
+    int monster_id = -1;
+    weak_ptr_fast<monster> monster_ptr;
     tripoint_abs_ms pos = tripoint_abs_ms::invalid;
 };
 
@@ -136,14 +137,19 @@ std::optional<target_reference> make_target_reference( Creature &target )
         return std::nullopt;
     }
     if( monster *mon = target.as_monster() ) {
+        const shared_ptr_fast<monster> mon_ptr = g->shared_from( *mon );
+        if( !mon_ptr ) {
+            return std::nullopt;
+        }
         result.kind = target_kind::monster;
-        result.monster = get_creature_tracker().temporary_id( *mon );
-        return result.monster >= 0 ? std::optional<target_reference>( result ) : std::nullopt;
+        result.monster_id = get_creature_tracker().temporary_id( *mon );
+        result.monster_ptr = mon_ptr;
+        return result.monster_id >= 0 ? std::optional<target_reference>( result ) : std::nullopt;
     }
     return std::nullopt;
 }
 
-Creature *resolve_target( const character_id &character, const int monster_id )
+Creature *resolve_character_target( const character_id &character )
 {
     if( character.is_valid() ) {
         if( character == get_avatar().getID() ) {
@@ -151,10 +157,31 @@ Creature *resolve_target( const character_id &character, const int monster_id )
         }
         return g->find_npc( character );
     }
-    if( monster_id >= 0 ) {
-        return get_creature_tracker().from_temporary_id( monster_id ).get();
-    }
     return nullptr;
+}
+
+Creature *resolve_target( const overwatch_fire_event_data &event_data )
+{
+    if( event_data.target_character.is_valid() ) {
+        return resolve_character_target( event_data.target_character );
+    }
+
+    shared_ptr_fast<monster> mon = event_data.target_monster_ptr.lock();
+    if( !mon && event_data.target_monster_needs_resolution && event_data.target_monster >= 0 ) {
+        // Temporary IDs survive the save/load boundary, but not subsequent tracker mutations.
+        // Resolve a loaded token once, then retain the identity through the weak pointer.
+        mon = get_creature_tracker().from_temporary_id( event_data.target_monster );
+        event_data.target_monster_ptr = mon;
+        event_data.target_monster_needs_resolution = false;
+    }
+    if( !mon ) {
+        return nullptr;
+    }
+    if( mon->is_dead_state() ) {
+        return mon.get();
+    }
+    const shared_ptr_fast<monster> tracked = g->shared_from( *mon );
+    return tracked && tracked.get() == mon.get() ? mon.get() : nullptr;
 }
 
 std::optional<target_reference> stored_target( const npc &gunner )
@@ -187,7 +214,7 @@ std::optional<target_reference> stored_target( const npc &gunner )
             return std::nullopt;
         }
         result.kind = target_kind::monster;
-        result.monster = static_cast<int>( id.dbl() );
+        result.monster_id = static_cast<int>( id.dbl() );
         return result;
     }
     return std::nullopt;
@@ -198,7 +225,7 @@ void store_target( npc &gunner, const target_reference &target )
     gunner.set_value( "overwatch_target_type",
                       target.kind == target_kind::character ? "character" : "monster" );
     gunner.set_value( "overwatch_target_character_id", target.character.get_value() );
-    gunner.set_value( "overwatch_target_monster_id", target.monster );
+    gunner.set_value( "overwatch_target_monster_id", target.monster_id );
     gunner.set_value( "overwatch_target_x", target.pos.x() );
     gunner.set_value( "overwatch_target_y", target.pos.y() );
     gunner.set_value( "overwatch_target_z", target.pos.z() );
@@ -352,7 +379,8 @@ void schedule_fire( npc &gunner, Creature &target, const target_reference &targe
     overwatch_fire_event_data data;
     data.gunner_id = gunner.getID();
     data.target_character = target_ref.character;
-    data.target_monster = target_ref.monster;
+    data.target_monster = target_ref.monster_id;
+    data.target_monster_ptr = target_ref.monster_ptr;
     data.target_pos = target.pos_abs();
     data.mode_id = mode_id.str();
     data.order_key = key;
@@ -370,7 +398,8 @@ void schedule_sight_check( npc &gunner, Creature &target, const target_reference
     overwatch_fire_event_data data;
     data.gunner_id = gunner.getID();
     data.target_character = target_ref.character;
-    data.target_monster = target_ref.monster;
+    data.target_monster = target_ref.monster_id;
+    data.target_monster_ptr = target_ref.monster_ptr;
     data.target_pos = target.pos_abs();
     data.mode_id = mode_id.str();
     data.order_key = key;
@@ -503,7 +532,8 @@ bool schedule_reload( npc &gunner, const gun_mode_id &mode_id,
     data.gunner_id = gunner.getID();
     data.target_pos = target ? target->pos : gunner.pos_abs();
     data.target_character = target ? target->character : character_id();
-    data.target_monster = target ? target->monster : -1;
+    data.target_monster = target ? target->monster_id : -1;
+    data.target_monster_ptr = target ? target->monster_ptr : weak_ptr_fast<monster>();
     data.mode_id = mode_id.str();
     data.order_key = key;
     data.reload_moves = *moves;
@@ -956,8 +986,24 @@ std::string status( const npc &gunner )
             ammo = mode->ammo_remaining();
         }
     }
-    const std::optional<target_reference> target = stored_target( gunner );
-    Creature *live_target = target ? resolve_target( target->character, target->monster ) : nullptr;
+    Creature *live_target = nullptr;
+    const diag_value active_key = gunner.get_value( order_key );
+    if( active_key.is_str() ) {
+        timed_event *event = get_timed_events().get( timed_event_type::OVERWATCH_FIRE,
+                             active_key.str() );
+        if( event == nullptr ) {
+            event = get_timed_events().get( timed_event_type::OVERWATCH_RELOAD, active_key.str() );
+        }
+        const overwatch_fire_event_data *event_data =
+            event ? event->get_data<overwatch_fire_event_data>() : nullptr;
+        live_target = event_data ? resolve_target( *event_data ) : nullptr;
+    }
+    if( live_target == nullptr ) {
+        const std::optional<target_reference> target = stored_target( gunner );
+        if( target && target->kind == target_kind::character ) {
+            live_target = resolve_character_target( target->character );
+        }
+    }
     const diag_value repeat = gunner.get_value( "overwatch_repeat" );
     const std::string order = live_target && gunner.get_value( sight_lost_key ).is_str() ?
                               string_format( _( "holding fire; %s is out of sight" ),
@@ -978,6 +1024,13 @@ void report( const npc &gunner )
     add_msg( "%s", status( gunner ) );
 }
 
+void prepare_event_target( const overwatch_fire_event_data &event_data )
+{
+    if( event_data.target_monster_needs_resolution ) {
+        resolve_target( event_data );
+    }
+}
+
 bool actualize_fire_event( const overwatch_fire_event_data &event_data )
 {
     npc *gunner = event_data.gunner_id.is_valid() ? g->find_npc( event_data.gunner_id ) : nullptr;
@@ -996,7 +1049,7 @@ bool actualize_fire_event( const overwatch_fire_event_data &event_data )
             report_order_abort( *gunner, reason );
         }
     };
-    Creature *target = resolve_target( event_data.target_character, event_data.target_monster );
+    Creature *target = resolve_target( event_data );
     if( !operator_available( *gunner ) || !is_assigned( *gunner ) ) {
         cancel_current();
         return false;
@@ -1158,7 +1211,7 @@ bool actualize_reload_event( const overwatch_fire_event_data &event_data )
         cancel_current();
         return true;
     }
-    Creature *target = resolve_target( event_data.target_character, event_data.target_monster );
+    Creature *target = resolve_target( event_data );
     if( target == nullptr ) {
         cancel_current( _( "the target can no longer be tracked" ) );
         return false;

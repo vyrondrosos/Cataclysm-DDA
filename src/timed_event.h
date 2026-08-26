@@ -12,11 +12,13 @@
 #include "coordinates.h"
 #include "explosion.h"
 #include "item.h"
+#include "memory_fast.h"
 #include "point.h"
 #include "submap.h"
 
 class JsonArray;
 class JsonOut;
+class monster;
 
 enum class timed_event_type : int {
     NONE,
@@ -110,7 +112,11 @@ struct fpv_terminal_impact_event_data : timed_event_data {
 struct overwatch_fire_event_data : timed_event_data {
     character_id gunner_id;
     character_id target_character;
+    // The integer is only a serialization token.  Runtime tracking must use the weak pointer:
+    // creature_tracker temporary IDs change whenever its monster vector is compacted.
     int target_monster = -1;
+    mutable weak_ptr_fast<monster> target_monster_ptr; // NOLINT(cata-serialize)
+    mutable bool target_monster_needs_resolution = false; // NOLINT(cata-serialize)
     tripoint_abs_ms target_pos = tripoint_abs_ms::invalid;
     std::string mode_id;
     std::string order_key;

@@ -1097,6 +1097,18 @@ void timed_event::per_turn()
         }
         break;
 
+        case timed_event_type::OVERWATCH_RELOAD:
+        case timed_event_type::OVERWATCH_FIRE: {
+            const overwatch_fire_event_data *fire_data =
+                get_data<overwatch_fire_event_data>();
+            if( fire_data != nullptr ) {
+                // Bind a deserialized temporary monster ID before this turn can mutate the
+                // creature tracker.  Subsequent tracking uses the monster object's identity.
+                overwatch::prepare_event_target( *fire_data );
+            }
+        }
+        break;
+
         default:
             // Nothing happens for other events
             break;

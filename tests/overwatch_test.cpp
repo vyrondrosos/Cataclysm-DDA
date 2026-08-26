@@ -12,6 +12,7 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "coordinates.h"
+#include "creature_tracker.h"
 #include "damage.h"
 #include "dispersion.h"
 #include "effect.h"
@@ -696,6 +697,94 @@ TEST_CASE( "overwatch_single_order_event_lifecycle", "[overwatch][timed_event]" 
     CHECK( gunner.get_value( "overwatch_order_key" ).is_empty() );
     CHECK( events.get( timed_event_type::OVERWATCH_FIRE, key ) == nullptr );
     CHECK( overwatch::is_assigned( gunner ) );
+}
+
+TEST_CASE( "overwatch_monster_tracking_survives_temporary_id_changes",
+           "[overwatch][timed_event][monster]" )
+{
+    npc &gunner = make_overwatch_gunner();
+    arm_shooter( gunner, itype_modular_m16_auto_rifle );
+    REQUIRE( overwatch::assign( gunner ) );
+
+    map &here = get_map();
+    monster &earlier = spawn_test_monster( "mon_zombie",
+                                          gunner.pos_bub( here ) + tripoint( 6, 0, 0 ), false );
+    monster &target = spawn_test_monster( "mon_zombie_hulk",
+                                         gunner.pos_bub( here ) + tripoint( 8, 0, 0 ), false );
+    monster &later = spawn_test_monster( "mon_zombie",
+                                        gunner.pos_bub( here ) + tripoint( 8, 2, 0 ), false );
+    later.friendly = -1;
+    REQUIRE( overwatch::observer_can_see( gunner, target ) );
+
+    clear_overwatch_events();
+    const auto remove_events = on_out_of_scope( []() {
+        clear_overwatch_events();
+    } );
+    timed_event_manager &events = get_timed_events();
+
+    REQUIRE( overwatch::issue_order( gunner, target, false ) );
+    const std::string key = gunner.get_value( "overwatch_order_key" ).str();
+    timed_event *event = events.get( timed_event_type::OVERWATCH_FIRE, key );
+    REQUIRE( event != nullptr );
+    const overwatch_fire_event_data *payload = event->get_data<overwatch_fire_event_data>();
+    REQUIRE( payload != nullptr );
+    REQUIRE( payload->target_monster == get_creature_tracker().temporary_id( target ) );
+
+    // Simulate the state loaded from a save: only the serialized temporary ID exists until the
+    // timed-event pass binds it to the original monster object.
+    payload->target_monster_ptr.reset();
+    payload->target_monster_needs_resolution = true;
+    overwatch::prepare_event_target( *payload );
+    REQUIRE_FALSE( payload->target_monster_needs_resolution );
+
+    get_creature_tracker().remove( earlier );
+    REQUIRE( payload->target_monster != get_creature_tracker().temporary_id( target ) );
+    REQUIRE( get_creature_tracker().from_temporary_id( payload->target_monster ).get() == &later );
+    CHECK( overwatch::status( gunner ).find( target.disp_name() ) != std::string::npos );
+
+    const overwatch_fire_event_data fire_data = *payload;
+    events.remove( timed_event_type::OVERWATCH_FIRE, key );
+    const int ammunition_before = gunner.get_wielded_item()->ammo_remaining();
+    REQUIRE( overwatch::actualize_fire_event( fire_data ) );
+    CHECK( gunner.get_wielded_item()->ammo_remaining() == ammunition_before - 1 );
+}
+
+TEST_CASE( "overwatch_removed_monster_is_not_replaced_by_reused_temporary_id",
+           "[overwatch][timed_event][monster]" )
+{
+    npc &gunner = make_overwatch_gunner();
+    arm_shooter( gunner, itype_modular_m16_auto_rifle );
+    REQUIRE( overwatch::assign( gunner ) );
+
+    map &here = get_map();
+    monster &target = spawn_test_monster( "mon_zombie_hulk",
+                                         gunner.pos_bub( here ) + tripoint( 8, 0, 0 ), false );
+    monster &replacement = spawn_test_monster( "mon_zombie_hulk",
+                           gunner.pos_bub( here ) + tripoint( 8, 2, 0 ), false );
+    REQUIRE( overwatch::observer_can_see( gunner, target ) );
+
+    clear_overwatch_events();
+    const auto remove_events = on_out_of_scope( []() {
+        clear_overwatch_events();
+    } );
+    timed_event_manager &events = get_timed_events();
+
+    REQUIRE( overwatch::issue_order( gunner, target, false ) );
+    const std::string key = gunner.get_value( "overwatch_order_key" ).str();
+    timed_event *event = events.get( timed_event_type::OVERWATCH_FIRE, key );
+    REQUIRE( event != nullptr );
+    const overwatch_fire_event_data *payload = event->get_data<overwatch_fire_event_data>();
+    REQUIRE( payload != nullptr );
+    const overwatch_fire_event_data fire_data = *payload;
+    events.remove( timed_event_type::OVERWATCH_FIRE, key );
+
+    get_creature_tracker().remove( target );
+    REQUIRE( get_creature_tracker().from_temporary_id( fire_data.target_monster ).get() ==
+             &replacement );
+    const int ammunition_before = gunner.get_wielded_item()->ammo_remaining();
+    CHECK_FALSE( overwatch::actualize_fire_event( fire_data ) );
+    CHECK( gunner.get_wielded_item()->ammo_remaining() == ammunition_before );
+    CHECK( gunner.get_value( "overwatch_order_key" ).is_empty() );
 }
 
 TEST_CASE( "unconscious_overwatch_gunner_cannot_complete_scheduled_fire",
